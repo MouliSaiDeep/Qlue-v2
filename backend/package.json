@@ -1,1 +1,10 @@
-{}
+{
+  "dependencies": {
+    "aws-sdk": "^2.1693.0",
+    "axios": "^1.15.0",
+    "body-parser": "^2.2.2",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "firebase-admin": "^13.8.0"
+  }
+}
