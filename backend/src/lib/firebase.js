@@ -91,11 +91,38 @@ async function getUserByEmail(email) {
   }
 }
 
+/**
+ * Sends an FCM push notification.
+ */
+async function sendNotification(fcmToken, notification, data = {}) {
+  await initializeFirebase();
+  try {
+    const message = {
+      notification,
+      data,
+      token: fcmToken
+    };
+
+    const response = await admin.messaging().send(message);
+    console.info('Successfully sent FCM message:', response);
+    return { success: true, messageId: response };
+  } catch (error) {
+    console.error('Error sending FCM message:', error);
+    return { 
+      success: false, 
+      error: error.message, 
+      isStaleToken: error.code === 'messaging/registration-token-not-registered' || 
+                    error.code === 'messaging/invalid-registration-token'
+    };
+  }
+}
+
 module.exports = {
   initializeFirebase,
   verifyIdToken,
   createCustomToken,
   deleteUser,
   getUserByEmail,
-  admin // export admin instance for FCM usages
+  sendNotification,
+  admin
 };
