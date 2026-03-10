@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qlue_frontend/core/router/app_router.dart';
 
 void main() async{
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,19 +13,9 @@ class QlueApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: QlueHome(),
+    return MaterialApp.router(
+      routerConfig: router,
       debugShowCheckedModeBanner: false,
-    );
-  }
-}
-class QlueHome extends StatelessWidget {
-  const QlueHome({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Text("HomeScreen"),
     );
   }
 }
