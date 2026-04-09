@@ -1,9 +1,13 @@
-const AWS = require('aws-sdk');
+const { TextractClient } = require("@aws-sdk/client-textract");
+const { NodeHttpHandler } = require("@smithy/node-http-handler");
 
-const textract = new AWS.Textract({
+const textract = new TextractClient({
     region: process.env.AWS_REGION || 'ap-south-1',
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    maxAttempts: 3,
+    requestHandler: new NodeHttpHandler({
+        connectionTimeout: 5000,
+        requestTimeout: 30000
+    })
 });
 
 module.exports = textract;
