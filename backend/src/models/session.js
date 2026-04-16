@@ -1,5 +1,5 @@
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, PutCommand, UpdateCommand, GetCommand } = require("@aws-sdk/lib-dynamodb");
+const { DynamoDBDocumentClient, PutCommand, UpdateCommand, GetCommand, QueryCommand } = require("@aws-sdk/lib-dynamodb");
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -57,6 +57,25 @@ async function getSession(sessionId) {
 }
 
 /**
+ * Sweeps the UserActiveIndex GSI to find any currently active session for a user.
+ */
+async function getActiveSessionForUser(userId) {
+    const command = new QueryCommand({
+        TableName: SESSIONS_TABLE,
+        IndexName: 'UserActiveIndex',
+        KeyConditionExpression: 'userId = :uid AND activeMarker = :am',
+        ExpressionAttributeValues: {
+            ':uid': userId,
+            ':am': 'ACTIVE'
+        },
+        Limit: 1
+    });
+
+    const response = await docClient.send(command);
+    return response.Items?.[0] || null;
+}
+
+/**
  * Updates the current state of the interview session, enforcing optimistic locking.
  */
 async function updateSessionState(sessionId, newState, expectedCurrentState = null, updates = {}) {
@@ -75,6 +94,9 @@ async function updateSessionState(sessionId, newState, expectedCurrentState = nu
         updateExpression += ", turnCount = :turnCount";
         expressionAttributeValues[":turnCount"] = updates.turnCount;
     }
+
+    updateExpression += ", updatedAt = :updatedAt";
+    expressionAttributeValues[":updatedAt"] = new Date().toISOString();
     
     if (updates.silenceRetries !== undefined) {
         updateExpression += ", silenceRetries = :silenceRetries";
@@ -113,5 +135,6 @@ module.exports = {
     INTERVIEW_STATES,
     createSession,
     getSession,
-    updateSessionState
+    updateSessionState,
+    getActiveSessionForUser
 };

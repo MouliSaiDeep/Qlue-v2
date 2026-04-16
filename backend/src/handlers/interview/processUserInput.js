@@ -30,7 +30,24 @@ exports.handler = async (event) => {
         const session = await getSession(sessionId);
         if (!session) throw new Error('Session not found');
 
-        if (session.currentState !== INTERVIEW_STATES.USER_RESPONDING) {
+        // [Mouli Week 4: Deadlock Recovery]
+        if (session.currentState === INTERVIEW_STATES.PROCESSING_RESPONSE) {
+            const deadlockTime = Date.now() - new Date(session.updatedAt || session.startTime).getTime();
+            if (deadlockTime > 60 * 1000) {
+                // Recover the session silently
+                return {
+                    statusCode: 200,
+                    body: JSON.stringify({
+                        sessionId,
+                        nextAIResponse: "Sorry, I lost my train of thought. Let's continue where we left off.",
+                        state: INTERVIEW_STATES.AI_SPEAKING,
+                        message: 'Recovered from Deadlock.'
+                    })
+                };
+            }
+        }
+
+        if (session.currentState !== INTERVIEW_STATES.USER_RESPONDING && session.currentState !== INTERVIEW_STATES.PROCESSING_RESPONSE) {
             throw new Error(`Cannot process input while in state: ${session.currentState}`);
         }
 
