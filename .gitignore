@@ -27,3 +27,6 @@ Thumbs.db
 /tmp/
 setup-backend.ps1
 update-files.ps1
+
+LLD.md
+WORK_ALLOCATION.md.agents/*
