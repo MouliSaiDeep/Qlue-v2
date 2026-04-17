@@ -1,46 +1,45 @@
-const dynamodb = require('../../lib/dynamodb');
-const RESUMES_TABLE = process.env.RESUMES_TABLE || 'Resumes';
+const { getResumesByUserId } = require('../../models/resume');
 
-const validateResumeHash = async (req, res) => {
+/**
+ * AWS Lambda Handler: POST /resume/validate-hash
+ */
+exports.handler = async (event) => {
     try {
-        const userId = req.requestContext?.authorizer?.userId || req.user?.userId;
+        const userId = event.requestContext?.authorizer?.uid || event.requestContext?.authorizer?.claims?.sub;
         if (!userId) {
-            return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Missing authorizer context' });
+            return {
+                statusCode: 401,
+                body: JSON.stringify({ error: 'UNAUTHORIZED', message: 'Missing user context' })
+            };
         }
 
-        const { fileHash } = req.body;
+        const body = JSON.parse(event.body || '{}');
+        const { fileHash } = body;
         if (!fileHash) {
-            return res.status(400).json({ error: 'BAD_REQUEST', message: 'fileHash is required' });
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ error: 'BAD_REQUEST', message: 'fileHash is required' })
+            };
         }
 
-        const params = {
-            TableName: RESUMES_TABLE,
-            IndexName: 'GSI_UserIdUploadedAt',
-            KeyConditionExpression: 'userId = :uid',
-            ExpressionAttributeValues: { ':uid': userId }
+        const resumes = await getResumesByUserId(userId);
+        const duplicate = resumes.find(item => item.fileHash === fileHash);
+
+        return {
+            statusCode: 200,
+            body: JSON.stringify({
+                isDuplicate: !!duplicate,
+                existingResumeId: duplicate ? duplicate.resumeId : null,
+                existingFileName: duplicate ? duplicate.fileName : null,
+                uploadedAt: duplicate ? duplicate.uploadedAt : null
+            })
         };
-
-        const queryRes = await dynamodb.query(params).promise();
-        const duplicate = queryRes.Items.find(item => item.fileHash === fileHash);
-
-        if (duplicate) {
-            return res.status(200).json({
-                isDuplicate: true,
-                existingResumeId: duplicate.resumeId,
-                existingFileName: duplicate.fileName,
-                uploadedAt: duplicate.uploadedAt
-            });
-        }
-
-        return res.status(200).json({
-            isDuplicate: false,
-            existingResumeId: null
-        });
 
     } catch (error) {
         console.error('Validate Resume Hash Error:', error);
-        return res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', message: error.message });
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ error: 'SERVER_ERROR', message: error.message })
+        };
     }
 };
-
-module.exports = { validateResumeHash };

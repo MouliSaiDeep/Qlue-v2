@@ -1,0 +1,201 @@
+openapi: 3.0.3
+info:
+  title: Qlue Backend API
+  description: API for the Qlue AI-powered voice interview simulation mobile app.
+  version: 1.0.0
+servers:
+  - url: https://api.qlue.example.com/prod
+    description: Production environment
+
+components:
+  securitySchemes:
+    FirebaseToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Firebase ID Token for user authentication.
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+
+    User:
+      type: object
+      properties:
+        userId:
+          type: string
+        email:
+          type: string
+        displayName:
+          type: string
+        photoURL:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Resume:
+      type: object
+      properties:
+        resumeId:
+          type: string
+        fileName:
+          type: string
+        fileSize:
+          type: integer
+        uploadedAt:
+          type: string
+          format: date-time
+        parsedData:
+          type: object
+        isActive:
+          type: boolean
+
+    Session:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        userId:
+          type: string
+        moduleType:
+          type: string
+          enum: [RESUME, HR, WEBSITE]
+        currentState:
+          type: string
+        turnCount:
+          type: integer
+        startTime:
+          type: string
+          format: date-time
+        accumulatedScores:
+          type: object
+
+security:
+  - FirebaseToken: []
+
+paths:
+  /auth/register:
+    post:
+      summary: Register a new user
+      tags: [Auth]
+      responses:
+        201:
+          description: User registered successfully
+        400:
+          description: Invalid request
+
+  /auth/login:
+    post:
+      summary: Login with credentials
+      tags: [Auth]
+      responses:
+        200:
+          description: Login successful
+
+  /auth/profile:
+    get:
+      summary: Get user profile
+      tags: [Auth]
+      responses:
+        200:
+          description: Profile retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+    put:
+      summary: Update user profile
+      tags: [Auth]
+      responses:
+        200:
+          description: Profile updated
+
+  /resume/list:
+    get:
+      summary: List all resumes for the user
+      tags: [Resume]
+      responses:
+        200:
+          description: List of resumes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Resume'
+
+  /resume/presigned-url:
+    post:
+      summary: Generate a presigned URL for resume upload
+      tags: [Resume]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fileName:
+                  type: string
+                contentType:
+                  type: string
+                fileHash:
+                  type: string
+      responses:
+        200:
+          description: URL generated
+
+  /interview/initialize:
+    post:
+      summary: Start a new interview session
+      tags: [Interview]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                moduleType:
+                  type: string
+                  enum: [RESUME, HR, WEBSITE]
+      responses:
+        200:
+          description: Session started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId:
+                    type: string
+                  websocketUrl:
+                    type: string
+
+  /dashboard/summary:
+    get:
+      summary: Get high-level dashboard metrics
+      tags: [Dashboard]
+      responses:
+        200:
+          description: Summary retrieved
+
+  /dashboard/history:
+    get:
+      summary: Get user session history
+      tags: [Dashboard]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        200:
+          description: History retrieved

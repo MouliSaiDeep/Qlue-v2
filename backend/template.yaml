@@ -1007,7 +1007,7 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - SecretsManagerReadPolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
 
   GetSessionDetailFunction:
@@ -1018,7 +1018,8 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
         - SecretsManagerReadPolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
 
   GetTranscriptFunction:
@@ -1029,7 +1030,7 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - SecretsManagerReadPolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
 
   # ========= SCRAPER =========

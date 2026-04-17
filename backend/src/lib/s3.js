@@ -1,15 +1,5 @@
-const AWS = require('aws-sdk');
-
-const s3 = new AWS.S3({
-    region: process.env.AWS_REGION || 'ap-south-1',
-    signatureVersion: 'v4',
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-});
-
-module.exports = s3;
 /**
- * Application wrappers for AWS S3 operations.
+ * Application wrappers for AWS S3 operations using SDK v3.
  */
 const { 
   S3Client, 
@@ -20,7 +10,7 @@ const {
 } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
-const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
+const s3Client = new S3Client({ region: process.env.AWS_REGION || 'ap-south-1' });
 
 /**
  * Generates a presigned URL acting as a delegate for upload endpoints.

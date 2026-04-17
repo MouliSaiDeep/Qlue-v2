@@ -1,93 +1,70 @@
 const admin = require('../../lib/firebase');
-const AWS = require('aws-sdk');
+const { delete: remove, query } = require('../../lib/dynamodb');
+const { deleteResumeRecord, getResumesByUserId } = require('../../models/resume');
 
-const dynamodb = new AWS.DynamoDB.DocumentClient();
 const USERS_TABLE = process.env.USERS_TABLE || 'qlue-users';
-const RESUMES_TABLE = process.env.RESUMES_TABLE || 'qlue-resumes';
 
-const deleteAccount = async (req, res) => {
+/**
+ * AWS Lambda Handler: DELETE /auth/account
+ */
+exports.handler = async (event) => {
     try {
-        const authHeader = req.headers.authorization;
+        const uid = event.requestContext?.authorizer?.uid || event.requestContext?.authorizer?.claims?.sub;
 
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({ error: 'MISSING_TOKEN', message: 'Authorization header is missing or invalid' });
-        }
-
-        const token = authHeader.split('Bearer ')[1].trim();
-
-        // 1. Verify token using Firebase Admin SDK (Aligns with your fully reverted architecture instead of Custom JWTs)
-        let decodedToken;
-        try {
-            decodedToken = await admin.auth().verifyIdToken(token);
-        } catch (err) {
-            return res.status(401).json({ error: 'INVALID_TOKEN', message: 'Token verification failed' });
-        }
-
-        const firebaseUid = decodedToken.uid;
-
-        // 2. Fetch user from DynamoDB using firebaseUid
-        const getUserParams = {
-            TableName: USERS_TABLE,
-            IndexName: 'firebaseUid-index',
-            KeyConditionExpression: 'firebaseUid = :uid',
-            ExpressionAttributeValues: {
-                ':uid': firebaseUid
-            }
-        };
-
-        const result = await dynamodb.query(getUserParams).promise();
-        const user = result.Items && result.Items.length > 0 ? result.Items[0] : null;
-
-        if (!user) {
-            return res.status(404).json({ error: 'USER_NOT_FOUND', message: 'User record not found in database' });
-        }
-
-        const userId = user.userId;
-
-        // 3. Delete Firebase user using admin.auth().deleteUser
-        try {
-            await admin.auth().deleteUser(firebaseUid);
-        } catch (firebaseErr) {
-            console.warn("Firebase deletion failed. User might already be deleted or invalid.", firebaseErr);
-        }
-
-        // 4. Delete user from DynamoDB
-        const deleteParams = {
-            TableName: USERS_TABLE,
-            Key: {
-              userId: userId
-            }
-        };
-
-        await dynamodb.delete(deleteParams).promise();
-
-        // Optional Cleanup: Delete related Resumes
-        try {
-            const resumeParams = {
-                TableName: RESUMES_TABLE,
-                IndexName: 'userId-index',
-                KeyConditionExpression: 'userId = :userId',
-                ExpressionAttributeValues: { ':userId': userId },
+        if (!uid) {
+            return {
+                statusCode: 401,
+                body: JSON.stringify({ error: 'UNAUTHORIZED', message: 'User context missing' })
             };
-            const resumeResult = await dynamodb.query(resumeParams).promise();
-            const resumes = resumeResult.Items || [];
-            
-            const deletePromises = resumes.map(r => {
-                const keyName = r.resumeId ? 'resumeId' : 'id';
-                return dynamodb.delete({ TableName: RESUMES_TABLE, Key: { [keyName]: r[keyName] } }).promise();
-            });
-            await Promise.all(deletePromises);
-        } catch (err) {}
+        }
 
-        // 5. Return success response
-        return res.status(200).json({
-            message: "Account deleted successfully"
-        });
+        // 1. Delete user from Firebase Auth
+        try {
+            await admin.auth().deleteUser(uid);
+        } catch (firebaseErr) {
+            console.warn("Firebase user deletion warning (may already be gone):", firebaseErr.message);
+        }
+
+        // 2. Fetch and delete related resumes first (DB + S3)
+        try {
+            const { deleteObject } = require('../../lib/s3');
+            const BUCKET_NAME = process.env.RESUMES_BUCKET || 'qlue-resumes';
+            const resumes = await getResumesByUserId(uid);
+            
+            await Promise.all(resumes.map(async (r) => {
+                if (r.s3Key) {
+                    try {
+                        await deleteObject(BUCKET_NAME, r.s3Key);
+                    } catch (s3Err) {
+                        console.error(`Failed to delete S3 object for resume ${r.resumeId}:`, s3Err.message);
+                    }
+                }
+                await deleteResumeRecord(r.resumeId);
+            }));
+        } catch (resumeErr) {
+            console.error("Cleanup of resumes failed during account deletion:", resumeErr.message);
+        }
+
+        // 3. Delete user record from DynamoDB
+        const result = await remove(USERS_TABLE, { userId: uid });
+
+        if (!result.success) {
+            return {
+                statusCode: 500,
+                body: JSON.stringify({ error: 'DB_DELETE_FAILED', details: result.error?.message })
+            };
+        }
+
+        return {
+            statusCode: 200,
+            body: JSON.stringify({ message: "Account and associated data deleted successfully" })
+        };
 
     } catch (error) {
         console.error('Delete Account Error:', error);
-        return res.status(500).json({ error: 'DELETE_ACCOUNT_FAILED', details: error.message });
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ error: 'DELETE_ACCOUNT_FAILED', details: error.message })
+        };
     }
 };
-
-module.exports = { deleteAccount };

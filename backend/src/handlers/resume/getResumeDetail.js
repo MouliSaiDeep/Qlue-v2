@@ -1,38 +1,45 @@
-const dynamodb = require('../../lib/dynamodb');
-const RESUMES_TABLE = process.env.RESUMES_TABLE || 'Resumes';
+const { getResumeById } = require('../../models/resume');
 
-const getResumeDetail = async (req, res) => {
+/**
+ * AWS Lambda Handler: GET /resume/{resumeId}
+ */
+exports.handler = async (event) => {
     try {
-        const userId = req.requestContext?.authorizer?.userId || req.user?.userId;
+        const userId = event.requestContext?.authorizer?.uid || event.requestContext?.authorizer?.claims?.sub;
         if (!userId) {
-            return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Missing authorizer context' });
+            return {
+                statusCode: 401,
+                body: JSON.stringify({ error: 'UNAUTHORIZED', message: 'Missing user context' })
+            };
         }
 
-        const { resumeId } = req.params;
+        const resumeId = event.pathParameters?.resumeId;
         if (!resumeId) {
-            return res.status(400).json({ error: 'BAD_REQUEST', message: 'resumeId is required' });
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ error: 'BAD_REQUEST', message: 'resumeId is required' })
+            };
         }
 
-        const params = {
-            TableName: RESUMES_TABLE,
-            Key: {
-                resumeId: resumeId
-            }
-        };
-
-        const result = await dynamodb.get(params).promise();
-        const resume = result.Item;
+        const resume = await getResumeById(resumeId);
 
         if (!resume || resume.userId !== userId) {
-            return res.status(404).json({ error: 'NOT_FOUND', message: 'Resume not found' });
+            return {
+                statusCode: 404,
+                body: JSON.stringify({ error: 'NOT_FOUND', message: 'Resume not found' })
+            };
         }
 
-        return res.status(200).json({ resume });
+        return {
+            statusCode: 200,
+            body: JSON.stringify({ resume })
+        };
 
     } catch (error) {
         console.error('Get Resume Detail Error:', error);
-        return res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', message: error.message });
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ error: 'SERVER_ERROR', message: error.message })
+        };
     }
 };
-
-module.exports = { getResumeDetail };

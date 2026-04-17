@@ -1,27 +1,22 @@
-const dynamodb = require('../../lib/dynamodb');
-const RESUMES_TABLE = process.env.RESUMES_TABLE || 'Resumes';
+const { getResumesByUserId } = require('../../models/resume');
 
-const getResumeList = async (req, res) => {
+/**
+ * AWS Lambda Handler: GET /resume
+ */
+exports.handler = async (event) => {
     try {
-        const userId = req.requestContext?.authorizer?.userId || req.user?.userId;
+        const userId = event.requestContext?.authorizer?.uid || event.requestContext?.authorizer?.claims?.sub;
         if (!userId) {
-            return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Missing authorizer context' });
+            return {
+                statusCode: 401,
+                body: JSON.stringify({ error: 'UNAUTHORIZED', message: 'Missing user context' })
+            };
         }
 
-        const params = {
-            TableName: RESUMES_TABLE,
-            IndexName: 'GSI_UserIdUploadedAt',
-            KeyConditionExpression: 'userId = :uid',
-            ExpressionAttributeValues: {
-                ':uid': userId
-            },
-            ScanIndexForward: false // Return newest first
-        };
-
-        const result = await dynamodb.query(params).promise();
+        const resumes = await getResumesByUserId(userId);
         
-        // Map to exclude parsedData for smaller payload
-        const resumes = result.Items.map(item => ({
+        // Map to exclude large blobs (parsedData) for list view efficiency
+        const resumeList = resumes.map(item => ({
             resumeId: item.resumeId,
             fileName: item.fileName,
             fileSize: item.fileSize,
@@ -32,16 +27,20 @@ const getResumeList = async (req, res) => {
             failReason: item.failReason || null
         }));
 
-        return res.status(200).json({
-            resumes: resumes,
-            count: resumes.length,
-            maxAllowed: 4
-        });
+        return {
+            statusCode: 200,
+            body: JSON.stringify({
+                resumes: resumeList,
+                count: resumeList.length,
+                maxAllowed: 4
+            })
+        };
 
     } catch (error) {
         console.error('Get Resume List Error:', error);
-        return res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', message: error.message });
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ error: 'SERVER_ERROR', message: error.message })
+        };
     }
 };
-
-module.exports = { getResumeList };

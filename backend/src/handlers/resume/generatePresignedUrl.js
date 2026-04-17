@@ -1,110 +1,94 @@
-const crypto = require('crypto');
-const dynamodb = require('../../lib/dynamodb');
-const s3 = require('../../lib/s3');
+const { generatePresignedUrl: getSignedUrl } = require('../../lib/s3');
+const { getResumesByUserId, createResume } = require('../../models/resume');
+const { randomUUID } = require('crypto');
 
-const RESUMES_TABLE = process.env.RESUMES_TABLE || 'Resumes';
 const BUCKET_NAME = process.env.RESUMES_BUCKET || 'qlue-resumes';
 
-const generatePresignedUrl = async (req, res) => {
+/**
+ * AWS Lambda Handler: POST /resume/presigned-url
+ */
+exports.handler = async (event) => {
     try {
-        const userId = req.requestContext?.authorizer?.userId || req.user?.userId;
+        const userId = event.requestContext?.authorizer?.uid || event.requestContext?.authorizer?.claims?.sub;
         if (!userId) {
-            return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Missing authorizer context' });
+            return {
+                statusCode: 401,
+                body: JSON.stringify({ error: 'UNAUTHORIZED', message: 'Missing user context' })
+            };
         }
 
-        const { fileName, fileSize, fileHash } = req.body;
+        const body = JSON.parse(event.body || '{}');
+        const { fileName, fileSize, fileHash } = body;
 
         if (!fileName || !fileSize || !fileHash) {
-            return res.status(400).json({ error: 'BAD_REQUEST', message: 'Missing required fields' });
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ error: 'BAD_REQUEST', message: 'Missing fileName, fileSize, or fileHash' })
+            };
         }
 
         if (!fileName.toLowerCase().endsWith('.pdf')) {
-            return res.status(400).json({ error: 'INVALID_FILE_TYPE', message: 'Only .pdf files are allowed. .doc and .docx are explicitly rejected.' });
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ error: 'INVALID_FILE_TYPE', message: 'Only .pdf files are allowed' })
+            };
         }
 
-        if (fileSize > 5242880) {
-            return res.status(400).json({ error: 'FILE_TOO_LARGE', message: 'File size exceeds 5MB limit' });
+        // 1. Check user's resume limit (Max 4)
+        const existingResumes = await getResumesByUserId(userId);
+        if (existingResumes.length >= 4) {
+            return {
+                statusCode: 409,
+                body: JSON.stringify({ error: 'LIMIT_EXCEEDED', message: 'Maximum of 4 resumes allowed' })
+            };
         }
 
-        if (!/^[a-fA-F0-9]{64}$/.test(fileHash)) {
-            return res.status(400).json({ error: 'INVALID_HASH', message: 'fileHash must be a valid SHA-256 hex string' });
-        }
-
-        // Check resume count
-        const countParams = {
-            TableName: RESUMES_TABLE,
-            IndexName: 'GSI_UserIdUploadedAt',
-            KeyConditionExpression: 'userId = :uid',
-            ExpressionAttributeValues: {
-                ':uid': userId
-            },
-            Select: 'COUNT'
-        };
-        const countResult = await dynamodb.query(countParams).promise();
-        if (countResult.Count >= 4) {
-            return res.status(409).json({ error: 'RESUME_LIMIT_EXCEEDED', message: 'Maximum of 4 resumes allowed' });
-        }
-
-        // Call validateResumeHash logic
-        const hashParams = {
-            TableName: RESUMES_TABLE,
-            IndexName: 'GSI_UserIdUploadedAt',
-            KeyConditionExpression: 'userId = :uid',
-            ExpressionAttributeValues: {
-                ':uid': userId
-            }
-        };
-        const existingResumes = await dynamodb.query(hashParams).promise();
-        const duplicate = existingResumes.Items.find(r => r.fileHash === fileHash);
+        // 2. Check for duplicate content via hash
+        const duplicate = existingResumes.find(r => r.fileHash === fileHash);
         if (duplicate) {
-            return res.status(409).json({ 
-                error: 'DUPLICATE_RESUME', 
-                message: 'A resume with this exact content already exists',
-                existingResumeId: duplicate.resumeId 
-            });
+            return {
+                statusCode: 409,
+                body: JSON.stringify({ 
+                    error: 'DUPLICATE_RESUME', 
+                    message: 'This resume has already been uploaded',
+                    resumeId: duplicate.resumeId
+                })
+            };
         }
 
-        const resumeId = crypto.randomUUID();
+        const resumeId = randomUUID();
         const timestamp = Date.now();
         const s3Key = `resumes/${userId}/${timestamp}_${fileName}`;
 
-        const urlParams = {
-            Bucket: BUCKET_NAME,
-            Key: s3Key,
-            Expires: 900,
-            ContentType: 'application/pdf'
-        };
+        // 3. Generate presigned URL for PUT
+        const uploadUrl = await getSignedUrl(BUCKET_NAME, s3Key, 'putObject', 900);
 
-        const uploadUrl = await s3.getSignedUrlPromise('putObject', urlParams);
-
-        const newResume = {
+        // 4. Create record in DynamoDB with UPLOADING status
+        await createResume({
             resumeId,
             userId,
             fileName,
             fileSize,
             fileHash,
             s3Key,
-            status: 'UPLOADING',
-            uploadedAt: timestamp,
-            isActive: false
-        };
-
-        await dynamodb.put({
-            TableName: RESUMES_TABLE,
-            Item: newResume
-        }).promise();
-
-        return res.status(200).json({
-            uploadUrl,
-            resumeId,
-            s3Key,
-            expiresIn: 900
+            status: 'UPLOADING'
         });
+
+        return {
+            statusCode: 200,
+            body: JSON.stringify({
+                uploadUrl,
+                resumeId,
+                s3Key,
+                expiresIn: 900
+            })
+        };
 
     } catch (error) {
         console.error('Generate Presigned URL Error:', error);
-        return res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', message: error.message });
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ error: 'SERVER_ERROR', message: error.message })
+        };
     }
 };
-
-module.exports = { generatePresignedUrl };

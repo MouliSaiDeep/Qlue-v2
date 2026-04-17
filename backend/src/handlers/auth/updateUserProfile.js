@@ -1,67 +1,40 @@
-const admin = require('../../lib/firebase');
-const AWS = require('aws-sdk');
+const { update } = require('../../lib/dynamodb');
 
-const dynamodb = new AWS.DynamoDB.DocumentClient();
 const USERS_TABLE = process.env.USERS_TABLE || 'qlue-users';
 
-const updateUserProfile = async (req, res) => {
+/**
+ * AWS Lambda Handler: PUT /auth/profile
+ */
+exports.handler = async (event) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({ error: 'MISSING_TOKEN', message: 'Authorization header is missing or invalid' });
+        const userId = event.requestContext?.authorizer?.uid || event.requestContext?.authorizer?.claims?.sub;
+        if (!userId) {
+            return {
+                statusCode: 401,
+                body: JSON.stringify({ error: 'UNAUTHORIZED', message: 'User context missing' })
+            };
         }
 
-        const token = authHeader.split('Bearer ')[1].trim();
-
-        let decodedToken;
-        try {
-            // Updated to native Firebase verification so it works perfectly with your login tokens in Postman!
-            decodedToken = await admin.auth().verifyIdToken(token);
-        } catch (err) {
-            return res.status(401).json({ error: 'INVALID_TOKEN', message: 'Token verification failed or expired' });
-        }
-
-        const firebaseUid = decodedToken.uid;
-
-        // Fetch user from DB first using firebaseUid-index to get their internal userId
-        const getUserParams = {
-            TableName: USERS_TABLE,
-            IndexName: 'firebaseUid-index',
-            KeyConditionExpression: 'firebaseUid = :uid',
-            ExpressionAttributeValues: { ':uid': firebaseUid }
-        };
-
-        const resultUser = await dynamodb.query(getUserParams).promise();
-        const userRec = resultUser.Items && resultUser.Items.length > 0 ? resultUser.Items[0] : null;
-
-        if (!userRec) {
-            return res.status(401).json({ error: 'INVALID_TOKEN', message: 'Token valid but user not found in DynamoDB.' });
-        }
-
-        const userId = userRec.userId;
-
-        const { displayName, photoUrl } = req.body;
+        const body = JSON.parse(event.body || '{}');
+        const { displayName, photoUrl } = body;
 
         if (displayName === undefined && photoUrl === undefined) {
-            return res.status(400).json({ error: 'NO_UPDATE_FIELDS', message: 'Please provide displayName or photoUrl to update' });
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ error: 'NO_UPDATE_FIELDS', message: 'Provide displayName or photoUrl' })
+            };
         }
 
         if (displayName && displayName.length > 50) {
-            return res.status(400).json({ error: 'INVALID_INPUT', message: 'displayName cannot exceed 50 characters' });
-        }
-
-        if (photoUrl) {
-            try {
-                new URL(photoUrl); 
-            } catch (err) {
-                 return res.status(400).json({ error: 'INVALID_INPUT', message: 'photoUrl must be a valid URL string' });
-            }
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ error: 'INVALID_INPUT', message: 'displayName too long' })
+            };
         }
 
         let updateExpression = 'SET updatedAt = :updatedAt';
         const expressionAttributeValues = {
-            ':updatedAt': Date.now()
+            ':updatedAt': new Date().toISOString()
         };
 
         if (displayName !== undefined) {
@@ -74,42 +47,33 @@ const updateUserProfile = async (req, res) => {
             expressionAttributeValues[':photoUrl'] = photoUrl;
         }
 
-        const updateParams = {
-            TableName: USERS_TABLE,
-            Key: { userId: userId },
-            UpdateExpression: updateExpression,
-            ExpressionAttributeValues: expressionAttributeValues,
-            ReturnValues: 'ALL_NEW',
-            ConditionExpression: 'attribute_exists(userId)' 
-        };
+        const result = await update(
+            USERS_TABLE,
+            { userId },
+            updateExpression,
+            expressionAttributeValues
+        );
 
-        let result;
-        try {
-             result = await dynamodb.update(updateParams).promise();
-        } catch (dbErr) {
-            if (dbErr.code === 'ConditionalCheckFailedException') {
-                 return res.status(404).json({ error: 'USER_NOT_FOUND', message: 'User record not found in database' });
-            }
-            throw dbErr;
+        if (!result.success) {
+            return {
+                statusCode: result.error?.name === 'ConditionalCheckFailedException' ? 404 : 500,
+                body: JSON.stringify({ error: 'UPDATE_FAILED', details: result.error?.message })
+            };
         }
 
-        const updatedUser = result.Attributes;
-
-        return res.status(200).json({
-            message: 'Profile updated successfully',
-            user: {
-                userId: updatedUser.userId,
-                email: updatedUser.email,
-                displayName: updatedUser.displayName,
-                photoUrl: updatedUser.photoUrl,
-                updatedAt: updatedUser.updatedAt
-            }
-        });
+        return {
+            statusCode: 200,
+            body: JSON.stringify({
+                message: 'Profile updated successfully',
+                user: result.data
+            })
+        };
 
     } catch (error) {
         console.error('Update Profile Error:', error);
-        return res.status(500).json({ error: 'UPDATE_PROFILE_FAILED', details: error.message });
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ error: 'UPDATE_PROFILE_FAILED', details: error.message })
+        };
     }
 };
-
-module.exports = { updateUserProfile };
