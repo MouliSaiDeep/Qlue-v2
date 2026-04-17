@@ -8,7 +8,7 @@ const { ERROR_CODES, QlueError } = require('./errors');
 const bedrockClient = new BedrockRuntimeClient({ region: process.env.AWS_REGION || 'us-east-1' });
 
 // The required Model ID
-const DEFAULT_MODEL_ID = process.env.BEDROCK_MODEL_ID || 'amazon.nemotron-4-340b-instruct';
+const DEFAULT_MODEL_ID = process.env.BEDROCK_MODEL_ID || 'NVIDIA Nemotron 3 Super 120B A12B';
 
 /**
  * Executes a Model Invocation with retries for Timeouts

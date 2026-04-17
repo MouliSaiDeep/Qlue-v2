@@ -43,7 +43,10 @@ function splitTextAtSentences(text, maxLength = 3000) {
  * Synthesizes text to speech and yields base64 chunks
  */
 async function* synthesizeToBase64Chunks(text, options = {}) {
-  const voiceId = options.VoiceId || process.env.POLLY_VOICE_ID || 'Joanna';
+  const voiceId = options.VoiceId;
+  if (!voiceId) {
+    throw new Error('Voice ID must be provided by the user');
+  }
   const engine = options.Engine || 'neural';
   
   // Polly has a 3000 character limit for regular text. 

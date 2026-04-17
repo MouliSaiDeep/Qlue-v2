@@ -21,8 +21,7 @@ Globals:
         SCRAPED_CONTENT_BUCKET: !Ref ScrapedContentBucket
         FEEDBACK_TOPIC_ARN: !Ref FeedbackTriggerTopic
         WEBSOCKET_ENDPOINT: !Sub "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
-        BEDROCK_MODEL_ID: amazon.nemotron-4-340b-instruct
-        POLLY_VOICE_ID: Joanna
+        BEDROCK_MODEL_ID: 'NVIDIA Nemotron 3 Super 120B A12B'
 
 Resources:
   # ==============================================================================
