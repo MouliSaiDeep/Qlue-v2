@@ -30,3 +30,6 @@ update-files.ps1
 
 LLD.md
 WORK_ALLOCATION.md.agents/*
+
+# Firebase
+backend/serverAccountKey.json
