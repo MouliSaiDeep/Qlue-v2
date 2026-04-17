@@ -1,5 +1,5 @@
 /**
- * Application wrappers for AWS S3 operations.
+ * Application wrappers for AWS S3 operations using SDK v3.
  */
 const { 
   S3Client, 

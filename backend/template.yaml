@@ -21,8 +21,7 @@ Globals:
         SCRAPED_CONTENT_BUCKET: !Ref ScrapedContentBucket
         FEEDBACK_TOPIC_ARN: !Ref FeedbackTriggerTopic
         WEBSOCKET_ENDPOINT: !Sub "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
-        BEDROCK_MODEL_ID: amazon.nemotron-4-340b-instruct
-        POLLY_VOICE_ID: Joanna
+        BEDROCK_MODEL_ID: 'NVIDIA Nemotron 3 Super 120B A12B'
 
 Resources:
   # ==============================================================================
@@ -31,6 +30,7 @@ Resources:
   UsersTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      TableName: qlue-users
       BillingMode: PAY_PER_REQUEST
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
@@ -46,6 +46,7 @@ Resources:
   ResumesTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      TableName: qlue-resumes
       BillingMode: PAY_PER_REQUEST
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
@@ -74,6 +75,7 @@ Resources:
   SessionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      TableName: qlue-sessions
       BillingMode: PAY_PER_REQUEST
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
@@ -112,6 +114,7 @@ Resources:
   TranscriptsTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      TableName: qlue-transcripts
       BillingMode: PAY_PER_REQUEST
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
@@ -140,6 +143,7 @@ Resources:
   FeedbackTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      TableName: qlue-feedback
       BillingMode: PAY_PER_REQUEST
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
@@ -176,6 +180,7 @@ Resources:
   ConceptStatesTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      TableName: qlue-concept-states
       BillingMode: PAY_PER_REQUEST
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
@@ -216,6 +221,7 @@ Resources:
   WSConnectionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      TableName: qlue-ws-connections
       BillingMode: PAY_PER_REQUEST
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
@@ -244,6 +250,7 @@ Resources:
   NotificationsTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      TableName: qlue-notifications
       BillingMode: PAY_PER_REQUEST
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
@@ -1000,7 +1007,7 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - SecretsManagerReadPolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
 
   GetSessionDetailFunction:
@@ -1011,7 +1018,8 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
         - SecretsManagerReadPolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
 
   GetTranscriptFunction:
@@ -1022,7 +1030,7 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - SecretsManagerReadPolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
 
   # ========= SCRAPER =========

@@ -4,7 +4,7 @@
 const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
 
 // Use Lambda execution environment variables to map regions securely
-const client = new SecretsManagerClient({ region: process.env.AWS_REGION || 'ap-south-1' });
+const client = new SecretsManagerClient({ region: process.env.AWS_REGION || 'us-east-1' });
 
 // In-memory cache for secrets to handle scale out during container lifespan
 const secretsCache = new Map();

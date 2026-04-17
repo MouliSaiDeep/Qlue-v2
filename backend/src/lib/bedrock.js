@@ -1,3 +1,12 @@
+const AWS = require('aws-sdk');
+
+const bedrock = new AWS.BedrockRuntime({
+    region: 'us-east-1',
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+});
+
+module.exports = bedrock;
 /**
  * Amazon Bedrock Client Wrapper specifically tuned for Qlue's Nemotron-4-340b-instruct pipeline.
  */
@@ -8,7 +17,7 @@ const { ERROR_CODES, QlueError } = require('./errors');
 const bedrockClient = new BedrockRuntimeClient({ region: process.env.AWS_REGION || 'us-east-1' });
 
 // The required Model ID
-const DEFAULT_MODEL_ID = process.env.BEDROCK_MODEL_ID || 'amazon.nemotron-4-340b-instruct';
+const DEFAULT_MODEL_ID = process.env.BEDROCK_MODEL_ID || 'NVIDIA Nemotron 3 Super 120B A12B';
 
 /**
  * Executes a Model Invocation with retries for Timeouts

@@ -29,7 +29,5 @@ setup-backend.ps1
 update-files.ps1
 
 LLD.md
-WORK_ALLOCATION.md.agents/*
-
-# Firebase
-backend/serverAccountKey.json
+WORK_ALLOCATION.md
+.agents/*

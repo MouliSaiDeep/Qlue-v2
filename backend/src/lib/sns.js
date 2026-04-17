@@ -3,7 +3,7 @@
  */
 const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
 
-const snsClient = new SNSClient({ region: process.env.AWS_REGION || 'ap-south-1' });
+const snsClient = new SNSClient({ region: process.env.AWS_REGION || 'us-east-1' });
 
 /**
  * Publishes a raw message payload to a specific SNS topic.

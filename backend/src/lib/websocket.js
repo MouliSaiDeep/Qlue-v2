@@ -15,7 +15,7 @@ function getApiClient(endpoint) {
     const httpsEndpoint = endpoint.replace('wss://', 'https://');
     apigwClients.set(endpoint, new ApiGatewayManagementApiClient({
       endpoint: httpsEndpoint,
-      region: process.env.AWS_REGION || 'ap-south-1'
+      region: process.env.AWS_REGION || 'us-east-1'
     }));
   }
   return apigwClients.get(endpoint);

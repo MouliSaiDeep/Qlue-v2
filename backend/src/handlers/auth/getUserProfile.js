@@ -1,1 +1,46 @@
-// Qlue backend handler file
+const { getUserById } = require('../../models/user');
+
+/**
+ * AWS Lambda Handler: GET /auth/profile
+ */
+exports.handler = async (event) => {
+    try {
+        // userId sourced from the Lambda Authorizer context (validateToken.js)
+        const userId = event.requestContext?.authorizer?.uid || event.requestContext?.authorizer?.claims?.sub;
+
+        if (!userId) {
+            return {
+                statusCode: 401,
+                body: JSON.stringify({ error: 'UNAUTHORIZED', message: 'User context missing' })
+            };
+        }
+
+        const user = await getUserById(userId);
+
+        if (!user) {
+            return {
+                statusCode: 404,
+                body: JSON.stringify({ error: 'USER_NOT_FOUND', message: 'User record not found' })
+            };
+        }
+
+        return {
+            statusCode: 200,
+            body: JSON.stringify({
+                userId: user.userId,
+                email: user.email,
+                displayName: user.displayName || '',
+                photoUrl: user.photoUrl || '',
+                activeResumeId: user.activeResumeId || null,
+                createdAt: user.createdAt
+            })
+        };
+
+    } catch (error) {
+        console.error('Get Profile Error:', error);
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ error: 'GET_PROFILE_FAILED', details: error.message })
+        };
+    }
+};
