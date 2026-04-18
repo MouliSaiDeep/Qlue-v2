@@ -1,5 +1,5 @@
 const axios = require('axios');
-const admin = require('../../lib/firebase');
+const firebase = require('../../lib/firebase');
 
 /**
  * AWS Lambda Handler: POST /auth/login
@@ -34,7 +34,8 @@ exports.handler = async (event) => {
         const { idToken, refreshToken, localId } = response.data;
 
         // 2. Retrieve the user from Firebase Admin to check email verification
-        const userRecord = await admin.auth().getUser(localId);
+        const auth = await firebase.getAuth();
+        const userRecord = await auth.getUser(localId);
 
         if (!userRecord.emailVerified) {
             return {

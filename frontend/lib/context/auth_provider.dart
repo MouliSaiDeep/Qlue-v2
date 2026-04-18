@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../core/network/dio_client.dart';
+import 'package:dio/dio.dart';
 import '../core/constants/api_constants.dart';
 
 class AuthProvider extends ChangeNotifier {
@@ -42,7 +43,22 @@ class AuthProvider extends ChangeNotifier {
     _setLoading(true);
     _clearError();
     try {
-      await _auth.signInWithEmailAndPassword(email: email, password: password);
+      // 1. Call backend to check verification and get sync status
+      final response = await DioClient().dio.post(
+        ApiConstants.login,
+        data: {'email': email, 'password': password},
+      );
+
+      if (response.statusCode == 200) {
+        // 2. If backend is happy, sign in locally to maintain Firebase state
+        await _auth.signInWithEmailAndPassword(email: email, password: password);
+      }
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 403) {
+        _error = "EMAIL_NOT_VERIFIED";
+      } else {
+        _error = e.response?.data?['details'] ?? "Login failed.";
+      }
     } on FirebaseAuthException catch (e) {
       _error = _mapFirebaseError(e.code);
     } catch (e) {
@@ -56,12 +72,18 @@ class AuthProvider extends ChangeNotifier {
     _setLoading(true);
     _clearError();
     try {
-      final credential = await _auth.createUserWithEmailAndPassword(email: email, password: password);
-      await credential.user?.updateDisplayName(displayName);
-      await credential.user?.reload();
-      _currentUser = _auth.currentUser;
-    } on FirebaseAuthException catch (e) {
-      _error = _mapFirebaseError(e.code);
+      // Call backend to handle registration and verification email
+      await DioClient().dio.post(
+        ApiConstants.register,
+        data: {
+          'email': email,
+          'password': password,
+          'displayName': displayName,
+        },
+      );
+      // We don't sign in locally yet because email isn't verified
+    } on DioException catch (e) {
+      _error = e.response?.data?['error'] ?? "Registration failed.";
     } catch (e) {
       _error = "An unexpected error occurred.";
     } finally {
@@ -90,6 +112,13 @@ class AuthProvider extends ChangeNotifier {
       );
 
       await _auth.signInWithCredential(credential);
+
+      // 4. Explicitly sync with backend for Google Sign-in
+      final idToken = await _auth.currentUser?.getIdToken();
+      await DioClient().dio.post(
+        ApiConstants.googleLogin,
+        data: {'idToken': idToken},
+      );
     } catch (e) {
       _error = "Google sign-in failed.";
     } finally {
@@ -100,6 +129,8 @@ class AuthProvider extends ChangeNotifier {
   Future<void> logout() async {
     await _auth.signOut();
     await _googleSignIn.signOut();
+    _isBypassAuthenticated = false;
+    notifyListeners();
   }
 
   Future<void> _syncWithBackend() async {

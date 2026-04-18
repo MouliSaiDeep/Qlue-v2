@@ -1,4 +1,4 @@
-const admin = require('../../lib/firebase');
+const firebase = require('../../lib/firebase');
 const { saveUser, getUserById } = require('../../models/user');
 
 /**
@@ -18,7 +18,8 @@ exports.handler = async (event) => {
 
         let decodedToken;
         try {
-            decodedToken = await admin.auth().verifyIdToken(idToken);
+            const auth = await firebase.getAuth();
+            decodedToken = await auth.verifyIdToken(idToken);
         } catch (err) {
             console.error('Firebase token verification failed:', err.message);
             return {

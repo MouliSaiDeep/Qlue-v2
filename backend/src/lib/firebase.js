@@ -1,7 +1,9 @@
 /**
  * Wrapper for Firebase Admin Initialization and user auth utilities.
  */
-const admin = require('firebase-admin');
+const sdk = require('firebase-admin');
+const path = require('path');
+const fs = require('fs');
 const { getFirebaseServiceAccount } = require('./secrets');
 const { ERROR_CODES, QlueError } = require('./errors');
 
@@ -11,34 +13,67 @@ let isInitialized = false;
  * Lazily initialize the Firebase Admin app
  */
 async function initializeFirebase() {
-  if (isInitialized && admin.apps.length > 0) {
+  if (isInitialized && sdk.apps.length > 0) {
     return;
   }
 
   try {
-    const serviceAccountJson = await getFirebaseServiceAccount();
-    const serviceAccount = typeof serviceAccountJson === 'string' 
-      ? JSON.parse(serviceAccountJson) 
-      : serviceAccountJson;
+    let serviceAccount;
+    
+    // 1. Load from the new service-account-local.json file (Absolute path for Windows reliability)
+    const localKeyPath = path.resolve(process.cwd(), 'service-account-local.json');
+    
+    if (fs.existsSync(localKeyPath)) {
+      console.log(`>>> INITIALIZING FIREBASE FROM FILE: ${localKeyPath}`);
+      const content = fs.readFileSync(localKeyPath, 'utf8');
+      serviceAccount = JSON.parse(content);
+    } else {
+      console.log('>>> LOCAL FILE NOT FOUND. FALLING BACK TO ENV/SECRETS.');
+      const serviceAccountJson = await getFirebaseServiceAccount();
+      serviceAccount = typeof serviceAccountJson === 'string' 
+        ? JSON.parse(serviceAccountJson) 
+        : serviceAccountJson;
+    }
 
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
-    });
+    // Standard credential loading (no more cleaning needed as we have a clean JSON now)
+    if (sdk.apps.length === 0) {
+      sdk.initializeApp({
+        credential: sdk.credential.cert(serviceAccount),
+        projectId: serviceAccount.project_id
+      });
+      console.log('>>> FIREBASE ADMIN INITIALIZED SUCCESSFULLY! <<<');
+    }
+    
     isInitialized = true;
-    console.debug('Firebase admin initialized.');
   } catch (error) {
-    console.error('Failed to initialize Firebase Admin', error);
-    throw new QlueError('Firebase init failed', ERROR_CODES.INTERNAL_ERROR);
+    console.error('!!! FIREBASE INITIALIZATION FAILED !!!', error);
+    throw new QlueError('Firebase init failed', ERROR_CODES.INTERNAL_ERROR, 500, error.message);
   }
+}
+
+/**
+ * Get the Auth service instance with guaranteed initialization
+ */
+async function getAuth() {
+  await initializeFirebase();
+  return sdk.auth();
+}
+
+/**
+ * Get the Messaging service instance with guaranteed initialization
+ */
+async function getMessaging() {
+  await initializeFirebase();
+  return sdk.messaging();
 }
 
 /**
  * Verify ID token sent from Flutter client
  */
 async function verifyIdToken(token) {
-  await initializeFirebase();
+  const auth = await getAuth();
   try {
-    const decodedToken = await admin.auth().verifyIdToken(token);
+    const decodedToken = await auth.verifyIdToken(token);
     return decodedToken;
   } catch (error) {
     if (error.code === 'auth/id-token-expired') {
@@ -52,9 +87,9 @@ async function verifyIdToken(token) {
  * Create custom token for users authenticating via alternate flows
  */
 async function createCustomToken(uid) {
-  await initializeFirebase();
+  const auth = await getAuth();
   try {
-    return await admin.auth().createCustomToken(uid);
+    return await auth.createCustomToken(uid);
   } catch (error) {
     throw new QlueError('Could not create custom token', ERROR_CODES.INTERNAL_ERROR, 500, error.message);
   }
@@ -64,9 +99,9 @@ async function createCustomToken(uid) {
  * Delete a user from Firebase Auth
  */
 async function deleteUser(uid) {
-  await initializeFirebase();
+  const auth = await getAuth();
   try {
-    await admin.auth().deleteUser(uid);
+    await auth.deleteUser(uid);
     return true;
   } catch (error) {
     if (error.code === 'auth/user-not-found') {
@@ -80,9 +115,9 @@ async function deleteUser(uid) {
  * Retrieve user profile by email
  */
 async function getUserByEmail(email) {
-  await initializeFirebase();
+  const auth = await getAuth();
   try {
-    return await admin.auth().getUserByEmail(email);
+    return await auth.getUserByEmail(email);
   } catch (error) {
     if (error.code === 'auth/user-not-found') {
       return null;
@@ -95,7 +130,7 @@ async function getUserByEmail(email) {
  * Sends an FCM push notification.
  */
 async function sendNotification(fcmToken, notification, data = {}) {
-  await initializeFirebase();
+  const messaging = await getMessaging();
   try {
     const message = {
       notification,
@@ -103,7 +138,7 @@ async function sendNotification(fcmToken, notification, data = {}) {
       token: fcmToken
     };
 
-    const response = await admin.messaging().send(message);
+    const response = await messaging.send(message);
     console.info('Successfully sent FCM message:', response);
     return { success: true, messageId: response };
   } catch (error) {
@@ -118,11 +153,13 @@ async function sendNotification(fcmToken, notification, data = {}) {
 }
 
 module.exports = {
+  getAuth,
+  getMessaging,
   initializeFirebase,
   verifyIdToken,
   createCustomToken,
   deleteUser,
   getUserByEmail,
   sendNotification,
-  admin
+  sdk 
 };

@@ -2,15 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
-const admin = require("firebase-admin");
-
-if (!admin.apps.length) {
-    try {
-        admin.initializeApp();
-    } catch (e) {
-        console.warn("Firebase admin initialization failed", e);
-    }
-}
+const firebase = require("./src/lib/firebase");
 
 // Auth Handlers (These export AWS Lambda handlers)
 const registerUser = require("./src/handlers/auth/registerUser").handler;
@@ -44,7 +36,7 @@ const authMiddleware = async (req, res, next) => {
     if (authHeader && authHeader.startsWith('Bearer ')) {
         const idToken = authHeader.split('Bearer ')[1];
         try {
-            const decodedToken = await admin.auth().verifyIdToken(idToken);
+            const decodedToken = await firebase.verifyIdToken(idToken);
             req.user = decodedToken;
         } catch (error) {
             console.error('Error verifying Firebase ID token:', error.message);

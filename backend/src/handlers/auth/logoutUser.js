@@ -1,4 +1,4 @@
-const admin = require('../../lib/firebase');
+const firebase = require('../../lib/firebase');
 
 /**
  * AWS Lambda Handler: POST /auth/logout
@@ -16,7 +16,8 @@ exports.handler = async (event) => {
         }
 
         // Revoke all Firebase refresh tokens associated with this user
-        await admin.auth().revokeRefreshTokens(uid);
+        const auth = await firebase.getAuth();
+        await auth.revokeRefreshTokens(uid);
 
         return {
             statusCode: 200,

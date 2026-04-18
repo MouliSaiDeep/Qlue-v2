@@ -1,4 +1,4 @@
-const admin = require('../../lib/firebase');
+const firebase = require('../../lib/firebase');
 const { delete: remove, query } = require('../../lib/dynamodb');
 const { deleteResumeRecord, getResumesByUserId } = require('../../models/resume');
 
@@ -20,7 +20,8 @@ exports.handler = async (event) => {
 
         // 1. Delete user from Firebase Auth
         try {
-            await admin.auth().deleteUser(uid);
+            const auth = await firebase.getAuth();
+            await auth.deleteUser(uid);
         } catch (firebaseErr) {
             console.warn("Firebase user deletion warning (may already be gone):", firebaseErr.message);
         }

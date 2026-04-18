@@ -1,4 +1,4 @@
-const admin = require('../../lib/firebase');
+const firebase = require('../../lib/firebase');
 const axios = require('axios');
 
 /**
@@ -7,6 +7,7 @@ const axios = require('axios');
 exports.handler = async (event) => {
     try {
         const body = JSON.parse(event.body || '{}');
+        console.debug("Registration Request:", { ...body, password: '***' });
         const { email, password, displayName } = body;
 
         if (!email || !password) {
@@ -24,20 +25,27 @@ exports.handler = async (event) => {
         }
 
         // 1. Create the user in Firebase Auth
-        const userRecord = await admin.auth().createUser({
+        const auth = await firebase.getAuth();
+        const userRecord = await auth.createUser({
             email,
             password,
             displayName: displayName || undefined,
             emailVerified: false 
         });
 
-        const { saveUser } = require('../../models/user');
-        await saveUser({
-            userId: userRecord.uid,
-            email: userRecord.email,
-            displayName: userRecord.displayName,
-            createdAt: new Date().toISOString()
-        });
+        // 2. Sync to DynamoDB (Non-blocking fallback)
+        try {
+            const { saveUser } = require('../../models/user');
+            await saveUser({
+                userId: userRecord.uid,
+                email: userRecord.email,
+                displayName: userRecord.displayName,
+                createdAt: new Date().toISOString()
+            });
+        } catch (dbErr) {
+            console.warn("DynamoDB Sync Failed but Firebase user exists:", dbErr.message);
+            // We continue because the user is successfully created in Firebase
+        }
 
         const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
         if (!FIREBASE_API_KEY) {

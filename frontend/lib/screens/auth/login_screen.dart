@@ -37,7 +37,7 @@ class _ExactLoginScreenState extends State<ExactLoginScreen> {
         context,
         listen: false,
       ).login(_email.trim(), _password);
-      if (mounted) context.go('/tabs');
+      if (mounted) context.go('/dashboard');
     } catch (e) {
       if (mounted) setState(() => _error = "Incorrect email or password.");
     } finally {
@@ -51,15 +51,10 @@ class _ExactLoginScreenState extends State<ExactLoginScreen> {
       _googleLoading = true;
     });
     try {
-      // Temporarily bypassing real Google Sign-in as requested
-      // await Provider.of<AuthProvider>(context, listen: false).signInWithGoogle();
-      
-      // Simulate a small delay for "loading" feel
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Provider.of<AuthProvider>(context, listen: false).signInWithGoogle();
       
       if (mounted) {
-        Provider.of<AuthProvider>(context, listen: false).setBypassAuthenticated();
-        context.go('/tabs');
+        context.go('/dashboard');
       }
     } catch (e) {
       if (mounted) setState(() => _error = "Google Sign-In failed.");
@@ -170,20 +165,22 @@ class _ExactLoginScreenState extends State<ExactLoginScreen> {
 
                       if (_error.isNotEmpty)
                         Container(
-                          margin: const EdgeInsets.only(bottom: 16),
+                          margin: const EdgeInsets.only(bottom: 12),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
                             vertical: 8,
                           ),
                           decoration: BoxDecoration(
-                            color: t.error.withValues(alpha: 0.1),
+                            color: _error == "EMAIL_NOT_VERIFIED" ? Colors.orange.withValues(alpha: 0.1) : t.error.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: t.error.withValues(alpha: 0.2)),
+                            border: Border.all(color: _error == "EMAIL_NOT_VERIFIED" ? Colors.orange.withValues(alpha: 0.2) : t.error.withValues(alpha: 0.2)),
                           ),
                           child: Text(
-                            _error,
+                            _error == "EMAIL_NOT_VERIFIED" 
+                              ? "Please verify your email address before logging in. Check your inbox for the link!"
+                              : _error,
                             style: TextStyle(
-                              color: t.error,
+                              color: _error == "EMAIL_NOT_VERIFIED" ? Colors.orange : t.error,
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                             ),

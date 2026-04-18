@@ -138,6 +138,8 @@ class _AIModulesScreenState extends State<AIModulesScreen>
                         ),
                       ),
                     );
+                      },
+                    );
                   },
                 ),
               ),

@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:feather_icons/feather_icons.dart';
 import '../core/theme.dart';
 import '../core/mock_data.dart';
+import '../core/models/resume_model.dart';
 import '../screens/interview/interview_session_screen.dart';
 
 class ResumeCard extends StatefulWidget {
-  final Resume resume;
+  final ResumeModel resume;
   final VoidCallback onDelete;
   final VoidCallback? onPress;
   const ResumeCard({super.key, required this.resume, required this.onDelete, this.onPress});
@@ -30,10 +31,13 @@ class _ResumeCardState extends State<ResumeCard> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final t = AppThemeColors.of(context);
-    bool isParsed = widget.resume.status == "parsed";
-    bool isParsing = widget.resume.status == "parsing";
-    bool isFailed = widget.resume.status == "failed";
-    Color headerColor = widget.resume.format == "pdf" ? const Color(0xFFEF4444) : const Color(0xFF3B82F6);
+    bool isParsed = widget.resume.status == ResumeStatus.parsed;
+    bool isParsing = widget.resume.status == ResumeStatus.parsing || widget.resume.status == ResumeStatus.uploading;
+    bool isFailed = widget.resume.status == ResumeStatus.failed;
+    
+    String format = widget.resume.fileName.split('.').last.toUpperCase();
+    String sizeStr = "${(widget.resume.fileSize / 1024 / 1024).toStringAsFixed(1)} MB";
+    Color headerColor = format == "PDF" ? const Color(0xFFEF4444) : const Color(0xFF3B82F6);
 
     return GestureDetector(
       onTapDown: (_) => _animController.forward(),
@@ -62,9 +66,9 @@ class _ResumeCardState extends State<ResumeCard> with SingleTickerProviderStateM
                   const Icon(FeatherIcons.fileText, size: 18, color: Colors.white),
                   const SizedBox(width: 10),
                   Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(widget.resume.format.toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+                    Text(format, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
                     const SizedBox(height: 1),
-                    Text(widget.resume.fileSize, style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.7))),
+                    Text(sizeStr, style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.7))),
                   ]),
                 ]),
                 if (isParsed) Container(
@@ -88,22 +92,22 @@ class _ResumeCardState extends State<ResumeCard> with SingleTickerProviderStateM
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(widget.resume.filename, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: t.text)),
+                Text(widget.resume.fileName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: t.text)),
                 const SizedBox(height: 4),
-                Text("Uploaded ${widget.resume.uploadDate}", style: TextStyle(fontSize: 12, color: t.textTertiary)),
-                if (isParsed && widget.resume.skills.isNotEmpty)
+                Text("Uploaded recently", style: TextStyle(fontSize: 12, color: t.textTertiary)),
+                if (isParsed && widget.resume.parsedData != null && widget.resume.parsedData!.skills != null && widget.resume.parsedData!.skills!.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 6.0),
                     child: Wrap(spacing: 6.0, runSpacing: 6.0, children: [
-                      ...widget.resume.skills.take(3).map((sk) => Container(
+                      ...widget.resume.parsedData!.skills!.take(3).map((sk) => Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                         decoration: BoxDecoration(color: t.primaryMuted, borderRadius: BorderRadius.circular(20)),
                         child: Text(sk, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: t.primary)),
                       )),
-                      if (widget.resume.skills.length > 3) Container(
+                      if (widget.resume.parsedData!.skills!.length > 3) Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                         decoration: BoxDecoration(color: t.bgSecondary, borderRadius: BorderRadius.circular(20)),
-                        child: Text("+${widget.resume.skills.length - 3}", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: t.textTertiary)),
+                        child: Text("+${widget.resume.parsedData!.skills!.length - 3}", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: t.textTertiary)),
                       ),
                     ]),
                   ),

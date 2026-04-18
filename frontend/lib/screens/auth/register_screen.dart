@@ -24,14 +24,23 @@ class _ExactRegisterScreenState extends State<ExactRegisterScreen> {
   bool _loading = false;
   bool _googleLoading = false;
   String _error = '';
+  bool _registrationSuccess = false;
 
   Future<void> _handleRegister() async {
+    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    
     if (_name.trim().isEmpty || _email.trim().isEmpty || _password.isEmpty) {
-      setState(() => _error = "Please fill in all fields");
+      if (mounted) setState(() => _error = "Please fill in all fields.");
       return;
     }
-    if (_password.length < 8) {
-      setState(() => _error = "Password must be at least 8 characters");
+
+    if (!emailRegex.hasMatch(_email.trim())) {
+      if (mounted) setState(() => _error = "Please enter a valid email address.");
+      return;
+    }
+
+    if (_password.length < 6) {
+      if (mounted) setState(() => _error = "Password must be at least 6 characters.");
       return;
     }
     if (!_agreed) {
@@ -46,8 +55,10 @@ class _ExactRegisterScreenState extends State<ExactRegisterScreen> {
       await Provider.of<AuthProvider>(
         context,
         listen: false,
-      ).register(_name.trim(), _email.trim(), _password);
-      if (mounted) context.go('/tabs');
+      ).register(_email.trim(), _password, _name.trim());
+      if (mounted) {
+        setState(() => _registrationSuccess = true);
+      }
     } catch (e) {
       if (mounted) setState(() => _error = "Registration failed. Try again.");
     } finally {
@@ -61,12 +72,10 @@ class _ExactRegisterScreenState extends State<ExactRegisterScreen> {
       _googleLoading = true;
     });
     try {
-      // Temporarily bypassing real Google Sign-in as requested
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Provider.of<AuthProvider>(context, listen: false).signInWithGoogle();
       
       if (mounted) {
-        Provider.of<AuthProvider>(context, listen: false).setBypassAuthenticated();
-        context.go('/tabs');
+        context.go('/dashboard');
       }
     } catch (e) {
       if (mounted) setState(() => _error = "Google Sign-In failed.");
@@ -165,9 +174,52 @@ class _ExactRegisterScreenState extends State<ExactRegisterScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        "Create Account",
+                    children: _registrationSuccess 
+                      ? [
+                          const Icon(Icons.mark_email_read_rounded, size: 64, color: Colors.green),
+                          const SizedBox(height: 24),
+                          const Text(
+                            "Check your email!",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              fontFamily: 'Montserrat',
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            "A verification link has been sent to $_email. Please verify your account to continue.",
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.white70,
+                              height: 1.5,
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+                          GestureDetector(
+                            onTap: () => context.pop(),
+                            child: Container(
+                              height: 52,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                              ),
+                              child: const Center(
+                                child: Text(
+                                  "Back to Sign In",
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ]
+                      : [
+                          Text(
+                            "Create Account",
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 20,

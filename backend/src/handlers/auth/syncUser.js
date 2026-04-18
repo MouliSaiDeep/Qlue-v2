@@ -1,4 +1,4 @@
-const admin = require('../../lib/firebase');
+const firebase = require('../../lib/firebase');
 const { saveUser, getUserById } = require('../../models/user');
 
 /**
@@ -17,7 +17,8 @@ exports.handler = async (event) => {
         }
 
         // Fetch user from Firebase to get latest metadata
-        const firebaseUser = await admin.auth().getUser(uid);
+        const auth = await firebase.getAuth();
+        const firebaseUser = await auth.getUser(uid);
         
         let user = await getUserById(uid);
         let isNewUser = false;
