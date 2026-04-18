@@ -33,6 +33,10 @@ WORK_ALLOCATION.md
 .agents/*
 
 Qlue_v2_Resume_Module_Prompt.docx
-
-
-frontend\android\app\google-services.json
+resume_prompt_extracted.txt
+**/google-services.json
+**/GoogleService-Info.plist
+**/key.properties
+**/local.properties
+**/*.keystore
+**/*.jks
