@@ -41,8 +41,14 @@ resume_prompt_extracted.txt
 **/local.properties
 **/*.keystore
 **/*.jks
-backend/serverAccountKey.json
-backend/service-account-local.json
+**/serverAccountKey.json
+**/service-account-local.json
+**/*service-account*.json
+**/*serverAccountKey*.json
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
 
 # Debugging
 backend/debug-*
