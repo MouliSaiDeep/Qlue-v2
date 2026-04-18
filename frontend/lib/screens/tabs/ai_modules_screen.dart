@@ -97,46 +97,48 @@ class _AIModulesScreenState extends State<AIModulesScreen>
                       itemBuilder: (context, index) {
                         final r = resumes[index];
                         final isSelected = _selectedResume?.resumeId == r.resumeId;
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() => _selectedResume = r);
-                        Navigator.pop(ctx);
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? t.primary.withValues(alpha: 0.15)
-                              : t.bgSecondary,
-                          border: Border.all(
-                            color: isSelected
-                                ? t.primary
-                                : t.border.withValues(alpha: 0.5),
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              FeatherIcons.fileText,
-                              color: isSelected ? t.primary : t.textSecondary,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                r.fileName,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: t.text,
-                                ),
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() => _selectedResume = r);
+                            Navigator.pop(ctx);
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? t.primary.withValues(alpha: 0.15)
+                                  : t.bgSecondary,
+                              border: Border.all(
+                                color: isSelected
+                                    ? t.primary
+                                    : t.border.withValues(alpha: 0.5),
                               ),
+                              borderRadius: BorderRadius.circular(16),
                             ),
-                            if (isSelected)
-                              Icon(FeatherIcons.checkCircle, color: t.primary),
-                          ],
-                        ),
-                      ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  FeatherIcons.fileText,
+                                  color: isSelected ? t.primary : t.textSecondary,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    r.fileName,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: t.text,
+                                    ),
+                                  ),
+                                ),
+                                if (isSelected)
+                                  Icon(FeatherIcons.checkCircle, color: t.primary),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     );
                   },
                 ),

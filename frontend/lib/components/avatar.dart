@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 
 class Avatar extends StatelessWidget {
@@ -23,14 +22,12 @@ class Avatar extends StatelessWidget {
     
     if (imageUrl != null && (imageUrl!.startsWith('http') || imageUrl!.startsWith('https'))) {
       image = NetworkImage(imageUrl!);
-    } else if (imageUrl != null && imageUrl!.isNotEmpty) {
-      image = FileImage(File(imageUrl!));
     } else {
+      // Placeholder or default image (avoid FileImage on web as dart:io is unsupported)
       image = const NetworkImage("https://images.unsplash.com/photo-1560250097-0b93528c311a?q=80&w=200&h=200&auto=format&fit=crop");
     }
 
     // Optimization: Resize image before decoding to save memory
-    // Assuming a max device pixel ratio of 3x for high fidelity, we'll cache at size * 3
     final int cacheSize = (size * 3).toInt();
     image = ResizeImage.resizeIfNeeded(cacheSize, null, image);
 

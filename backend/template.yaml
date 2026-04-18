@@ -339,8 +339,15 @@ Resources:
         - "multipart/form-data"
       Cors:
         AllowMethods: "'OPTIONS,GET,POST,PUT,DELETE'"
-        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
         AllowOrigin: "'*'"
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
+              Access-Control-Allow-Methods: "'OPTIONS,GET,POST,PUT,DELETE'"
       Auth:
         DefaultAuthorizer: FirebaseAuthorizer
         Authorizers:
@@ -641,6 +648,26 @@ Resources:
           Properties:
             Path: /auth/profile
             Method: put
+            RestApiId: !Ref RestApi
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref FirebaseServiceAccountSecret
+
+  SyncUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: auth/syncUser.handler
+      CodeUri: src/handlers/
+      MemorySize: 256
+      Timeout: 10
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /auth/sync
+            Method: post
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
@@ -1346,7 +1373,7 @@ Resources:
       AlarmDescription: "Bedrock Invocation Latency > 30s"
       Namespace: AWS/Bedrock
       MetricName: InvocationLatency
-      Statistic: p99
+      ExtendedStatistic: p99
       Period: 300
       EvaluationPeriods: 1
       Threshold: 30000

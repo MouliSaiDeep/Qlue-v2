@@ -1,5 +1,6 @@
-import 'dart:io';
 import 'dart:async';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -91,13 +92,18 @@ class ResumeProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> uploadResume(File file) async {
+  Future<bool> uploadResume(dynamic fileOrBytes, String fileName) async {
     try {
       _setLoading(true);
       _setError(null);
       
-      // 1. Hash check
-      final bytes = await file.readAsBytes();
+      Uint8List bytes;
+      if (fileOrBytes is Uint8List) {
+        bytes = fileOrBytes;
+      } else {
+        // Assume it's a File-like object with readAsBytes
+        bytes = await (fileOrBytes as dynamic).readAsBytes();
+      }
       final digest = sha256.convert(bytes);
       final hashStr = digest.toString();
       
@@ -108,7 +114,6 @@ class ResumeProvider extends ChangeNotifier {
       }
 
       // 2. Presigned URL
-      final fileName = file.path.split(Platform.pathSeparator).last;
       final fileSize = bytes.length;
       final urlData = await _apiService.generatePresignedUrl(
         fileName: fileName,
@@ -123,7 +128,7 @@ class ResumeProvider extends ChangeNotifier {
       final dio = Dio();
       await dio.put(
         uploadUrl,
-        data: file.openRead(),
+        data: bytes,
         options: Options(
           headers: {
             Headers.contentLengthHeader: fileSize,

@@ -3,7 +3,7 @@ import '../../core/notifications.dart';
 import 'package:feather_icons/feather_icons.dart';
 import 'package:file_picker/file_picker.dart';
 
-import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/models/resume_model.dart';
@@ -31,14 +31,34 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
     FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf'],
+      withData: true,
     );
 
-    if (result != null && result.files.single.path != null) {
-      final file = File(result.files.single.path!);
+    if (result != null) {
+      final fileData = result.files.single;
+      final fileName = fileData.name;
       
       setState(() => _isUploading = true);
       
-      final success = await provider.uploadResume(file);
+      bool success;
+      if (kIsWeb) {
+        if (fileData.bytes != null) {
+          success = await provider.uploadResume(fileData.bytes!, fileName);
+        } else {
+          Notify.error(context, "Could not read file data.");
+          setState(() => _isUploading = false);
+          return;
+        }
+      } else {
+        // Fallback for mobile/desktop using path
+        if (fileData.path != null) {
+          success = await provider.uploadResume(fileData.path!, fileName);
+        } else {
+          Notify.error(context, "Could not find file path.");
+          setState(() => _isUploading = false);
+          return;
+        }
+      }
       
       if (!mounted) return;
       setState(() {

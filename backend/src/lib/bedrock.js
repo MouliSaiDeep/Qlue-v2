@@ -14,7 +14,13 @@ const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-be
 const { getBedrockConfig } = require('./secrets');
 const { ERROR_CODES, QlueError } = require('./errors');
 
-const bedrockClient = new BedrockRuntimeClient({ region: process.env.AWS_REGION || 'us-east-1' });
+const bedrockClient = new BedrockRuntimeClient({ 
+  region: process.env.AWS_REGION || 'us-east-1',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  }
+});
 
 // The required Model ID
 const DEFAULT_MODEL_ID = process.env.BEDROCK_MODEL_ID || 'NVIDIA Nemotron 3 Super 120B A12B';
