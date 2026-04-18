@@ -12,7 +12,7 @@ import 'screens/interview/interview_session_screen.dart';
 import 'screens/resume/resume_upload_screen.dart';
 import 'screens/resume/resume_detail_screen.dart';
 import 'screens/feedback/feedback_report_screen.dart';
-import 'core/mock_data.dart';
+import 'core/mock_data.dart'; // Still needed for mockSessions
 
 CustomTransitionPage _buildSlideTransitionPage({
   required GoRouterState state,
@@ -138,8 +138,7 @@ GoRouter buildAppRouter(AuthProvider authProvider) {
         path: '/resume/:resumeId',
         builder: (context, state) {
           final resumeId = state.pathParameters['resumeId']!;
-          final resume = mockResumes.firstWhere((r) => r.id == resumeId, orElse: () => mockResumes.first);
-          return ResumeDetailScreen(resume: resume);
+          return ResumeDetailScreen(resumeId: resumeId);
         },
       ),
       GoRoute(

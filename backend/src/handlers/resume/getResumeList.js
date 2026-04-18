@@ -1,4 +1,5 @@
 const { getResumesByUserId } = require('../../models/resume');
+const { success, unauthorized, internalError } = require('../../lib/response');
 
 /**
  * AWS Lambda Handler: GET /resume
@@ -7,10 +8,7 @@ exports.handler = async (event) => {
     try {
         const userId = event.requestContext?.authorizer?.uid || event.requestContext?.authorizer?.claims?.sub;
         if (!userId) {
-            return {
-                statusCode: 401,
-                body: JSON.stringify({ error: 'UNAUTHORIZED', message: 'Missing user context' })
-            };
+            return unauthorized('Missing user context');
         }
 
         const resumes = await getResumesByUserId(userId);
@@ -27,20 +25,14 @@ exports.handler = async (event) => {
             failReason: item.failReason || null
         }));
 
-        return {
-            statusCode: 200,
-            body: JSON.stringify({
-                resumes: resumeList,
-                count: resumeList.length,
-                maxAllowed: 4
-            })
-        };
+        return success({
+            resumes: resumeList,
+            count: resumeList.length,
+            maxAllowed: 5
+        });
 
     } catch (error) {
         console.error('Get Resume List Error:', error);
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error: 'SERVER_ERROR', message: error.message })
-        };
+        return internalError(error.message);
     }
 };

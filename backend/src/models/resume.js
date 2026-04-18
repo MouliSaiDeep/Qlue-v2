@@ -8,7 +8,7 @@ const RESUMES_TABLE = process.env.RESUMES_TABLE || 'qlue-resumes';
 async function createResume(resumeData) {
     const item = {
         ...resumeData,
-        status: 'PENDING',
+        status: resumeData.status || 'PENDING',
         uploadedAt: Date.now(),
         isActive: false
     };

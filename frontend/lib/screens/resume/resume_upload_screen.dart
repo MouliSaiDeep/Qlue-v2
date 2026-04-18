@@ -3,8 +3,11 @@ import '../../core/notifications.dart';
 import 'package:feather_icons/feather_icons.dart';
 import 'package:file_picker/file_picker.dart';
 
+import 'dart:io';
+import 'package:provider/provider.dart';
 import '../../core/theme.dart';
-import '../../core/mock_data.dart';
+import '../../core/models/resume_model.dart';
+import '../../context/resume_provider.dart';
 import '../../components/glass_card.dart';
 import '../../components/spectral_background.dart';
 
@@ -19,55 +22,46 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
   bool _isUploading = false;
 
   void _handleUpload() async {
-    if (mockResumes.length >= 5) {
-      Notify.error(context, "Maximum of 5 resumes allowed.");
+    final provider = context.read<ResumeProvider>();
+    if (provider.resumes.length >= provider.maxAllowed) {
+      Notify.error(context, "Maximum of ${provider.maxAllowed} resumes allowed.");
       return;
     }
 
     FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['pdf'], // PDf only as requested
+      allowedExtensions: ['pdf'],
     );
 
-    if (result != null && result.files.single.name.isNotEmpty) {
-      final file = result.files.single;
-      final fileName = file.name;
-      final String fileSizeMB = file.size > 0 ? "${(file.size / (1024 * 1024)).toStringAsFixed(1)} MB" : "1.2 MB";
-
+    if (result != null && result.files.single.path != null) {
+      final file = File(result.files.single.path!);
+      
       setState(() => _isUploading = true);
-      await Future.delayed(const Duration(seconds: 2));
+      
+      final success = await provider.uploadResume(file);
       
       if (!mounted) return;
       setState(() {
         _isUploading = false;
-        mockResumes.insert(0, Resume(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          filename: fileName,
-          uploadDate: "Just now",
-          status: "parsed",
-          skills: ["Flutter", "Dart", "Firebase", "Clean Architecture", "UI/UX"],
-          format: 'pdf',
-          fileSize: fileSizeMB,
-          summary: "Professional profile parsed. System mapping active for $fileName.",
-          experience: [
-            Experience(role: "Candidate", company: "Portfolio", years: "2024", description: "Parsed from local drive."),
-          ],
-          education: [
-            Education(degree: "Software Engineering", institution: "Tech Univ", year: "2023"),
-          ]
-        ));
       });
-      Notify.success(context, "Resume uploaded and indexed.");
+
+      if (success) {
+        Notify.success(context, "Resume uploaded and processing started.");
+      } else {
+        if (provider.error != null) {
+          Notify.error(context, provider.error!);
+        } else {
+          Notify.error(context, "Failed to upload resume.");
+        }
+      }
     }
   }
 
-  void _handleDelete(int index) {
-    setState(() {
-      mockResumes.removeAt(index);
-    });
+  void _handleDelete(String resumeId) {
+    context.read<ResumeProvider>().deleteResume(resumeId);
   }
 
-  void _showParsedPreview(Resume r) {
+  void _showParsedPreview(ResumeModel r) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -96,7 +90,7 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
                        crossAxisAlignment: CrossAxisAlignment.start,
                        children: [
                          Text("Resume Profile", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: t.text)),
-                         Text(r.filename, style: TextStyle(fontSize: 14, color: t.textSecondary)),
+                         Text(r.fileName, style: TextStyle(fontSize: 14, color: t.textSecondary)),
                        ],
                      )
                    ),
@@ -107,14 +101,15 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
                Expanded(
                  child: ListView(
                    children: [
-                     _buildDetailSection("Summary", r.summary ?? "No summary available.", t),
+                     _buildDetailSection("Summary", r.parsedData?.name ?? "No summary available.", t),
                      const SizedBox(height: 24),
-                     _buildDetailSection("Core Skills", "", t, 
-                       content: Wrap(
-                         spacing: 8, runSpacing: 8,
-                         children: r.skills.map((s) => _buildPill(s, t)).toList()
-                       )
-                     ),
+                     if (r.parsedData?.skills != null)
+                       _buildDetailSection("Core Skills", "", t, 
+                         content: Wrap(
+                           spacing: 8, runSpacing: 8,
+                           children: r.parsedData!.skills!.map((s) => _buildPill(s, t)).toList()
+                         )
+                       ),
                    ],
                  ),
                )
@@ -149,6 +144,9 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
   Widget build(BuildContext context) {
     final t = AppThemeColors.of(context);
     final topPadding = MediaQuery.of(context).padding.top;
+
+    final provider = context.watch<ResumeProvider>();
+    final resumes = provider.resumes;
 
     return SpectralBackground(
       child: Scaffold(
@@ -225,13 +223,15 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
             
             // LIST CONTENT
             Expanded(
-              child: mockResumes.isEmpty 
-                ? Center(child: Text("No resumes uploaded.\nUse the action button to add one.", textAlign: TextAlign.center, style: TextStyle(color: t.textTertiary, fontSize: 16)))
-                : ListView.builder(
-                    padding: const EdgeInsets.only(top: 0, bottom: 100, left: 24, right: 24),
-                    itemCount: mockResumes.length,
-                    itemBuilder: (context, index) {
-                      final resume = mockResumes[index];
+              child: provider.isLoading && resumes.isEmpty
+                ? const Center(child: CircularProgressIndicator())
+                : resumes.isEmpty 
+                  ? Center(child: Text("No resumes uploaded.\nUse the action button to add one.", textAlign: TextAlign.center, style: TextStyle(color: t.textTertiary, fontSize: 16)))
+                  : ListView.builder(
+                      padding: const EdgeInsets.only(top: 0, bottom: 100, left: 24, right: 24),
+                      itemCount: resumes.length,
+                      itemBuilder: (context, index) {
+                        final resume = resumes[index];
                       return GestureDetector(
                         onTap: () => _showParsedPreview(resume),
                         child: GlassCard(
@@ -250,15 +250,15 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(resume.filename, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: t.text)),
+                                    Text(resume.fileName, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: t.text)),
                                     const SizedBox(height: 4),
-                                    Text("${resume.fileSize} • Professional PDF", style: TextStyle(fontSize: 12, color: t.textSecondary)),
+                                    Text("${(resume.fileSize / 1024 / 1024).toStringAsFixed(1)} MB • Professional PDF • ${resume.status.name.toUpperCase()}", style: TextStyle(fontSize: 12, color: t.textSecondary)),
                                   ],
                                 ),
                               ),
                               IconButton(
                                 icon: Icon(FeatherIcons.trash2, color: t.error.withValues(alpha: 0.6), size: 18),
-                                onPressed: () => _handleDelete(index),
+                                onPressed: () => _handleDelete(resume.resumeId),
                               )
                             ],
                           ),

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:feather_icons/feather_icons.dart';
+import 'package:provider/provider.dart';
 import '../../core/theme.dart';
-import '../../core/mock_data.dart';
+import '../../core/models/resume_model.dart';
+import '../../context/resume_provider.dart';
 import '../../components/spectral_background.dart';
 import '../../components/glass_card.dart';
 import '../interview/interview_session_screen.dart';
@@ -87,29 +89,41 @@ class DetailSection extends StatelessWidget {
 }
 
 class ResumeDetailScreen extends StatelessWidget {
-  final Resume resume;
+  final String resumeId;
 
-  const ResumeDetailScreen({super.key, required this.resume});
+  const ResumeDetailScreen({super.key, required this.resumeId});
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<ResumeProvider>();
+    final resumeIdx = provider.resumes.indexWhere((r) => r.resumeId == resumeId);
+    if (resumeIdx == -1) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Not Found')),
+        body: const Center(child: Text("Resume not found.")),
+      );
+    }
+    final resume = provider.resumes[resumeIdx];
+
     final topPadding = MediaQuery.of(context).padding.top;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
-    final isParsed = resume.status == "parsed";
-    final isParsing = resume.status == "parsing";
-    final isFailed = resume.status == "failed";
+    final isParsed = resume.status == ResumeStatus.parsed;
+    final isParsing = resume.status == ResumeStatus.parsing || resume.status == ResumeStatus.uploading;
+    final isFailed = resume.status == ResumeStatus.failed;
 
-    final headerColors = resume.format == "pdf"
+    final headerColors = resume.fileName.toLowerCase().endsWith("pdf")
         ? [const Color(0xFFC72B2B), const Color(0xFFEF4444)]
         : [const Color(0xFF1D4ED8), const Color(0xFF2563EB)];
 
-    Map<String, Map<String, dynamic>> statusMap = {
-      "parsed": {"label": "Ready to use", "color": const Color(0xFF22C55E), "bg": const Color(0xFF22C55E).withValues(alpha: 0.15)},
-      "parsing": {"label": "Parsing...", "color": const Color(0xFFF59E0B), "bg": const Color(0xFFF59E0B).withValues(alpha: 0.15)},
-      "failed": {"label": "Failed", "color": const Color(0xFFEF4444), "bg": const Color(0xFFEF4444).withValues(alpha: 0.15)},
+    Map<ResumeStatus, Map<String, dynamic>> statusMap = {
+      ResumeStatus.parsed: {"label": "Ready to use", "color": const Color(0xFF22C55E), "bg": const Color(0xFF22C55E).withValues(alpha: 0.15)},
+      ResumeStatus.parsing: {"label": "Parsing...", "color": const Color(0xFFF59E0B), "bg": const Color(0xFFF59E0B).withValues(alpha: 0.15)},
+      ResumeStatus.uploading: {"label": "Uploading...", "color": const Color(0xFFF59E0B), "bg": const Color(0xFFF59E0B).withValues(alpha: 0.15)},
+      ResumeStatus.pending: {"label": "Pending", "color": const Color(0xFF94A3B8), "bg": const Color(0xFF94A3B8).withValues(alpha: 0.15)},
+      ResumeStatus.failed: {"label": "Failed", "color": const Color(0xFFEF4444), "bg": const Color(0xFFEF4444).withValues(alpha: 0.15)},
     };
-    final status = statusMap[resume.status]!;
+    final status = statusMap[resume.status] ?? statusMap[ResumeStatus.pending]!;
 
     final t = AppThemeColors.of(context);
     return SpectralBackground(
@@ -185,7 +199,7 @@ class ResumeDetailScreen extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                resume.filename,
+                                resume.fileName,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white),
@@ -195,9 +209,10 @@ class ResumeDetailScreen extends StatelessWidget {
                                 spacing: 6,
                                 runSpacing: 6,
                                 children: [
-                                  _heroPill(FeatherIcons.layers, resume.format),
-                                  _heroPill(FeatherIcons.hardDrive, resume.fileSize),
-                                  _heroPill(FeatherIcons.calendar, resume.uploadDate),
+                                  _heroPill(FeatherIcons.layers, resume.fileName.split('.').last.toUpperCase()),
+                                  _heroPill(FeatherIcons.hardDrive, "${(resume.fileSize / 1024 / 1024).toStringAsFixed(1)} MB"),
+                                  if (resume.uploadedAt != null)
+                                    _heroPill(FeatherIcons.calendar, "Recently"),
                                 ],
                               ),
                               const SizedBox(height: 8),
@@ -259,22 +274,22 @@ class ResumeDetailScreen extends StatelessWidget {
                           "Parsing failed",
                           "Please try uploading again",
                         ),
-                      if (resume.summary != null) ...[
+                      if (resume.parsedData?.name != null) ...[
                         DetailSection(
-                          title: "Summary",
-                          icon: FeatherIcons.alignLeft,
+                          title: "Candidate Name",
+                          icon: FeatherIcons.user,
                           iconColor: const Color(0xFF8B5CF6),
                           child: Padding(
                             padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
                             child: Text(
-                              resume.summary!,
-                              style: TextStyle(fontSize: 14, color: t.textSecondary, height: 1.57),
+                              resume.parsedData!.name!,
+                              style: TextStyle(fontSize: 16, color: t.text, fontWeight: FontWeight.bold),
                             ),
                           ),
                         ),
                         const SizedBox(height: 12),
                       ],
-                      if (resume.skills.isNotEmpty) ...[
+                      if (resume.parsedData?.skills != null && resume.parsedData!.skills!.isNotEmpty) ...[
                         DetailSection(
                           title: "Skills & Technologies",
                           icon: FeatherIcons.tag,
@@ -284,21 +299,21 @@ class ResumeDetailScreen extends StatelessWidget {
                             child: Wrap(
                               spacing: 8,
                               runSpacing: 8,
-                              children: resume.skills.map((s) => SkillTag(label: s)).toList(),
+                              children: resume.parsedData!.skills!.map((s) => SkillTag(label: s)).toList(),
                             ),
                           ),
                         ),
                         const SizedBox(height: 12),
                       ],
-                      if (resume.experience != null && resume.experience!.isNotEmpty) ...[
+                      if (resume.parsedData?.workExperience != null && resume.parsedData!.workExperience!.isNotEmpty) ...[
                         DetailSection(
                           title: "Work Experience",
                           icon: FeatherIcons.briefcase,
                           iconColor: const Color(0xFFDB2777),
                           child: Column(
-                            children: resume.experience!.asMap().entries.map((entry) {
+                            children: resume.parsedData!.workExperience!.asMap().entries.map((entry) {
                               int i = entry.key;
-                              Experience exp = entry.value;
+                              WorkExperienceModel exp = entry.value;
                               return Column(
                                 children: [
                                   if (i > 0) Container(height: 1, color: t.borderSubtle, margin: const EdgeInsets.only(left: 16)),
@@ -328,31 +343,32 @@ class ResumeDetailScreen extends StatelessWidget {
                                                     child: Column(
                                                       crossAxisAlignment: CrossAxisAlignment.start,
                                                       children: [
-                                                        Text(exp.role, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: t.text)),
+                                                        Text(exp.role ?? 'Unknown Role', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: t.text)),
                                                         const SizedBox(height: 2),
-                                                        Text(exp.company, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: t.textSecondary)),
+                                                        Text(exp.company ?? 'Unknown Company', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: t.textSecondary)),
                                                       ],
                                                     ),
                                                   ),
                                                 ],
                                               ),
                                             ),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFFDB2777).withValues(alpha: 0.08),
-                                                borderRadius: BorderRadius.circular(8),
+                                            if (exp.duration != null)
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFFDB2777).withValues(alpha: 0.08),
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: Text(exp.duration!, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFDB2777))),
                                               ),
-                                              child: Text(exp.years, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFDB2777))),
-                                            ),
                                           ],
                                         ),
-                                        if (exp.description != null) ...[
+                                        if (exp.highlights != null && exp.highlights!.isNotEmpty) ...[
                                           const SizedBox(height: 8),
                                           Padding(
                                             padding: const EdgeInsets.only(left: 18),
                                             child: Text(
-                                              exp.description!,
+                                              exp.highlights!.join('\n• '),
                                               style: TextStyle(fontSize: 12, color: t.textTertiary, height: 1.5),
                                             ),
                                           ),
@@ -367,15 +383,15 @@ class ResumeDetailScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 12),
                       ],
-                      if (resume.education != null && resume.education!.isNotEmpty)
+                      if (resume.parsedData?.education != null && resume.parsedData!.education!.isNotEmpty)
                         DetailSection(
                           title: "Education",
                           icon: FeatherIcons.bookOpen,
                           iconColor: const Color(0xFF0891B2),
                           child: Column(
-                            children: resume.education!.asMap().entries.map((entry) {
+                            children: resume.parsedData!.education!.asMap().entries.map((entry) {
                               int i = entry.key;
-                              Education edu = entry.value;
+                              EducationModel edu = entry.value;
                               return Column(
                                 children: [
                                   if (i > 0) Container(height: 1, color: t.borderSubtle, margin: const EdgeInsets.only(left: 16)),
@@ -402,23 +418,24 @@ class ResumeDetailScreen extends StatelessWidget {
                                                 child: Column(
                                                   crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
-                                                    Text(edu.degree, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: t.text)),
+                                                    Text(edu.degree ?? 'Unknown Degree', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: t.text)),
                                                     const SizedBox(height: 2),
-                                                    Text(edu.institution, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: t.textSecondary)),
+                                                    Text(edu.institution ?? 'Unknown Institution', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: t.textSecondary)),
                                                   ],
                                                 ),
                                               ),
                                             ],
                                           ),
                                         ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF0891B2).withValues(alpha: 0.08),
-                                            borderRadius: BorderRadius.circular(8),
+                                        if (edu.year != null)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF0891B2).withValues(alpha: 0.08),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Text(edu.year!, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF0891B2))),
                                           ),
-                                          child: Text(edu.year, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF0891B2))),
-                                        ),
                                       ],
                                     ),
                                   ),
@@ -543,7 +560,7 @@ class ResumeDetailScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("Delete Resume"),
-        content: Text('Remove "${resume.filename}"?'),
+        content: const Text('Are you sure you want to delete this resume?'),
         actions: [
           TextButton(child: const Text("Cancel"), onPressed: () => Navigator.of(ctx).pop()),
           TextButton(
@@ -551,6 +568,7 @@ class ResumeDetailScreen extends StatelessWidget {
             child: const Text("Delete"),
             onPressed: () {
               Navigator.of(ctx).pop();
+              context.read<ResumeProvider>().deleteResume(resumeId);
               Navigator.of(context).pop();
             },
           ),

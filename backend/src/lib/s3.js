@@ -10,7 +10,7 @@ const {
 } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
-const s3Client = new S3Client({ region: process.env.AWS_REGION || 'ap-south-1' });
+const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
 
 /**
  * Generates a presigned URL acting as a delegate for upload endpoints.

@@ -1,5 +1,6 @@
 const { getResumeById, updateResumeParsingResult } = require('../../models/resume');
 const { update } = require('../../lib/dynamodb');
+const { success, unauthorized, badRequest, notFound, internalError } = require('../../lib/response');
 
 const RESUMES_TABLE = process.env.RESUMES_TABLE || 'qlue-resumes';
 
@@ -10,43 +11,28 @@ exports.handler = async (event) => {
     try {
         const userId = event.requestContext?.authorizer?.uid || event.requestContext?.authorizer?.claims?.sub;
         if (!userId) {
-            return {
-                statusCode: 401,
-                body: JSON.stringify({ error: 'UNAUTHORIZED', message: 'Missing user context' })
-            };
+            return unauthorized('Missing user context');
         }
 
-        const resumeId = event.pathParameters?.resumeId;
+        const resumeId = event.queryStringParameters?.resumeId;
         if (!resumeId) {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({ error: 'BAD_REQUEST', message: 'resumeId is required' })
-            };
+            return badRequest('resumeId is required');
         }
 
-        const body = JSON.parse(event.body || '{}');
+        const body = typeof event.body === 'string' ? JSON.parse(event.body || '{}') : (event.body || {});
         const { updates } = body;
         if (!updates || typeof updates !== 'object') {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({ error: 'BAD_REQUEST', message: 'No valid updates provided' })
-            };
+            return badRequest('No valid updates provided');
         }
 
         // Verify ownership and status
         const resume = await getResumeById(resumeId);
         if (!resume || resume.userId !== userId) {
-            return {
-                statusCode: 404,
-                body: JSON.stringify({ error: 'NOT_FOUND', message: 'Resume not found' })
-            };
+            return notFound('Resume not found');
         }
 
         if (resume.status !== 'PARSED') {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({ error: 'INVALID_STATE', message: 'Only fully parsed resumes can be updated' })
-            };
+            return badRequest('Only fully parsed resumes can be updated', 'INVALID_STATE');
         }
 
         // Merge updates into parsedData
@@ -58,25 +44,16 @@ exports.handler = async (event) => {
         const result = await updateResumeParsingResult(resumeId, 'PARSED', newParsedData);
 
         if (!result.success) {
-            return {
-                statusCode: 500,
-                body: JSON.stringify({ error: 'UPDATE_FAILED', details: result.error?.message })
-            };
+            return internalError(result.error?.message, 'UPDATE_FAILED');
         }
 
-        return {
-            statusCode: 200,
-            body: JSON.stringify({
-                message: 'Resume data updated successfully',
-                resume: result.data
-            })
-        };
+        return success({
+            message: 'Resume data updated successfully',
+            resume: result.data
+        });
 
     } catch (error) {
         console.error('Update Resume Data Error:', error);
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error: 'SERVER_ERROR', message: error.message })
-        };
+        return internalError(error.message);
     }
 };

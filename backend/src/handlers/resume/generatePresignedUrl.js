@@ -1,6 +1,7 @@
 const { generatePresignedUrl: getSignedUrl } = require('../../lib/s3');
 const { getResumesByUserId, createResume } = require('../../models/resume');
 const { randomUUID } = require('crypto');
+const { success, badRequest, unauthorized, conflict, internalError } = require('../../lib/response');
 
 const BUCKET_NAME = process.env.RESUMES_BUCKET || 'qlue-resumes';
 
@@ -11,49 +12,30 @@ exports.handler = async (event) => {
     try {
         const userId = event.requestContext?.authorizer?.uid || event.requestContext?.authorizer?.claims?.sub;
         if (!userId) {
-            return {
-                statusCode: 401,
-                body: JSON.stringify({ error: 'UNAUTHORIZED', message: 'Missing user context' })
-            };
+            return unauthorized('Missing user context');
         }
 
         const body = JSON.parse(event.body || '{}');
         const { fileName, fileSize, fileHash } = body;
 
         if (!fileName || !fileSize || !fileHash) {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({ error: 'BAD_REQUEST', message: 'Missing fileName, fileSize, or fileHash' })
-            };
+            return badRequest('Missing fileName, fileSize, or fileHash');
         }
 
         if (!fileName.toLowerCase().endsWith('.pdf')) {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({ error: 'INVALID_FILE_TYPE', message: 'Only .pdf files are allowed' })
-            };
+            return badRequest('Only .pdf files are allowed', 'INVALID_FILE_TYPE');
         }
 
-        // 1. Check user's resume limit (Max 4)
+        // 1. Check user's resume limit (Max 5)
         const existingResumes = await getResumesByUserId(userId);
-        if (existingResumes.length >= 4) {
-            return {
-                statusCode: 409,
-                body: JSON.stringify({ error: 'LIMIT_EXCEEDED', message: 'Maximum of 4 resumes allowed' })
-            };
+        if (existingResumes.length >= 5) {
+            return conflict('Maximum of 5 resumes allowed', 'LIMIT_EXCEEDED');
         }
 
         // 2. Check for duplicate content via hash
         const duplicate = existingResumes.find(r => r.fileHash === fileHash);
         if (duplicate) {
-            return {
-                statusCode: 409,
-                body: JSON.stringify({ 
-                    error: 'DUPLICATE_RESUME', 
-                    message: 'This resume has already been uploaded',
-                    resumeId: duplicate.resumeId
-                })
-            };
+            return conflict('This resume has already been uploaded', 'DUPLICATE_RESUME');
         }
 
         const resumeId = randomUUID();
@@ -74,21 +56,15 @@ exports.handler = async (event) => {
             status: 'UPLOADING'
         });
 
-        return {
-            statusCode: 200,
-            body: JSON.stringify({
-                uploadUrl,
-                resumeId,
-                s3Key,
-                expiresIn: 900
-            })
-        };
+        return success({
+            uploadUrl,
+            resumeId,
+            s3Key,
+            expiresIn: 900
+        });
 
     } catch (error) {
         console.error('Generate Presigned URL Error:', error);
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error: 'SERVER_ERROR', message: error.message })
-        };
+        return internalError(error.message);
     }
 };

@@ -3,7 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:feather_icons/feather_icons.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
-import '../../core/mock_data.dart';
+import '../../core/models/resume_model.dart';
+import '../../context/resume_provider.dart';
 import '../../components/glass_card.dart';
 import '../../components/avatar.dart';
 import '../../components/spectral_background.dart';
@@ -19,7 +20,7 @@ class AIModulesScreen extends StatefulWidget {
 class _AIModulesScreenState extends State<AIModulesScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  Resume? _selectedResume;
+  ResumeModel? _selectedResume;
   final TextEditingController _urlController = TextEditingController();
 
   @override
@@ -79,12 +80,23 @@ class _AIModulesScreenState extends State<AIModulesScreen>
               ),
               const SizedBox(height: 16),
               Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: mockResumes.length,
-                  itemBuilder: (context, index) {
-                    final r = mockResumes[index];
-                    final isSelected = _selectedResume?.id == r.id;
+                child: Consumer<ResumeProvider>(
+                  builder: (context, provider, child) {
+                    final resumes = provider.resumes;
+                    if (resumes.isEmpty) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: Text("No resumes available. Please upload one."),
+                        ),
+                      );
+                    }
+                    return ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: resumes.length,
+                      itemBuilder: (context, index) {
+                        final r = resumes[index];
+                        final isSelected = _selectedResume?.resumeId == r.resumeId;
                     return GestureDetector(
                       onTap: () {
                         setState(() => _selectedResume = r);
@@ -113,7 +125,7 @@ class _AIModulesScreenState extends State<AIModulesScreen>
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                r.filename,
+                                r.fileName,
                                 style: TextStyle(
                                   fontWeight: FontWeight.w600,
                                   color: t.text,
@@ -341,7 +353,7 @@ class _AIModulesScreenState extends State<AIModulesScreen>
           "Resume",
           "Analyze key skills and work history.",
           _selectedResume != null
-              ? "Selected: ${_selectedResume!.filename}"
+              ? "Selected: ${_selectedResume!.fileName}"
               : "No resume selected",
           "Resume",
           "assets/images/Resume.png",

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'app.dart';
 import 'context/auth_provider.dart';
 import 'features/interview/providers/interview_provider.dart';
+import 'context/resume_provider.dart';
 import 'core/theme.dart';
 
 void main() async {
@@ -27,6 +28,7 @@ class QlueApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => InterviewProvider()),
+        ChangeNotifierProvider(create: (_) => ResumeProvider()),
         ChangeNotifierProvider(create: (_) => ThemeNotifier()),
       ],
       child: Consumer2<AuthProvider, ThemeNotifier>(

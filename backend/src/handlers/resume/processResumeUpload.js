@@ -6,8 +6,9 @@ const {
     GetDocumentAnalysisCommand 
 } = require("@aws-sdk/client-textract");
 const { InvokeModelCommand } = require("@aws-sdk/client-bedrock-runtime");
-const { updateResumeParsingResult, getResumesByUserId } = require('../../models/resume');
+const { updateResumeParsingResult, getResumesByUserId, getResumeById } = require('../../models/resume');
 const { setActiveResumeId } = require('../../models/user');
+const { success, badRequest, notFound, internalError, unauthorized } = require('../../lib/response');
 
 const RESUMES_TABLE = process.env.RESUMES_TABLE || 'qlue-resumes';
 const BUCKET_NAME = process.env.RESUMES_BUCKET || 'qlue-resumes';
@@ -15,33 +16,35 @@ const BUCKET_NAME = process.env.RESUMES_BUCKET || 'qlue-resumes';
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * AWS Lambda Handler: S3 ObjectCreated Trigger
+ * AWS Lambda Handler: API Gateway REST endpoint
  */
 exports.handler = async (event) => {
     let resumeRecord = null;
     let userId = null;
 
     try {
-        const s3Key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
+        if (!event.body) return badRequest('Missing request body');
+        const body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+        const { resumeId } = body;
         
-        const parts = s3Key.split('/');
-        if (parts.length < 3) throw new Error('Invalid S3 Key pattern. Expected: resumes/{userId}/{resumeId}_{filename}');
-        userId = parts[1];
+        if (!resumeId) return badRequest('resumeId is required');
 
-        // 1. Find the database record matching this S3 Key
-        const options = {
-            index: 'GSI_UserIdUploadedAt',
-            values: { ':uid': userId }
-        };
-        const queryRes = await query(RESUMES_TABLE, 'userId = :uid', options);
-        resumeRecord = (queryRes.data || []).find(r => r.s3Key === s3Key);
+        userId = event.requestContext?.authorizer?.uid;
+        if (!userId) return unauthorized('Unauthorized access: Missing user ID');
+
+        // 1. Find the database record matching this resumeId
+        resumeRecord = await getResumeById(resumeId);
 
         if (!resumeRecord) {
-            console.error('No matching resume record found for S3 key:', s3Key);
-            return;
+            console.error('No matching resume record found for ID:', resumeId);
+            return notFound('Resume not found');
         }
-
-        const resumeId = resumeRecord.resumeId;
+        
+        if (resumeRecord.userId !== userId) {
+            return unauthorized('User does not own this resume');
+        }
+        
+        const s3Key = resumeRecord.s3Key;
 
         // 2. Update status to PARSING
         await updateResumeParsingResult(resumeId, 'PARSING');
@@ -82,7 +85,7 @@ exports.handler = async (event) => {
                 const wordCount = fullText.split(/\s+/).length;
                 if (wordCount < 30) {
                     await updateResumeParsingResult(resumeId, 'FAILED', null, 'Insufficient text extracted from document.');
-                    return;
+                    return badRequest('Insufficient text extracted from document.');
                 }
 
                 // 6. Call Bedrock to structure the data
@@ -98,6 +101,8 @@ exports.handler = async (event) => {
                     await update(RESUMES_TABLE, { resumeId }, 'SET isActive = :ia', { ':ia': true });
                 }
 
+                return success({ resumeId, status: 'PARSED', parsedData });
+
             } else if (jobStatus === 'FAILED') {
                 throw new Error(`Textract Failed for job: ${jobId}`);
             }
@@ -108,6 +113,7 @@ exports.handler = async (event) => {
         if (resumeRecord) {
             await updateResumeParsingResult(resumeRecord.resumeId, 'FAILED', null, error.message);
         }
+        return internalError(error.message);
     }
 };
 

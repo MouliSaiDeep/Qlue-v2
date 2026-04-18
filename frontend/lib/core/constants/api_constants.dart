@@ -14,6 +14,10 @@ class ApiConstants {
   static const String resumeUploadUrl = '/resume/upload-url';
   static const String resumeList = '/resume/list';
   static const String resumeDetail = '/resume/detail';
+  static const String resumeProcess = '/resume/process';
+  static const String resumeSetActive = '/resume/active';
+  static const String resumeDelete = '/resume/detail';  // DELETE with query param
+  static const String resumeUpdate = '/resume/detail';  // PUT with query param
   
   static const String scraperFetch = '/scraper/fetch';
   
