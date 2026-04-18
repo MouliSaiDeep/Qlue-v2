@@ -46,9 +46,9 @@ resume_prompt_extracted.txt
 **/*service-account*.json
 **/*serverAccountKey*.json
 backend/.env
-backend/.env.*
+backend/.env.local
 frontend/.env
-frontend/.env.*
+frontend/.env.local
 
 # Debugging
 backend/debug-*
