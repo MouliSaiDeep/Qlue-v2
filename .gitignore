@@ -31,3 +31,4 @@ update-files.ps1
 LLD.md
 WORK_ALLOCATION.md
 .agents/*
+backend/serverAccountKey.json
