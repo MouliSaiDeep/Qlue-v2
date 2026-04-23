@@ -11,11 +11,7 @@ const {
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const s3Client = new S3Client({ 
-  region: process.env.AWS_REGION || 'us-east-1',
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-  }
+  region: process.env.AWS_REGION || 'us-east-1'
 });
 
 /**
@@ -27,17 +23,21 @@ async function generatePresignedUrl(bucket, key, operation = 'putObject', expire
     command = new PutObjectCommand({
       Bucket: bucket,
       Key: key,
-      ContentType: 'application/pdf' // Hardcoded for resume uploads, adjust if necessary
+      // Do NOT include ContentType here — omitting it means ContentType
+      // is not in the signed headers, so the client can PUT with any (or no) content type.
     });
   } else {
     command = new GetObjectCommand({
       Bucket: bucket,
-      Key: key
+      Key: key,
     });
   }
 
   try {
-    const signedUrl = await getSignedUrl(s3Client, command, { expiresIn });
+    const signedUrl = await getSignedUrl(s3Client, command, {
+      expiresIn,
+      unhoistableHeaders: new Set(['x-amz-checksum-crc32']),
+    });
     return signedUrl;
   } catch (error) {
     console.error(`Presigned URL generation failed for ${bucket}/${key}`, error);

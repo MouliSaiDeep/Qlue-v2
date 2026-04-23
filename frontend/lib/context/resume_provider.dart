@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
@@ -100,8 +101,13 @@ class ResumeProvider extends ChangeNotifier {
       Uint8List bytes;
       if (fileOrBytes is Uint8List) {
         bytes = fileOrBytes;
+      } else if (fileOrBytes is String) {
+        final file = File(fileOrBytes);
+        if (!await file.exists()) {
+          throw Exception("File not found at path: $fileOrBytes");
+        }
+        bytes = await file.readAsBytes();
       } else {
-        // Assume it's a File-like object with readAsBytes
         bytes = await (fileOrBytes as dynamic).readAsBytes();
       }
       final digest = sha256.convert(bytes);
@@ -124,24 +130,39 @@ class ResumeProvider extends ChangeNotifier {
       final uploadUrl = urlData['uploadUrl'];
       final resumeId = urlData['resumeId'];
 
-      // 3. S3 PUT
-      final dio = Dio();
-      await dio.put(
-        uploadUrl,
-        data: bytes,
-        options: Options(
-          headers: {
-            Headers.contentLengthHeader: fileSize,
-            Headers.contentTypeHeader: "application/pdf",
-          },
-        ),
-      );
+      // 3. S3 PUT — send raw bytes, no extra headers.
+      // The presigned URL omits ContentType from signed headers, so we just PUT the bytes.
+      final s3Dio = Dio();
+      try {
+        final response = await s3Dio.put(
+          uploadUrl,
+          data: bytes,
+          options: Options(
+            // Explicitly no Content-Type so we don't conflict with presigned signature
+            headers: {
+              'Content-Length': bytes.length.toString(),
+            },
+            validateStatus: (status) => status != null && status < 400,
+          ),
+        );
+        if (response.statusCode != null && response.statusCode! >= 400) {
+          throw Exception("S3 Upload returned ${response.statusCode}");
+        }
+      } on DioException catch (de) {
+        final statusCode = de.response?.statusCode;
+        final body = de.response?.data?.toString() ?? de.message ?? 'Unknown error';
+        throw Exception("S3 Upload Failed ($statusCode): $body");
+      }
 
-      // 4. Trigger Processing
+      // 4. Trigger Processing — backend responds 202 immediately,
+      //    then parses asynchronously. Frontend polls via _startPolling().
       await _apiService.processResumeUpload(resumeId);
       
-      // Reload resumes
+      // Reload resumes (will show PARSING status)
       await fetchResumes();
+
+      // Start polling this resume's status
+      _startPolling(resumeId);
       
       return true;
 
