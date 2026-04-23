@@ -65,8 +65,9 @@ async function getBedrockConfig() {
 }
 
 async function getScraperApiKey() {
-  if (process.env.MOCK_SCRAPER_API_KEY) {
-    return process.env.MOCK_SCRAPER_API_KEY;
+  const envKey = process.env.SCRAPER_API_KEY || process.env.MOCK_SCRAPER_API_KEY;
+  if (envKey) {
+    return envKey;
   }
   return getSecret('qlue/scraper-api-key');
 }
