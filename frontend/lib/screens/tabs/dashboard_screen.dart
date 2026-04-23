@@ -1,16 +1,17 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:frontend/components/glass_card.dart';
+import 'package:frontend/components/premium_flip_card.dart';
+import 'package:frontend/components/spectral_background.dart';
+import 'package:frontend/components/spider_chart.dart';
 import 'package:provider/provider.dart';
 import 'package:feather_icons/feather_icons.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
-import '../../core/mock_data.dart';
-import '../../components/glass_card.dart';
-import '../../components/spider_chart.dart';
-import '../../components/premium_flip_card.dart';
-import '../../components/spectral_background.dart';
 import '../../components/avatar.dart';
 import '../../context/auth_provider.dart';
+import '../../context/dashboard_provider.dart';
+import '../../core/models/session_model.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -20,7 +21,6 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen>
     with TickerProviderStateMixin {
-  List<Session> sessions = List.from(mockSessions);
   String _selectedRadar = "overall";
   late AnimationController _flipEffectController;
 
@@ -31,6 +31,10 @@ class _DashboardScreenState extends State<DashboardScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<DashboardProvider>().fetchDashboardData();
+    });
   }
 
   @override
@@ -52,22 +56,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     final topPadding = MediaQuery.of(context).padding.top;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
-    final total = sessions.length;
-    final avgScore = total > 0
-        ? (sessions.fold(0, (sum, s) => sum + s.score) / total).round()
-        : 0;
-
-    // Stats for 2x2 grid
-    Map<String, int> byModule = {
-      "resume": 0,
-      "hr": 0,
-      "website": 0,
-      "intro": 0,
-    };
-    for (var s in sessions) {
-      if (byModule.containsKey(s.module))
-        byModule[s.module] = byModule[s.module]! + 1;
-    }
+    final dashboard = Provider.of<DashboardProvider>(context);
+    final summary = dashboard.summary;
+    final sessions = dashboard.history;
+    
+    final avgScore = summary.averageScore;
+    final total = summary.totalSessions;
+    final byModule = summary.moduleBreakdown;
 
     final auth = Provider.of<AuthProvider>(context);
 
@@ -140,8 +135,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                       Expanded(
                         child: _buildMiniStatCard(
                           t,
-                          "Accuracy",
-                          "82%",
+                          "Best Score",
+                          summary.bestScore > 0 ? "${summary.bestScore}%" : "—",
                           FeatherIcons.target,
                           t.accentGreen,
                         ),
@@ -177,7 +172,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           front: _buildModuleTile(
                             t,
                             "Resume",
-                            "${byModule['resume']} Sessions",
+                            "${byModule['RESUME'] ?? 0} Sessions",
                             FeatherIcons.fileText,
                             t.moduleResume,
                           ),
@@ -190,7 +185,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           front: _buildModuleTile(
                             t,
                             "HR",
-                            "${byModule['hr']} Sessions",
+                            "${byModule['HR'] ?? 0} Sessions",
                             FeatherIcons.users,
                             t.moduleHR,
                           ),
@@ -203,7 +198,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           front: _buildModuleTile(
                             t,
                             "Website",
-                            "${byModule['website']} Sessions",
+                            "${byModule['WEBSITE'] ?? 0} Sessions",
                             FeatherIcons.globe,
                             t.moduleWeb,
                           ),
@@ -216,7 +211,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           front: _buildModuleTile(
                             t,
                             "Intro",
-                            "${byModule['intro']} Sessions",
+                            "${byModule['INTRO'] ?? 0} Sessions",
                             FeatherIcons.mic,
                             t.accentGreen,
                           ),
@@ -249,7 +244,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       const SizedBox(height: 20),
                       Center(
                         child: SpiderChart(
-                          data: _getRadarData(_selectedRadar),
+                          data: dashboard.radarData.getDimensionsForModule(_selectedRadar),
                           maxValue: 1.0,
                           size: MediaQuery.of(context).size.width * 0.45,
                         ),
@@ -271,7 +266,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                       child: _buildKeyAreaCard(
                         t,
                         "Strengths",
-                        ["Communication", "Domain Knowledge"],
+                        summary.strengths.isNotEmpty
+                            ? summary.strengths.take(3).toList()
+                            : ["Complete an interview", "to see your strengths"],
                         FeatherIcons.zap,
                         t.accentGreen,
                       ),
@@ -281,7 +278,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                       child: _buildKeyAreaCard(
                         t,
                         "To Improve",
-                        ["Body Language", "Pacing"],
+                        summary.improvements.isNotEmpty
+                            ? summary.improvements.take(3).toList()
+                            : ["Complete an interview", "to see insights"],
                         FeatherIcons.trendingUp,
                         t.warning,
                       ),
@@ -322,7 +321,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        "Try maintaining more consistent eye contact and reducing filler words like 'um' and 'ah' to appear more confident.",
+                        summary.tip.isNotEmpty
+                            ? summary.tip
+                            : "Complete your first interview session to get personalized AI-powered coaching tips.",
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.white.withOpacity(0.8),
@@ -728,7 +729,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _buildActivityItem(AppThemeColors t, Session s) {
+  Widget _buildActivityItem(AppThemeColors t, SessionModel s) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -763,7 +764,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  s.date,
+                  s.dateText,
                   style: TextStyle(fontSize: 12, color: t.textSecondary),
                 ),
               ],

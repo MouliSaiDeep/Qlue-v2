@@ -27,6 +27,13 @@ class _AIModulesScreenState extends State<AIModulesScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    
+    // Trigger initial data fetch
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<ResumeProvider>().fetchResumes();
+      }
+    });
   }
 
   @override
@@ -138,8 +145,6 @@ class _AIModulesScreenState extends State<AIModulesScreen>
                             ),
                           ),
                         );
-                      },
-                    );
                       },
                     );
                   },
@@ -269,6 +274,7 @@ class _AIModulesScreenState extends State<AIModulesScreen>
                   borderRadius: 30,
                   padding: const EdgeInsets.all(4),
                   hasMetallicBorder: true,
+                  borderAlpha: 0.12, // Enhanced contrast for standard mode
                   child: AnimatedBuilder(
                     animation: _tabController,
                     builder: (context, _) {
@@ -454,6 +460,7 @@ class _AIModulesScreenState extends State<AIModulesScreen>
       glowColor: glowColor,
       glowRadius: 50,
       padding: const EdgeInsets.all(24),
+      margin: const EdgeInsets.only(bottom: 20),
       child: SizedBox(
         height: 220, // Fixed internal height for synchronization
         child: Row(

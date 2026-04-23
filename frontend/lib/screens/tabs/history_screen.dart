@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:feather_icons/feather_icons.dart';
+import 'package:frontend/components/avatar.dart';
+import 'package:frontend/components/glass_card.dart';
+import 'package:frontend/components/spectral_background.dart';
+import 'package:frontend/components/staggered_fade_in.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
-import '../../core/mock_data.dart';
-import '../../components/staggered_fade_in.dart';
-import '../../components/glass_card.dart';
-import '../../components/avatar.dart';
-import '../../components/spectral_background.dart';
 import '../../context/auth_provider.dart';
+import '../../context/dashboard_provider.dart';
+import '../../core/models/session_model.dart';
 
 class TimelineSessionCard extends StatelessWidget {
-  final Session s;
+  final SessionModel s;
   final bool isLast;
   
   const TimelineSessionCard({super.key, required this.s, this.isLast = false});
@@ -23,7 +24,7 @@ class TimelineSessionCard extends StatelessWidget {
     
     // Icon mapping
     IconData moduleIcon;
-    switch (s.module.toLowerCase()) {
+    switch (s.moduleType.toLowerCase()) {
       case 'resume': moduleIcon = FeatherIcons.fileText; break;
       case 'hr': moduleIcon = FeatherIcons.users; break;
       case 'website': moduleIcon = FeatherIcons.globe; break;
@@ -77,7 +78,7 @@ class TimelineSessionCard extends StatelessWidget {
           // Content Card
           Expanded(
           child: GestureDetector(
-          onTap: () => context.push('/feedback/${s.id}'),
+          onTap: () => context.push('/feedback/${s.sessionId}'),
           child: Container(
             margin: const EdgeInsets.only(bottom: 24),
             child: GlassCard(
@@ -106,7 +107,7 @@ class TimelineSessionCard extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(s.date.toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: t.textTertiary, letterSpacing: 1.5)),
+                          Text(s.dateText.toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: t.textTertiary, letterSpacing: 1.5)),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
@@ -125,22 +126,11 @@ class TimelineSessionCard extends StatelessWidget {
                         children: [
                           Icon(FeatherIcons.zap, size: 12, color: t.primary),
                           const SizedBox(width: 8),
-                          Text("${s.module[0].toUpperCase()}${s.module.substring(1).toLowerCase()} • ${s.duration ~/ 60}m Practice", style: TextStyle(fontSize: 12, color: t.textSecondary, fontWeight: FontWeight.w500)),
+                          Text("${s.moduleType[0].toUpperCase()}${s.moduleType.substring(1).toLowerCase()} • Practice Session", style: TextStyle(fontSize: 12, color: t.textSecondary, fontWeight: FontWeight.w500)),
                         ],
                       ),
                       const SizedBox(height: 20),
-                      Wrap(
-                        spacing: 8,
-                        children: s.tags.take(2).map((tag) => Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: t.bgSecondary,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: t.border.withValues(alpha: 0.5)),
-                          ),
-                          child: Text(tag, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: t.textSecondary)),
-                        )).toList(),
-                      ),
+                       const SizedBox(height: 8),
                     ],
                   ),
                 ],
@@ -165,16 +155,15 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen> {
   String _selectedFilter = 'Date'; // 'Date', 'Module', 'Score'
   
-  List<Session> _getFilteredSessions() {
-    List<Session> sessions = List.from(mockSessions);
+  List<SessionModel> _getFilteredSessions(List<SessionModel> allSessions) {
+    List<SessionModel> sessions = List.from(allSessions);
     
     if (_selectedFilter == 'Score') {
       sessions.sort((a, b) => b.score.compareTo(a.score));
     } else if (_selectedFilter == 'Module') {
-      sessions.sort((a, b) => a.module.compareTo(b.module));
+      sessions.sort((a, b) => a.moduleType.compareTo(b.moduleType));
     } else {
-      // Date based (chrono)
-      sessions = List.from(mockSessions);
+      // Date based (chrono) - already sorted by backend
     }
     return sessions;
   }
@@ -182,10 +171,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppThemeColors.of(context);
-    final sessions = _getFilteredSessions();
+    final dashboard = Provider.of<DashboardProvider>(context);
+    final sessions = _getFilteredSessions(dashboard.history);
+    
     final topPadding = MediaQuery.of(context).padding.top;
     final total = sessions.length;
-    final avgScore = total > 0 ? (sessions.fold(0, (sum, s) => sum + s.score) / total).round() : 0;
+    final avgScore = total > 0 ? (sessions.fold(0, (sum, s) => sum + s.score).toDouble() / total).round() : 0;
 
     final auth = Provider.of<AuthProvider>(context);
 
@@ -273,7 +264,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               padding: const EdgeInsets.only(left: 24, right: 24, bottom: 120),
               sliver: SliverList(delegate: SliverChildBuilderDelegate(
                 (context, index) => StaggeredFadeIn(
-                  key: ValueKey("${sessions[index].id}_$_selectedFilter"), // Force rebuild on filter
+                  key: ValueKey("${sessions[index].sessionId}_$_selectedFilter"), // Force rebuild on filter
                   delay: Duration(milliseconds: index * 100),
                   child: TimelineSessionCard(
                     s: sessions[index], 

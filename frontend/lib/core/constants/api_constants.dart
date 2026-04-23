@@ -6,8 +6,9 @@ class ApiConstants {
 
   static const String login = '/auth/login';
   static const String register = '/auth/register';
-  static const String googleLogin = '/auth/login/google';
+  static const String googleLogin = '/auth/google';
   static const String authSync = '/auth/sync';
+  static const String authProfile = '/auth/profile';
   static const String updateFcmToken = '/auth/fcm-token';
   
   static const String interviewInit = '/interview/init';

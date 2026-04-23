@@ -5,8 +5,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
-import '../../core/mock_data.dart';
 import '../../context/auth_provider.dart';
+import '../../context/dashboard_provider.dart';
+import '../../context/resume_provider.dart';
 import '../../components/input_field.dart';
 import '../../core/notifications.dart';
 import '../profile/help_support_screen.dart';
@@ -139,27 +140,20 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final String userEmail = "jane.doe@example.com";
-  String editName = "Jane Doe";
-  String currentRole = "Senior Software Engineer";
   String voiceModel = "Tiffany";
-  List<String> userSkills = ["Flutter", "Dart", "Spring Boot", "AWS"];
-  bool editing = false;
   bool notifs = true;
   bool voice = true;
 
   final AudioPlayer _audioPlayer = AudioPlayer();
-
-  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _detailController = TextEditingController();
-  final FocusNode _nameFocusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    editName = auth.displayName;
-    _nameController.text = editName;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<DashboardProvider>().fetchDashboardData();
+      context.read<ResumeProvider>().fetchResumes();
+    });
   }
 
   Future<void> _pickImage() async {
@@ -183,9 +177,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose() {
-    _nameController.dispose();
     _detailController.dispose();
-    _nameFocusNode.dispose();
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -325,8 +317,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
   void _showSkillManagementSheet() {
     final t = AppThemeColors.of(context);
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     String newSkill = "";
-    final skillInputController = TextEditingController();
+    // Work on a local copy so we can batch-save on close
+    List<String> localSkills = List.from(auth.skills);
 
     showModalBottomSheet(
       context: context,
@@ -347,7 +341,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text('Manage Skills', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: t.text)),
-                    Text('${userSkills.length} Total', style: TextStyle(fontSize: 12, color: t.primary, fontWeight: FontWeight.bold)),
+                    Text('${localSkills.length} Total', style: TextStyle(fontSize: 12, color: t.primary, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -363,10 +357,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 12),
                 ElevatedButton(
                   onPressed: () {
-                    if (newSkill.trim().isNotEmpty) {
-                      setState(() => userSkills.add(newSkill.trim()));
-                      setModalState(() => newSkill = "");
-                      skillInputController.clear();
+                    if (newSkill.trim().isNotEmpty && !localSkills.contains(newSkill.trim())) {
+                      setModalState(() {
+                        localSkills.add(newSkill.trim());
+                        newSkill = "";
+                      });
                     }
                   },
                   style: ElevatedButton.styleFrom(
@@ -384,36 +379,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ConstrainedBox(
                   constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.3),
                   child: SingleChildScrollView(
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: userSkills.map((s) => Container(
-                        padding: const EdgeInsets.only(left: 12, right: 4, top: 6, bottom: 6),
-                        decoration: BoxDecoration(
-                          color: t.bgSecondary,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: t.metallicBorder.withValues(alpha: 0.1)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(s, style: TextStyle(fontSize: 13, color: t.textSecondary)),
-                            const SizedBox(width: 4),
-                            GestureDetector(
-                              onTap: () {
-                                setState(() => userSkills.remove(s));
-                                setModalState(() {});
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.all(4.0),
-                                child: Icon(FeatherIcons.x, size: 14, color: t.error.withValues(alpha: 0.7)),
+                    child: localSkills.isEmpty
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Text(
+                                "No skills added yet. Add your first skill above!",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: t.textTertiary, fontSize: 13),
                               ),
                             ),
-                          ],
-                        ),
-                      )).toList(),
-                    ),
+                          )
+                        : Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: localSkills.map((s) => Container(
+                              padding: const EdgeInsets.only(left: 12, right: 4, top: 6, bottom: 6),
+                              decoration: BoxDecoration(
+                                color: t.bgSecondary,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: t.metallicBorder.withValues(alpha: 0.1)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(s, style: TextStyle(fontSize: 13, color: t.textSecondary)),
+                                  const SizedBox(width: 4),
+                                  GestureDetector(
+                                    onTap: () => setModalState(() => localSkills.remove(s)),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(4.0),
+                                      child: Icon(FeatherIcons.x, size: 14, color: t.error.withValues(alpha: 0.7)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )).toList(),
+                          ),
                   ),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () {
+                    auth.updateUserProfile(skills: localSkills);
+                    Navigator.pop(ctx);
+                    Notify.success(context, 'Skills saved!');
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: t.accentGreen,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Save Skills'),
                 ),
                 const SizedBox(height: 12),
               ],
@@ -607,11 +624,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final topPadding = MediaQuery.of(context).padding.top;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
-    final sessionsCount = mockSessions.length;
-    final resumesCount = 2;
-    final avgScore = sessionsCount > 0
-        ? (mockSessions.fold(0, (sum, s) => sum + s.score) / sessionsCount).round()
-        : 0;
+    final dashboard = Provider.of<DashboardProvider>(context);
+    final resumes = Provider.of<ResumeProvider>(context);
+
+    final sessionsCount = dashboard.summary.totalSessions;
+    final resumesCount = resumes.resumes.length;
+    final avgScore = dashboard.summary.averageScore;
 
     return SpectralBackground(
       child: Scaffold(
@@ -663,7 +681,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           GestureDetector(
                             onTap: () => _showEditDetailSheet("Name", auth.displayName, (v) {
                               auth.updateUserProfile(name: v);
-                              setState(() => editName = v);
                             }),
                             child: Row(
                               children: [
@@ -674,7 +691,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Text(currentRole, style: TextStyle(fontSize: 14, color: t.primary, fontWeight: FontWeight.w700, letterSpacing: 0.2)),
+                          Text(
+                            auth.profession.isNotEmpty ? auth.profession : "Tap to add profession",
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: auth.profession.isNotEmpty ? t.primary : t.textTertiary,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
                           const SizedBox(height: 4),
                           Text("Interview Ready", style: TextStyle(fontSize: 13, color: t.textSecondary, fontWeight: FontWeight.w500)),
                         ],
@@ -722,8 +747,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         label: "Profession",
                         iconColor: t.primary,
                         iconBg: t.primary.withValues(alpha: 0.1),
-                        right: Text(currentRole, style: TextStyle(fontSize: 13, color: t.textSecondary)),
-                        onPress: () => _showEditDetailSheet("Profession", currentRole, (v) => setState(() => currentRole = v)),
+                        right: Text(
+                          auth.profession.isNotEmpty ? auth.profession : "Not set",
+                          style: TextStyle(fontSize: 13, color: t.textSecondary),
+                        ),
+                        onPress: () => _showEditDetailSheet(
+                          "Profession",
+                          auth.profession,
+                          (v) => auth.updateUserProfile(profession: v),
+                        ),
                       ),
                       SettingRow(
                         icon: FeatherIcons.code,
@@ -731,7 +763,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         iconColor: t.accentGreen,
                         iconBg: t.accentGreen.withValues(alpha: 0.1),
                         right: Text(
-                          userSkills.isEmpty ? "None" : userSkills.length > 2 ? "${userSkills.take(2).join(', ')}..." : userSkills.join(', '),
+                          auth.skills.isEmpty
+                              ? "Add skills"
+                              : auth.skills.length > 2
+                                  ? "${auth.skills.take(2).join(', ')}..."
+                                  : auth.skills.join(', '),
                           style: TextStyle(fontSize: 13, color: t.textSecondary),
                         ),
                         onPress: _showSkillManagementSheet,
@@ -773,7 +809,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         label: 'Email Address',
                         iconColor: t.success,
                         iconBg: t.success.withValues(alpha: 0.15),
-                        right: Text(userEmail, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: t.textSecondary)),
+                        right: Text(
+                          auth.email.isNotEmpty ? auth.email : "—",
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 13, color: t.textSecondary),
+                        ),
                         onPress: () => Notify.info(context, 'Email cannot be changed directly.'),
                       ),
                       const ProfileDiv(),

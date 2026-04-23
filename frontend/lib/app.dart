@@ -12,7 +12,8 @@ import 'screens/interview/interview_session_screen.dart';
 import 'screens/resume/resume_upload_screen.dart';
 import 'screens/resume/resume_detail_screen.dart';
 import 'screens/feedback/feedback_report_screen.dart';
-import 'core/mock_data.dart'; // Still needed for mockSessions
+import 'context/dashboard_provider.dart';
+import 'core/models/session_model.dart';
 
 CustomTransitionPage _buildSlideTransitionPage({
   required GoRouterState state,
@@ -145,7 +146,7 @@ GoRouter buildAppRouter(AuthProvider authProvider) {
         path: '/feedback/:sessionId',
         builder: (context, state) {
           final sessionId = state.pathParameters['sessionId']!;
-          final session = mockSessions.firstWhere((s) => s.id == sessionId, orElse: () => mockSessions.first);
+          final session = state.extra as SessionModel?;
           return FeedbackReportScreen(session: session);
         },
       ),

@@ -10,6 +10,10 @@ class AuthProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
 
+  String _email = "";
+  String _profession = "";
+  List<String> _skills = [];
+
   bool _isBypassAuthenticated = false;
 
   User? get currentUser => _currentUser;
@@ -17,6 +21,10 @@ class AuthProvider extends ChangeNotifier {
   String? get error => _error;
   bool get isAuthenticated => _currentUser != null || _isBypassAuthenticated;
   
+  String get email => _email.isNotEmpty ? _email : (_currentUser?.email ?? "");
+  String get profession => _profession;
+  List<String> get skills => _skills;
+
   void setBypassAuthenticated() {
     _isBypassAuthenticated = true;
     notifyListeners();
@@ -27,14 +35,17 @@ class AuthProvider extends ChangeNotifier {
   String get displayName => _currentUser?.displayName ?? "User";
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  // google_sign_in 7.x uses singleton instance
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 
   AuthProvider() {
     _auth.authStateChanges().listen((User? user) {
+      final wasNull = _currentUser == null;
       _currentUser = user;
       notifyListeners();
       if (user != null) {
         _syncWithBackend();
+        if (wasNull) fetchProfileData(); // Auto fetch on login
       }
     });
   }
@@ -95,31 +106,41 @@ class AuthProvider extends ChangeNotifier {
     _setLoading(true);
     _clearError();
     try {
+      // 1. Authenticate (Replacement for signIn() in 7.x)
       final GoogleSignInAccount? googleUser = await _googleSignIn.authenticate();
-      if (googleUser == null) return;
+      if (googleUser == null) {
+        _setLoading(false);
+        return;
+      }
 
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      // Requesting scopes specifically as required by v7.x for accessToken
-      final authorizedUser = await googleUser.authorizationClient.authorizeScopes([
+      // 2. Authentication result (No longer a Future in 7.x)
+      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
+      
+      // 3. Request Access Token (Authorization is separate in 7.x)
+      final authorization = await googleUser.authorizationClient.authorizeScopes([
         'email',
         'profile',
         'openid',
       ]);
 
       final AuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: authorizedUser.accessToken,
+        accessToken: authorization.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      await _auth.signInWithCredential(credential);
+      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+      final User? user = userCredential.user;
 
-      // 4. Explicitly sync with backend for Google Sign-in
-      final idToken = await _auth.currentUser?.getIdToken();
-      await DioClient().dio.post(
-        ApiConstants.googleLogin,
-        data: {'idToken': idToken},
-      );
+      if (user != null) {
+        // Explicitly sync with backend for Google Sign-in
+        final idToken = await user.getIdToken();
+        await DioClient().dio.post(
+          ApiConstants.googleLogin,
+          data: {'idToken': idToken},
+        );
+      }
     } catch (e) {
+      // Log error internally if needed, suppressed for user
       _error = "Google sign-in failed.";
     } finally {
       _setLoading(false);
@@ -136,24 +157,56 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _syncWithBackend() async {
     try {
       await DioClient().dio.post(ApiConstants.authSync);
-    } catch (e) {}
+    } catch (_) {}
   }
 
-  Future<void> updateUserProfile({String? name, String? imageUrl}) async {
+  Future<void> fetchProfileData() async {
+    try {
+      final response = await DioClient().dio.get(ApiConstants.authProfile);
+      final data = response.data;
+      _email = data['email'] ?? "";
+      _profession = data['profession'] ?? "";
+      _skills = List<String>.from(data['skills'] ?? []);
+      notifyListeners();
+    } catch (e) {
+      debugPrint("Fetch Profile Error: $e");
+    }
+  }
+
+  Future<void> updateUserProfile({String? name, String? imageUrl, String? profession, List<String>? skills}) async {
     if (_currentUser == null) return;
     try {
+      // 1. Update Firebase if needed
       if (name != null) await _currentUser!.updateDisplayName(name);
       if (imageUrl != null) await _currentUser!.updatePhotoURL(imageUrl);
+      
+      // 2. Update Backend
+      await DioClient().dio.put(
+        ApiConstants.authProfile,
+        data: {
+          if (name != null) 'displayName': name,
+          if (imageUrl != null) 'photoUrl': imageUrl,
+          if (profession != null) 'profession': profession,
+          if (skills != null) 'skills': skills,
+        },
+      );
+
+      // 3. Local state update
+      if (profession != null) _profession = profession;
+      if (skills != null) _skills = List.from(skills);
+
       await _currentUser!.reload();
       _currentUser = _auth.currentUser;
       notifyListeners();
-    } catch (e) {}
+    } catch (e) {
+      debugPrint("Update Profile Error: $e");
+    }
   }
 
   Future<void> updateFcmToken(String token) async {
     try {
       await DioClient().dio.post(ApiConstants.updateFcmToken, data: {'token': token});
-    } catch (e) {}
+    } catch (_) {}
   }
 
   void _setLoading(bool value) {

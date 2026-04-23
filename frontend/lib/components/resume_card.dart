@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:feather_icons/feather_icons.dart';
 import '../core/theme.dart';
-import '../core/mock_data.dart';
 import '../core/models/resume_model.dart';
 import '../screens/interview/interview_session_screen.dart';
 

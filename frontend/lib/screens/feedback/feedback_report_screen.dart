@@ -3,12 +3,12 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:feather_icons/feather_icons.dart';
 import '../../core/theme.dart';
-import '../../core/mock_data.dart';
+import '../../core/models/session_model.dart';
 import '../../components/glass_card.dart';
 import '../../components/spectral_background.dart';
 
 class FeedbackReportScreen extends StatefulWidget {
-  final Session? session;
+  final SessionModel? session;
   const FeedbackReportScreen({super.key, this.session});
 
   @override
