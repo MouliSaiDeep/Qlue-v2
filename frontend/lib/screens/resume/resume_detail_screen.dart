@@ -277,14 +277,34 @@ class ResumeDetailScreen extends StatelessWidget {
                         ),
                       if (resume.parsedData?.name != null) ...[
                         DetailSection(
-                          title: "Candidate Name",
+                          title: "Professional Profile",
                           icon: FeatherIcons.user,
                           iconColor: const Color(0xFF8B5CF6),
                           child: Padding(
                             padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
-                            child: Text(
-                              resume.parsedData!.name!,
-                              style: TextStyle(fontSize: 16, color: t.text, fontWeight: FontWeight.bold),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  resume.parsedData!.name!,
+                                  style: TextStyle(fontSize: 18, color: t.text, fontWeight: FontWeight.bold),
+                                ),
+                                if (resume.parsedData?.contact != null) ...[
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 12,
+                                    runSpacing: 8,
+                                    children: [
+                                      if (resume.parsedData!.contact!.email != null)
+                                        _contactItem(t, FeatherIcons.mail, resume.parsedData!.contact!.email!),
+                                      if (resume.parsedData!.contact!.phone != null)
+                                        _contactItem(t, FeatherIcons.phone, resume.parsedData!.contact!.phone!),
+                                      if (resume.parsedData!.contact!.location != null)
+                                        _contactItem(t, FeatherIcons.mapPin, resume.parsedData!.contact!.location!),
+                                    ],
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
                         ),
@@ -317,7 +337,7 @@ class ResumeDetailScreen extends StatelessWidget {
                               WorkExperienceModel exp = entry.value;
                               return Column(
                                 children: [
-                                  if (i > 0) Container(height: 1, color: t.borderSubtle, margin: const EdgeInsets.only(left: 16)),
+                                  if (i > 0) Container(height: 1, color: t.borderSubtle, margin: const EdgeInsets.symmetric(horizontal: 16)),
                                   Padding(
                                     padding: const EdgeInsets.all(16),
                                     child: Column(
@@ -328,28 +348,12 @@ class ResumeDetailScreen extends StatelessWidget {
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Expanded(
-                                              child: Row(
+                                              child: Column(
                                                 crossAxisAlignment: CrossAxisAlignment.start,
                                                 children: [
-                                                  Container(
-                                                    width: 8,
-                                                    height: 8,
-                                                    margin: const EdgeInsets.only(top: 5, right: 10),
-                                                    decoration: BoxDecoration(
-                                                      color: const Color(0xFFDB2777),
-                                                      borderRadius: BorderRadius.circular(4),
-                                                    ),
-                                                  ),
-                                                  Expanded(
-                                                    child: Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                                      children: [
-                                                        Text(exp.role ?? 'Unknown Role', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: t.text)),
-                                                        const SizedBox(height: 2),
-                                                        Text(exp.company ?? 'Unknown Company', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: t.textSecondary)),
-                                                      ],
-                                                    ),
-                                                  ),
+                                                  Text(exp.role ?? 'Professional Role', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: t.text)),
+                                                  const SizedBox(height: 4),
+                                                  Text(exp.company ?? 'Organization', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: const Color(0xFFDB2777))),
                                                 ],
                                               ),
                                             ),
@@ -360,19 +364,65 @@ class ResumeDetailScreen extends StatelessWidget {
                                                   color: const Color(0xFFDB2777).withValues(alpha: 0.08),
                                                   borderRadius: BorderRadius.circular(8),
                                                 ),
-                                                child: Text(exp.duration!, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFDB2777))),
+                                                child: Text(exp.duration!, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFDB2777))),
                                               ),
                                           ],
                                         ),
                                         if (exp.highlights != null && exp.highlights!.isNotEmpty) ...[
-                                          const SizedBox(height: 8),
-                                          Padding(
-                                            padding: const EdgeInsets.only(left: 18),
-                                            child: Text(
-                                              exp.highlights!.join('\n• '),
-                                              style: TextStyle(fontSize: 12, color: t.textTertiary, height: 1.5),
+                                          const SizedBox(height: 12),
+                                          ...exp.highlights!.map((h) => Padding(
+                                            padding: const EdgeInsets.only(bottom: 6),
+                                            child: Row(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Padding(
+                                                  padding: const EdgeInsets.only(top: 6),
+                                                  child: Container(width: 4, height: 4, decoration: BoxDecoration(color: t.textTertiary, shape: BoxShape.circle)),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(child: Text(h, style: TextStyle(fontSize: 12, color: t.textSecondary, height: 1.4))),
+                                              ],
                                             ),
+                                          )),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      if (resume.parsedData?.projects != null && resume.parsedData!.projects!.isNotEmpty) ...[
+                        DetailSection(
+                          title: "Key Projects",
+                          icon: FeatherIcons.code,
+                          iconColor: const Color(0xFF10B981),
+                          child: Column(
+                            children: resume.parsedData!.projects!.asMap().entries.map((entry) {
+                              int i = entry.key;
+                              ProjectModel proj = entry.value;
+                              return Column(
+                                children: [
+                                  if (i > 0) Container(height: 1, color: t.borderSubtle, margin: const EdgeInsets.symmetric(horizontal: 16)),
+                                  Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(proj.name ?? 'Project', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: t.text)),
+                                        if (proj.technologies != null && proj.technologies!.isNotEmpty) ...[
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            proj.technologies!.join(", "),
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF10B981)),
                                           ),
+                                        ],
+                                        if (proj.description != null) ...[
+                                          const SizedBox(height: 8),
+                                          Text(proj.description!, style: TextStyle(fontSize: 12, color: t.textSecondary, height: 1.4)),
                                         ],
                                       ],
                                     ),
@@ -395,7 +445,7 @@ class ResumeDetailScreen extends StatelessWidget {
                               EducationModel edu = entry.value;
                               return Column(
                                 children: [
-                                  if (i > 0) Container(height: 1, color: t.borderSubtle, margin: const EdgeInsets.only(left: 16)),
+                                  if (i > 0) Container(height: 1, color: t.borderSubtle, margin: const EdgeInsets.symmetric(horizontal: 16)),
                                   Padding(
                                     padding: const EdgeInsets.all(16),
                                     child: Row(
@@ -403,40 +453,17 @@ class ResumeDetailScreen extends StatelessWidget {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Expanded(
-                                          child: Row(
+                                          child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              Container(
-                                                width: 8,
-                                                height: 8,
-                                                margin: const EdgeInsets.only(top: 5, right: 10),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0xFF0891B2),
-                                                  borderRadius: BorderRadius.circular(4),
-                                                ),
-                                              ),
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(edu.degree ?? 'Unknown Degree', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: t.text)),
-                                                    const SizedBox(height: 2),
-                                                    Text(edu.institution ?? 'Unknown Institution', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: t.textSecondary)),
-                                                  ],
-                                                ),
-                                              ),
+                                              Text(edu.degree ?? 'Degree', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: t.text)),
+                                              const SizedBox(height: 2),
+                                              Text(edu.institution ?? 'Institution', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: t.textSecondary)),
                                             ],
                                           ),
                                         ),
                                         if (edu.year != null)
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFF0891B2).withValues(alpha: 0.08),
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: Text(edu.year!, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF0891B2))),
-                                          ),
+                                          Text(edu.year!, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: t.textTertiary)),
                                       ],
                                     ),
                                   ),
@@ -553,6 +580,20 @@ class ResumeDetailScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _contactItem(AppThemeColors t, IconData icon, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: t.textTertiary),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(fontSize: 12, color: t.textSecondary),
+        ),
+      ],
     );
   }
 
