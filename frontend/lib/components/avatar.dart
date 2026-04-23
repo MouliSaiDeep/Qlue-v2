@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:io';
 
 class Avatar extends StatelessWidget {
   final String? imageUrl;
+  final String? name; // Added to support letter avatars
   final double size;
   final double borderRadius;
   final bool isCircle;
@@ -10,6 +13,7 @@ class Avatar extends StatelessWidget {
   const Avatar({
     super.key,
     this.imageUrl,
+    this.name,
     this.size = 80,
     this.borderRadius = 20,
     this.isCircle = false,
@@ -20,11 +24,20 @@ class Avatar extends StatelessWidget {
   Widget build(BuildContext context) {
     ImageProvider image;
     
-    if (imageUrl != null && (imageUrl!.startsWith('http') || imageUrl!.startsWith('https'))) {
-      image = NetworkImage(imageUrl!);
+    if (imageUrl != null && imageUrl!.isNotEmpty) {
+      if (imageUrl!.startsWith('http') || imageUrl!.startsWith('https')) {
+        image = NetworkImage(imageUrl!);
+      } else if (!kIsWeb && (imageUrl!.startsWith('/') || (imageUrl!.length > 1 && imageUrl![1] == ':'))) {
+        image = FileImage(File(imageUrl!));
+      } else if (!kIsWeb) {
+        image = FileImage(File(imageUrl!));
+      } else {
+        // Web fallback: Use letter avatar if URL detection fails or it's a local path string on web
+        image = NetworkImage("https://ui-avatars.com/api/?name=${name ?? 'User'}&background=random&color=fff&size=256");
+      }
     } else {
-      // Placeholder or default image (avoid FileImage on web as dart:io is unsupported)
-      image = const NetworkImage("https://images.unsplash.com/photo-1560250097-0b93528c311a?q=80&w=200&h=200&auto=format&fit=crop");
+      // Default: Dynamic Letter Avatar
+      image = NetworkImage("https://ui-avatars.com/api/?name=${name ?? 'User'}&background=7C3AED&color=fff&size=256");
     }
 
     // Optimization: Resize image before decoding to save memory

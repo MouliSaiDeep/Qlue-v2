@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -44,19 +45,39 @@ class QlueApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => DashboardProvider()),
         ChangeNotifierProvider(create: (_) => ThemeNotifier()),
       ],
-      child: Consumer2<AuthProvider, ThemeNotifier>(
-        builder: (context, auth, themeNotifier, _) {
-          return AppThemeColorsProvider(
-            colors: themeNotifier.colors,
-            child: MaterialApp.router(
-              title: 'Qlue AI',
-              debugShowCheckedModeBanner: false,
-              theme: AppTheme.darkTheme,
-              themeMode: themeNotifier.themeMode,
-              routerConfig: buildAppRouter(auth),
-            ),
-          );
-        },
+      child: const RouterWrapper(),
+    );
+  }
+}
+
+class RouterWrapper extends StatefulWidget {
+  const RouterWrapper({super.key});
+
+  @override
+  State<RouterWrapper> createState() => _RouterWrapperState();
+}
+
+class _RouterWrapperState extends State<RouterWrapper> {
+  late GoRouter _router;
+
+  @override
+  void initState() {
+    super.initState();
+    // Build the router once and let GoRouter handle updates via refreshListenable
+    _router = buildAppRouter(context.read<AuthProvider>());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final themeNotifier = Provider.of<ThemeNotifier>(context);
+    return AppThemeColorsProvider(
+      colors: themeNotifier.colors,
+      child: MaterialApp.router(
+        title: 'Qlue AI',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.darkTheme,
+        themeMode: themeNotifier.themeMode,
+        routerConfig: _router,
       ),
     );
   }

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:feather_icons/feather_icons.dart';
 import 'package:provider/provider.dart';
@@ -156,6 +157,111 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
+  void _showAvatarPicker() {
+    final t = AppThemeColors.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => GlassCard(
+        borderRadius: 32,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("Profile Identity", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: t.text)),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _identityOption(FeatherIcons.image, "Upload Photo", t.primary, _pickImage),
+                _identityOption(FeatherIcons.smile, "Avatar Library", t.accentGreen, _showAvatarLibrary),
+              ],
+            ),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _identityOption(IconData icon, String label, Color color, VoidCallback onTap) {
+    final t = AppThemeColors.of(context);
+    return GestureDetector(
+      onTap: () {
+        Navigator.pop(context);
+        onTap();
+      },
+      child: Column(
+        children: [
+          Container(
+            width: 64, height: 64,
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+            child: Icon(icon, color: color, size: 28),
+          ),
+          const SizedBox(height: 12),
+          Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: t.textSecondary)),
+        ],
+      ),
+    );
+  }
+
+  void _showAvatarLibrary() {
+    final t = AppThemeColors.of(context);
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final avatars = [
+      "https://api.dicebear.com/7.x/avataaars/png?seed=Felix&backgroundColor=b6e3f4",
+      "https://api.dicebear.com/7.x/avataaars/png?seed=Aneka&backgroundColor=ffdfbf",
+      "https://api.dicebear.com/7.x/avataaars/png?seed=Charlie&backgroundColor=c0aede",
+      "https://api.dicebear.com/7.x/avataaars/png?seed=George&backgroundColor=d1d4f9",
+      "https://api.dicebear.com/7.x/avataaars/png?seed=Sophie&backgroundColor=ffd5dc",
+      "https://api.dicebear.com/7.x/avataaars/png?seed=Oliver&backgroundColor=c1f4c1",
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => GlassCard(
+        borderRadius: 32,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text("Avatar Library", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: t.text)),
+            const SizedBox(height: 20),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3, crossAxisSpacing: 16, mainAxisSpacing: 16,
+              ),
+              itemCount: avatars.length,
+              itemBuilder: (ctx, idx) => GestureDetector(
+                onTap: () {
+                  auth.updateUserProfile(imageUrl: avatars[idx]);
+                  Navigator.pop(context);
+                  Notify.success(context, "Avatar updated!");
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: auth.profileImageUrl == avatars[idx] ? t.primary : t.border, width: 2),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.network(avatars[idx]),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _pickImage() async {
     try {
       final auth = Provider.of<AuthProvider>(context, listen: false);
@@ -163,15 +269,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
       FilePickerResult? result = await FilePicker.pickFiles(
         type: FileType.image,
         allowMultiple: false,
+        withData: kIsWeb,
       );
 
-      if (result != null && result.files.isNotEmpty && result.files.single.path != null) {
-        auth.updateUserProfile(
-          imageUrl: result.files.single.path,
-        );
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.single;
+        
+        if (kIsWeb && file.bytes != null) {
+          Notify.info(context, "Cloud profile sync is being prioritized. Using local preview.");
+          auth.updateUserProfile(
+            imageUrl: "https://ui-avatars.com/api/?name=${auth.displayName}&background=random",
+          );
+        } else if (file.path != null) {
+          await auth.updateUserProfile(
+            imageUrl: file.path,
+          );
+          if (mounted) Notify.success(context, "Profile picture updated!");
+        }
       }
     } catch (e) {
       debugPrint("Image selection error: $e");
+      if (mounted) Notify.error(context, "Could not update profile picture.");
     }
   }
 
@@ -658,10 +776,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     GestureDetector(
-                      onTap: _pickImage,
+                      onTap: _showAvatarPicker,
                       child: Stack(
                         children: [
-                          Avatar(imageUrl: auth.profileImageUrl, size: 88, borderRadius: 20),
+                          Avatar(imageUrl: auth.profileImageUrl, name: auth.displayName, size: 88, borderRadius: 20),
                           Positioned(
                             bottom: 4, right: 4,
                             child: Container(
