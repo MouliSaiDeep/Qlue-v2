@@ -1,13 +1,22 @@
 version = 0.1
 
 [default.deploy.parameters]
-stack_name = "qlue-backend"
+stack_name = "qlue-season8-prod"
 resolve_s3 = true
-s3_prefix = "qlue-backend"
+s3_prefix = "qlue-season8-prod"
 region = "us-east-1"
-confirm_changeset = true
+confirm_changeset = false
 capabilities = "CAPABILITY_IAM"
 image_repositories = []
 
 [default.global.parameters]
 region = "us-east-1"
+
+[prod.deploy.parameters]
+stack_name = "qlue-season8-prod"
+resolve_s3 = true
+s3_prefix = "qlue-season8-prod"
+region = "us-east-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+image_repositories = []

@@ -107,7 +107,7 @@ jobs:
           path: backend/.aws-sam/
       - name: SAM Deploy to Prod
         working-directory: backend
-        run: sam deploy --config-env prod --no-confirm-changeset --no-fail-on-empty-changeset
+        run: sam deploy --stack-name qlue-season8-prod --resolve-s3 --config-env prod --no-confirm-changeset --no-fail-on-empty-changeset --capabilities CAPABILITY_IAM
 
   notify:
     needs: [deploy-dev, deploy-prod]

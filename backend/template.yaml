@@ -7,6 +7,7 @@ Globals:
     Runtime: nodejs20.x
     Layers:
       - !Ref QlueSharedLayer
+      - !Ref DependencyLayer
     Environment:
       Variables:
         USERS_TABLE: !Ref UsersTable
@@ -21,7 +22,7 @@ Globals:
         SCRAPED_CONTENT_BUCKET: !Ref ScrapedContentBucket
         FEEDBACK_TOPIC_ARN: !Ref FeedbackTriggerTopic
         WEBSOCKET_ENDPOINT: !Sub "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
-        BEDROCK_MODEL_ID: 'NVIDIA Nemotron 3 Super 120B A12B'
+        BEDROCK_MODEL_ID: 'nvidia.nemotron-super-3-120b'
 
 Resources:
   # ==============================================================================
@@ -356,6 +357,7 @@ Resources:
             FunctionArn: !GetAtt ValidateTokenFunction.Arn
             Identity:
               Header: Authorization
+            AuthorizerResultTtlInSeconds: 0
 
   WebSocketApi:
     Type: AWS::ApiGatewayV2::Api
@@ -449,6 +451,16 @@ Resources:
         - nodejs20.x
       RetentionPolicy: Retain
 
+  DependencyLayer:
+    Type: AWS::Serverless::LayerVersion
+    Metadata:
+      BuildMethod: nodejs20.x
+    Properties:
+      ContentUri: layers/dependencies/
+      CompatibleRuntimes:
+        - nodejs20.x
+      RetentionPolicy: Retain
+
   # ==============================================================================
   # SNS TOPICS
   # ==============================================================================
@@ -485,8 +497,8 @@ Resources:
   ValidateTokenFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: auth/validateToken.handler
-      CodeUri: src/handlers/
+      Handler: handlers/auth/validateToken.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Policies:
@@ -498,8 +510,8 @@ Resources:
   RegisterUserFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: auth/registerUser.handler
-      CodeUri: src/handlers/
+      Handler: handlers/auth/registerUser.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 15
       Events:
@@ -518,8 +530,8 @@ Resources:
   LoginUserFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: auth/loginUser.handler
-      CodeUri: src/handlers/
+      Handler: handlers/auth/loginUser.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -538,8 +550,8 @@ Resources:
   LoginWithGoogleFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: auth/loginWithGoogle.handler
-      CodeUri: src/handlers/
+      Handler: handlers/auth/loginWithGoogle.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 15
       Events:
@@ -558,8 +570,8 @@ Resources:
   RefreshTokenFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: auth/refreshToken.handler
-      CodeUri: src/handlers/
+      Handler: handlers/auth/refreshToken.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -578,8 +590,8 @@ Resources:
   LogoutUserFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: auth/logoutUser.handler
-      CodeUri: src/handlers/
+      Handler: handlers/auth/logoutUser.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -598,8 +610,8 @@ Resources:
   DeleteAccountFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: auth/deleteAccount.handler
-      CodeUri: src/handlers/
+      Handler: handlers/auth/deleteAccount.handler
+      CodeUri: src/
       MemorySize: 512
       Timeout: 30
       Events:
@@ -618,8 +630,8 @@ Resources:
   GetUserProfileFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: auth/getUserProfile.handler
-      CodeUri: src/handlers/
+      Handler: handlers/auth/getUserProfile.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -638,8 +650,8 @@ Resources:
   UpdateUserProfileFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: auth/updateUserProfile.handler
-      CodeUri: src/handlers/
+      Handler: handlers/auth/updateUserProfile.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -658,8 +670,8 @@ Resources:
   SyncUserFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: auth/syncUser.handler
-      CodeUri: src/handlers/
+      Handler: handlers/auth/syncUser.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -675,12 +687,30 @@ Resources:
         - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref FirebaseServiceAccountSecret
 
+  UpdateFcmTokenFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/auth/updateFcmToken.handler
+      CodeUri: src/
+      MemorySize: 256
+      Timeout: 10
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /auth/fcm-token
+            Method: post
+            RestApiId: !Ref RestApi
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+
   # ========= RESUME =========
   GeneratePresignedUrlFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: resume/generatePresignedUrl.handler
-      CodeUri: src/handlers/
+      Handler: handlers/resume/generatePresignedUrl.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -699,8 +729,8 @@ Resources:
   ProcessResumeUploadFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: resume/processResumeUpload.handler
-      CodeUri: src/handlers/
+      Handler: handlers/resume/processResumeUpload.handler
+      CodeUri: src/
       MemorySize: 1024
       Timeout: 120
       Events:
@@ -715,12 +745,14 @@ Resources:
             TableName: !Ref ResumesTable
         - S3CrudPolicy:
             BucketName: !Ref ResumesBucket
+        - AmazonTextractFullAccess
+        - AmazonBedrockFullAccess
 
   GetResumeListFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: resume/getResumeList.handler
-      CodeUri: src/handlers/
+      Handler: handlers/resume/getResumeList.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -739,8 +771,8 @@ Resources:
   GetResumeDetailFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: resume/getResumeDetail.handler
-      CodeUri: src/handlers/
+      Handler: handlers/resume/getResumeDetail.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -759,8 +791,8 @@ Resources:
   UpdateResumeParsedDataFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: resume/updateResumeParsedData.handler
-      CodeUri: src/handlers/
+      Handler: handlers/resume/updateResumeParsedData.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -779,8 +811,8 @@ Resources:
   DeleteResumeFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: resume/deleteResume.handler
-      CodeUri: src/handlers/
+      Handler: handlers/resume/deleteResume.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -799,8 +831,8 @@ Resources:
   SetActiveResumeFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: resume/setActiveResume.handler
-      CodeUri: src/handlers/
+      Handler: handlers/resume/setActiveResume.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -819,8 +851,8 @@ Resources:
   ValidateResumeHashFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: resume/validateResumeHash.handler
-      CodeUri: src/handlers/
+      Handler: handlers/resume/validateResumeHash.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -840,8 +872,8 @@ Resources:
   InitializeSessionFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: interview/initializeSession.handler
-      CodeUri: src/handlers/
+      Handler: handlers/interview/initializeSession.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 15
       Events:
@@ -863,8 +895,8 @@ Resources:
   ProcessUserInputFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: interview/processUserInput.handler
-      CodeUri: src/handlers/
+      Handler: handlers/interview/processUserInput.handler
+      CodeUri: src/
       MemorySize: 512
       Timeout: 30
       Events:
@@ -886,8 +918,8 @@ Resources:
   GenerateQuestionFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: interview/generateQuestion.handler
-      CodeUri: src/handlers/
+      Handler: handlers/interview/generateQuestion.handler
+      CodeUri: src/
       MemorySize: 512
       Timeout: 30
       Events:
@@ -909,8 +941,8 @@ Resources:
   ManageContextWindowFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: interview/manageContextWindow.handler
-      CodeUri: src/handlers/
+      Handler: handlers/interview/manageContextWindow.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -932,8 +964,8 @@ Resources:
   ControlTurnFlowFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: interview/controlTurnFlow.handler
-      CodeUri: src/handlers/
+      Handler: handlers/interview/controlTurnFlow.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -955,8 +987,8 @@ Resources:
   TerminateSessionFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: interview/terminateSession.handler
-      CodeUri: src/handlers/
+      Handler: handlers/interview/terminateSession.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 15
       Events:
@@ -980,8 +1012,8 @@ Resources:
   ConnectHandlerFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: websocket/connectHandler.handler
-      CodeUri: src/handlers/
+      Handler: handlers/websocket/connectHandler.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Policies:
@@ -991,8 +1023,8 @@ Resources:
   DisconnectHandlerFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: websocket/disconnectHandler.handler
-      CodeUri: src/handlers/
+      Handler: handlers/websocket/disconnectHandler.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Policies:
@@ -1002,8 +1034,8 @@ Resources:
   SendTextHandlerFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: websocket/sendTextHandler.handler
-      CodeUri: src/handlers/
+      Handler: handlers/websocket/sendTextHandler.handler
+      CodeUri: src/
       MemorySize: 512
       Timeout: 30
       Policies:
@@ -1013,8 +1045,8 @@ Resources:
   StateUpdateHandlerFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: websocket/stateUpdateHandler.handler
-      CodeUri: src/handlers/
+      Handler: handlers/websocket/stateUpdateHandler.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Policies:
@@ -1024,8 +1056,8 @@ Resources:
   ErrorHandlerFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: websocket/errorHandler.handler
-      CodeUri: src/handlers/
+      Handler: handlers/websocket/errorHandler.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Policies:
@@ -1036,8 +1068,8 @@ Resources:
   TriggerFeedbackGenerationFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: feedback/triggerFeedbackGeneration.handler
-      CodeUri: src/handlers/
+      Handler: handlers/feedback/triggerFeedbackGeneration.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 15
       Events:
@@ -1059,8 +1091,8 @@ Resources:
   AnalyzeTranscriptFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: feedback/analyzeTranscript.handler
-      CodeUri: src/handlers/
+      Handler: handlers/feedback/analyzeTranscript.handler
+      CodeUri: src/
       MemorySize: 1024
       Timeout: 60
       Events:
@@ -1084,8 +1116,8 @@ Resources:
   ComputeModuleScoresFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: feedback/computeModuleScores.handler
-      CodeUri: src/handlers/
+      Handler: handlers/feedback/computeModuleScores.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 15
       Events:
@@ -1109,8 +1141,8 @@ Resources:
   GenerateFeedbackReportFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: feedback/generateFeedbackReport.handler
-      CodeUri: src/handlers/
+      Handler: handlers/feedback/generateFeedbackReport.handler
+      CodeUri: src/
       MemorySize: 1024
       Timeout: 60
       Events:
@@ -1134,8 +1166,8 @@ Resources:
   StoreFeedbackReportFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: feedback/storeFeedbackReport.handler
-      CodeUri: src/handlers/
+      Handler: handlers/feedback/storeFeedbackReport.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -1159,8 +1191,8 @@ Resources:
   SendFeedbackNotificationFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: feedback/sendFeedbackNotification.handler
-      CodeUri: src/handlers/
+      Handler: handlers/feedback/sendFeedbackNotification.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -1185,8 +1217,8 @@ Resources:
   GetDashboardSummaryFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: dashboard/getDashboardSummary.handler
-      CodeUri: src/handlers/
+      Handler: handlers/dashboard/getDashboardSummary.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 15
       Events:
@@ -1197,14 +1229,14 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
-
   GetScoreTrendsFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: dashboard/getScoreTrends.handler
-      CodeUri: src/handlers/
+      Handler: handlers/dashboard/getScoreTrends.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 15
       Events:
@@ -1221,8 +1253,8 @@ Resources:
   GetModuleStatsFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: dashboard/getModuleStats.handler
-      CodeUri: src/handlers/
+      Handler: handlers/dashboard/getModuleStats.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 15
       Events:
@@ -1239,8 +1271,8 @@ Resources:
   GetSessionHistoryFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: dashboard/getSessionHistory.handler
-      CodeUri: src/handlers/
+      Handler: handlers/dashboard/getSessionHistory.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -1257,8 +1289,8 @@ Resources:
   GetSessionDetailFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: dashboard/getSessionDetail.handler
-      CodeUri: src/handlers/
+      Handler: handlers/dashboard/getSessionDetail.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -1276,8 +1308,8 @@ Resources:
   GetTranscriptFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: dashboard/getTranscript.handler
-      CodeUri: src/handlers/
+      Handler: handlers/dashboard/getTranscript.handler
+      CodeUri: src/
       MemorySize: 256
       Timeout: 10
       Events:
@@ -1295,8 +1327,8 @@ Resources:
   FetchAndCleanContentFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: scraper/fetchAndCleanContent.handler
-      CodeUri: src/handlers/
+      Handler: handlers/scraper/fetchAndCleanContent.handler
+      CodeUri: src/
       MemorySize: 512
       Timeout: 30
       Events:

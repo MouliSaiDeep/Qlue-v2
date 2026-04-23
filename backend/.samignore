@@ -1,0 +1,9 @@
+# SAM Ignore file to explicitely allow service-account-local.json
+# while keeping it ignored in Git for security.
+
+!service-account-local.json
+.aws-sam/
+node_modules/
+tests/
+events/
+samconfig.toml
