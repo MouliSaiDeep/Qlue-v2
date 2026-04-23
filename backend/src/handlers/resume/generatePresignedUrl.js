@@ -44,7 +44,7 @@ exports.handler = async (event) => {
         const s3Key = `resumes/${userId}/${timestamp}_${sanitizedFileName}`;
 
         // 3. Generate presigned URL for PUT with specific content type
-        const uploadUrl = await getSignedUrl(BUCKET_NAME, s3Key, 'putObject', 900);
+        const uploadUrl = await getSignedUrl(BUCKET_NAME, s3Key, 'putObject', 900, 'application/pdf');
 
         // 4. Create record in DynamoDB with UPLOADING status
         await createResume({

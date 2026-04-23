@@ -384,6 +384,31 @@ class ResumeDetailScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 12),
                       ],
+                      if (resume.parsedData?.projects != null && resume.parsedData!.projects!.isNotEmpty) ...[
+                        DetailSection(
+                          title: "Projects",
+                          icon: FeatherIcons.code,
+                          iconColor: const Color(0xFF10B981),
+                          child: Column(
+                            children: resume.parsedData!.projects!.map((proj) {
+                              return Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(proj.name ?? 'Project', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: t.text)),
+                                    if (proj.description != null) ...[
+                                      const SizedBox(height: 4),
+                                      Text(proj.description!, style: TextStyle(fontSize: 12, color: t.textSecondary)),
+                                    ],
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       if (resume.parsedData?.education != null && resume.parsedData!.education!.isNotEmpty)
                         DetailSection(
                           title: "Education",

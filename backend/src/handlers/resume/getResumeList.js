@@ -13,7 +13,7 @@ exports.handler = async (event) => {
 
         const resumes = await getResumesByUserId(userId);
         
-        // Map to exclude large blobs (parsedData) for list view efficiency
+        // Include parsedData so the UI remains consistent after refreshes
         const resumeList = resumes.map(item => ({
             resumeId: item.resumeId,
             fileName: item.fileName,
@@ -22,7 +22,8 @@ exports.handler = async (event) => {
             uploadedAt: item.uploadedAt,
             parsedAt: item.parsedAt,
             isActive: item.isActive,
-            failReason: item.failReason || null
+            failReason: item.failReason || null,
+            parsedData: item.parsedData || null
         }));
 
         return success({

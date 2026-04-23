@@ -743,10 +743,16 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ResumesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
         - S3CrudPolicy:
             BucketName: !Ref ResumesBucket
         - AmazonTextractFullAccess
         - AmazonBedrockFullAccess
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${AWS::StackName}-ProcessResumeUploadFunction-*"
 
   GetResumeListFunction:
     Type: AWS::Serverless::Function

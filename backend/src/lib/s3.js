@@ -17,15 +17,17 @@ const s3Client = new S3Client({
 /**
  * Generates a presigned URL acting as a delegate for upload endpoints.
  */
-async function generatePresignedUrl(bucket, key, operation = 'putObject', expiresIn = 3600) {
+async function generatePresignedUrl(bucket, key, operation = 'putObject', expiresIn = 3600, contentType = null) {
   let command;
   if (operation === 'putObject') {
-    command = new PutObjectCommand({
+    const params = {
       Bucket: bucket,
       Key: key,
-      // Do NOT include ContentType here — omitting it means ContentType
-      // is not in the signed headers, so the client can PUT with any (or no) content type.
-    });
+    };
+    if (contentType) {
+      params.ContentType = contentType;
+    }
+    command = new PutObjectCommand(params);
   } else {
     command = new GetObjectCommand({
       Bucket: bucket,
@@ -35,8 +37,7 @@ async function generatePresignedUrl(bucket, key, operation = 'putObject', expire
 
   try {
     const signedUrl = await getSignedUrl(s3Client, command, {
-      expiresIn,
-      unhoistableHeaders: new Set(['x-amz-checksum-crc32']),
+      expiresIn
     });
     return signedUrl;
   } catch (error) {
