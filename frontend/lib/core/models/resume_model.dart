@@ -183,14 +183,14 @@ class ResumeModel {
       resumeId: json['resumeId'] as String,
       userId: json['userId'] as String?,
       fileName: json['fileName'] as String,
-      fileSize: json['fileSize'] as int,
+      fileSize: (json['fileSize'] as num).toInt(),
       fileHash: json['fileHash'] as String?,
       s3Key: json['s3Key'] as String?,
       status: ResumeStatus.fromString(json['status'] as String? ?? 'pending'),
-      uploadedAt: json['uploadedAt'] as int?,
+      uploadedAt: (json['uploadedAt'] as num?)?.toInt(),
       isActive: json['isActive'] as bool? ?? false,
       failReason: json['failReason'] as String?,
-      parsedData: json['parsedData'] != null ? ParsedDataModel.fromJson(json['parsedData']) : null,
+      parsedData: json['parsedData'] != null ? ParsedDataModel.fromJson(json['parsedData'] as Map<String, dynamic>) : null,
     );
   }
 
