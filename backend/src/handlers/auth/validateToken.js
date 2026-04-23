@@ -18,7 +18,8 @@ exports.handler = async (event) => {
         const decodedToken = await auth.verifyIdToken(bearerToken, true);
         
         // Return IAM Policy for Authorized user
-        return generatePolicy(decodedToken.uid, 'Allow', event.methodArn || '*', {
+        // Using '*' for resource to allow the cached policy to work for all endpoints
+        return generatePolicy(decodedToken.uid, 'Allow', '*', {
             uid: decodedToken.uid,
             email: decodedToken.email || '',
             emailVerified: decodedToken.email_verified || false

@@ -31,6 +31,8 @@ exports.handler = async (event) => {
                 email: user.email,
                 displayName: user.displayName || '',
                 photoUrl: user.photoUrl || '',
+                profession: user.profession || '',
+                skills: user.skills || [],
                 activeResumeId: user.activeResumeId || null,
                 createdAt: user.createdAt
             })

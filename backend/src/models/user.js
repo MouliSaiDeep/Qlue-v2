@@ -12,7 +12,11 @@ async function saveUser(user) {
     };
     if (!item.createdAt) item.createdAt = new Date().toISOString();
     
-    return await put(USERS_TABLE, item);
+    const res = await put(USERS_TABLE, item);
+    if (!res.success) {
+        throw new Error(`Failed to save user: ${res.error?.message || 'Unknown error'}`);
+    }
+    return res;
 }
 
 /**
@@ -20,6 +24,9 @@ async function saveUser(user) {
  */
 async function getUserById(userId) {
     const res = await get(USERS_TABLE, { userId });
+    if (!res.success) {
+        throw new Error(`Failed to get user: ${res.error?.message || 'Unknown error'}`);
+    }
     return res.data || null;
 }
 
@@ -27,12 +34,16 @@ async function getUserById(userId) {
  * Updates a user's active resume reference.
  */
 async function setActiveResumeId(userId, resumeId) {
-    return await update(
+    const res = await update(
         USERS_TABLE,
         { userId },
         'SET activeResumeId = :rid, updatedAt = :ua',
         { ':rid': resumeId, ':ua': new Date().toISOString() }
     );
+    if (!res.success) {
+        throw new Error(`Failed to update active resume: ${res.error?.message || 'Unknown error'}`);
+    }
+    return res.data;
 }
 
 module.exports = {
