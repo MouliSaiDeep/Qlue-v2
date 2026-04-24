@@ -11,13 +11,11 @@ async function pushStateUpdate(connectionId, sessionId, previousState, currentSt
   const message = {
     type: MESSAGE_TYPES.SESSION_STATE_UPDATE,
     timestamp: Date.now(),
-    payload: {
-      sessionId,
-      previousState,
-      currentState,
-      turnIndex,
-      questionText
-    }
+    sessionId,
+    previousState,
+    currentState,
+    turnIndex,
+    questionText
   };
 
   console.debug(`Pushing state update to ${connectionId}: ${previousState} -> ${currentState}`);
