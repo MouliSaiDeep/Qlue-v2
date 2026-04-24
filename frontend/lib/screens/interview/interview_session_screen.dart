@@ -140,11 +140,13 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
     if (isConnecting) {
       topDisplayText = "Connecting...";
     } else if (isAiSpeaking && provider.isStreamingText && provider.subtitleText.isNotEmpty) {
+      // While AI is speaking: show streaming subtitle with typing effect
       topDisplayText = provider.subtitleText;
+    } else if (provider.finalQuestionText.isNotEmpty) {
+      // After AI finishes: show the finalized question
+      topDisplayText = provider.finalQuestionText;
     } else if (provider.questionText.isNotEmpty && provider.questionText != "...") {
       topDisplayText = provider.questionText;
-    } else if (provider.subtitleText.isNotEmpty) {
-      topDisplayText = provider.subtitleText;
     } else {
       topDisplayText = "Waiting...";
     }
@@ -156,41 +158,59 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
     if (isListening && provider.partialTranscript.isNotEmpty) {
       bottomDisplayText = provider.partialTranscript;
       showUserTranscription = true;
-    } else if (isProcessing && provider.finalTranscript.isNotEmpty) {
+    } else if ((isProcessing || isAiSpeaking) && provider.finalTranscript.isNotEmpty) {
+      // Keep showing last user transcript while AI is responding
       bottomDisplayText = provider.finalTranscript;
       showUserTranscription = true;
     }
 
-    return Scaffold(
-      backgroundColor: Colors.black, 
-      body: Stack(
-        children: [
-          // 1. THE LAYOUT ENGINE
-          SafeArea(
-            child: Column(
-              children: [
-                // TOP: GHOST BACK BUTTON
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  child: Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () => context.pop(),
-                        child: SizedBox(
-                          width: 44,
-                          height: 44,
-                          child: GlassCard(
-                            borderRadius: 12,
-                            padding: EdgeInsets.zero,
-                            hasMetallicBorder: true,
-                            child: Center(child: Icon(FeatherIcons.chevronLeft, color: Colors.white, size: 20)),
+    return PopScope(
+      canPop: false, // Prevent system back navigation
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        // Optionally show a dialog here, or just ignore
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black, 
+        body: Stack(
+          children: [
+            // 1. THE LAYOUT ENGINE
+            SafeArea(
+              child: Column(
+                children: [
+                  // TOP: SESSION CONTROL
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        GestureDetector(
+                          onTap: () => provider.endSession(),
+                          child: SizedBox(
+                            width: 80,
+                            height: 44,
+                            child: GlassCard(
+                              borderRadius: 12,
+                              padding: EdgeInsets.zero,
+                              hasMetallicBorder: true,
+                              child: Center(
+                                child: Text(
+                                  "END",
+                                  style: TextStyle(
+                                    color: Colors.redAccent.withValues(alpha: 0.8),
+                                    fontSize: 12,
+                                    fontFamily: 'monospace',
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 2
+                                  ),
+                                )
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                      const Spacer(),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
 
                 // AI SUBTITLE / QUESTION BROADCAST (Scrollable)
                 Expanded(
@@ -292,10 +312,10 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                               decoration: BoxDecoration(
-                                color: Colors.orangeAccent.withValues(alpha: 0.08),
+                                color: Colors.orangeAccent.withValues(alpha: 0.12), // Slightly more visible
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
-                                  color: Colors.orangeAccent.withValues(alpha: 0.2),
+                                  color: Colors.orangeAccent.withValues(alpha: 0.3),
                                   width: 1,
                                 ),
                               ),
@@ -304,10 +324,10 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
                                   Text(
                                     "YOU",
                                     style: TextStyle(
-                                      fontSize: 8, 
-                                      fontFamily: 'monospace', 
-                                      fontWeight: FontWeight.w900, 
-                                      color: Colors.orangeAccent.withValues(alpha: 0.5),
+                                      fontSize: 10, // Slightly larger
+                                      fontFamily: 'monospace',
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.orangeAccent.withValues(alpha: 0.6),
                                       letterSpacing: 4,
                                     ),
                                   ),
@@ -315,9 +335,9 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
                                   Text(
                                     bottomDisplayText,
                                     style: TextStyle(
-                                      fontSize: 14, 
+                                      fontSize: 15, // Slightly larger
                                       fontFamily: 'monospace',
-                                      color: Colors.orangeAccent.withValues(alpha: isListening ? 0.7 : 0.5),
+                                      color: Colors.orangeAccent.withValues(alpha: isListening ? 0.9 : 0.6),
                                       fontStyle: isListening ? FontStyle.italic : FontStyle.normal,
                                       height: 1.3,
                                     ),
@@ -344,7 +364,7 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
           ),
         ],
       ),
-    );
+    ));
   }
 
   /// Animated speaking indicator (three pulsing dots) shown while AI is speaking

@@ -27,6 +27,7 @@ class InterviewProvider extends ChangeNotifier {
   int currentTurnIndex = 0;
   
   String questionText = "...";
+  String finalQuestionText = ""; // The finalized question shown after AI stops speaking
   // The streaming subtitle text (shown while AI is speaking)
   String subtitleText = "";
   // Whether we're currently streaming AI text
@@ -138,9 +139,14 @@ class InterviewProvider extends ChangeNotifier {
         break;
 
       case 'session_text_stream':
-        // Handle streaming text from AI for subtitles
         final streamText = payload?['text'] ?? msg['text'] ?? '';
-        if (streamText.isNotEmpty) {
+        final status = payload?['status'] ?? '';
+        
+        if (status == 'thinking') {
+          subtitleText = "Thinking...";
+          isStreamingText = true;
+          notifyListeners();
+        } else if (streamText.isNotEmpty) {
           subtitleText = streamText;
           isStreamingText = true;
           notifyListeners();
@@ -151,6 +157,7 @@ class InterviewProvider extends ChangeNotifier {
         final newQuestion = payload['questionText'];
         if (newQuestion != null && newQuestion != "...") {
           questionText = newQuestion;
+          finalQuestionText = newQuestion; // Store finalized question
           transcript.add(TranscriptEntry(
             role: 'ai',
             text: questionText,
@@ -202,11 +209,10 @@ class InterviewProvider extends ChangeNotifier {
   }
 
   void onAudioPlaybackComplete() {
-    // Triggered when TTS finishes. Move to listening state if session is active and all chunks arrived.
     if (!isSessionEnded && currentPhase == InterviewPhase.speaking && _isLastAudioChunkReceived) {
       currentPhase = InterviewPhase.listening;
-      // DON'T clear subtitleText — keep the final question visible
-      // subtitleText = "";
+      // When AI finishes, subtitle becomes the final question
+      subtitleText = finalQuestionText.isNotEmpty ? finalQuestionText : questionText;
       isStreamingText = false;
       notifyListeners();
       _startListening();

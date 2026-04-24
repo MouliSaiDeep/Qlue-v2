@@ -149,12 +149,16 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
         // LATENCY HIDING: If this is the start of the session, send an immediate intro
         // while Bedrock is generating the first question.
         if (session.turnCount === 0) {
+            // Get the voice name from the session (e.g., "Tiffany", "Matthew", "Joanna")
+            const voiceName = session.voiceId || 'Tiffany';
+            
             const intros = {
-                'RESUME': "Hello! <break time='300ms'/> I'm Tiffany. I've analyzed your resume, and I'm ready to start your technical interview. <break time='200ms'/> Let's begin.",
-                'WEBSITE': "Hi there! <break time='300ms'/> I'm your mentor. I've reviewed the website content you provided, and I'm excited to help you learn. <break time='200ms'/> Here's my first question.",
-                'HR': "Hello! <break time='300ms'/> I'm Tiffany from the recruiting team. I'll be conducting your behavioral interview today. <break time='200ms'/> Let's get started."
+                'RESUME': `Hello! I'm ${voiceName}. I've analyzed your resume, and I'm ready to start your technical interview. Let's begin.`,
+                'WEBSITE': `Hi there! I'm ${voiceName}, your mentor. I've reviewed the website content you provided, and I'm excited to help you learn. Here's my first question.`,
+                'HR': `Hello! I'm ${voiceName} from the recruiting team. I'll be conducting your behavioral interview today. Let's get started.`
             };
-            const introText = intros[moduleType] || "Hello! <break time='300ms'/> I'm Tiffany, your AI interviewer. Let's begin our session.";
+            
+            const introText = intros[moduleType] || `Hello! I'm ${voiceName}, your AI interviewer. Let's begin our session.`;
             console.debug(`[Stream] Sending instant intro to hide latency.`);
             processSentence(introText);
         }
@@ -333,7 +337,7 @@ async function handleTextTranscript(connectionId, body) {
 async function handleTerminateSession(connectionId, body) {
     const { sessionId } = body.payload || {};
     await terminateSession.handler({
-        body: JSON.stringify({ sessionId, reason: 'USER_TERMINATED' })
+        body: JSON.stringify({ sessionId, reason: 'USER_INITIATED' })
     });
     
     await postToConnection(connectionId, { type: 'termination', payload: { sessionId } });

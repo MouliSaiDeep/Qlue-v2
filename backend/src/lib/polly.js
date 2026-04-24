@@ -136,12 +136,11 @@ function buildEnhancedSSML(text) {
   // Remove any existing <speak> or </speak> fragments to avoid nesting
   let cleanText = text.replace(/<\/?speak>/g, '').trim();
 
-  // Escape XML special characters so they don't break SSML parsing
+  // Escape XML special characters (&, <, >) — MUST do this first before adding tags
   cleanText = cleanText
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/>/g, '&gt;');
 
   // Add micro-pauses after punctuation for natural rhythm
   cleanText = cleanText
@@ -149,7 +148,7 @@ function buildEnhancedSSML(text) {
     .replace(/;\s+/g, '<break time="150ms"/> ')
     .replace(/,\s+/g, '<break time="100ms"/> ');
 
-  // Add slightly longer pause before question marks
+  // Add pause before question marks
   cleanText = cleanText.replace(/\?\s*/g, '<break time="200ms"/>? ');
 
   // Add breath pause before conjunctions at sentence start
@@ -158,10 +157,8 @@ function buildEnhancedSSML(text) {
     '$1<break time="300ms"/> $2'
   );
 
-  // Wrap with moderate prosody for natural speech
-  const ssml = `<speak><prosody rate="95%" pitch="+0%">${cleanText}</prosody></speak>`;
-
-  return ssml;
+  // Simple <speak> wrapper — NO <prosody> (Generative engine handles prosody naturally)
+  return '<speak>' + cleanText + '</speak>';
 }
 
 module.exports = {

@@ -111,10 +111,11 @@ async function updateSessionState(sessionId, newState, expectedCurrentState = nu
     }
     
     // Cleanup active marker if terminated
+    let removeExpression = "";
     if (newState === INTERVIEW_STATES.TERMINATED || newState === INTERVIEW_STATES.ERROR || newState === INTERVIEW_STATES.GENERATING_FEEDBACK) {
-        updateExpression += " REMOVE activeMarker";
+        removeExpression = " REMOVE activeMarker";
         if (updates.terminationReason) {
-            updateExpression += " SET terminationReason = :terminationReason";
+            updateExpression += ", terminationReason = :terminationReason";
             expressionAttributeValues[":terminationReason"] = updates.terminationReason;
         }
     }
@@ -122,7 +123,7 @@ async function updateSessionState(sessionId, newState, expectedCurrentState = nu
     const command = new UpdateCommand({
         TableName: SESSIONS_TABLE,
         Key: { sessionId },
-        UpdateExpression: updateExpression,
+        UpdateExpression: updateExpression + removeExpression,
         ExpressionAttributeValues: expressionAttributeValues,
         ConditionExpression: conditionExpression,
         ReturnValues: "ALL_NEW"
