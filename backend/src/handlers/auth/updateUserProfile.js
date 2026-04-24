@@ -18,9 +18,9 @@ exports.handler = async (event) => {
         }
 
         const body = JSON.parse(event.body || '{}');
-        const { displayName, photoUrl, profession, skills } = body;
+        const { displayName, photoUrl, profession, skills, voiceId } = body;
 
-        if (displayName === undefined && photoUrl === undefined && profession === undefined && skills === undefined) {
+        if (displayName === undefined && photoUrl === undefined && profession === undefined && skills === undefined && voiceId === undefined) {
             return {
                 statusCode: 400,
                 body: JSON.stringify({ error: 'NO_UPDATE_FIELDS', message: 'Provide fields to update' })
@@ -57,6 +57,11 @@ exports.handler = async (event) => {
         if (skills !== undefined) {
             updateExpression += ', skills = :skills';
             expressionAttributeValues[':skills'] = skills;
+        }
+
+        if (voiceId !== undefined) {
+            updateExpression += ', voiceId = :voiceId';
+            expressionAttributeValues[':voiceId'] = voiceId;
         }
 
         const result = await update(

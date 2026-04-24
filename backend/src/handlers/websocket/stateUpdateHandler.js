@@ -6,16 +6,19 @@ const { MESSAGE_TYPES } = require('../../lib/websocketMessages');
 
 /**
  * Pushes a session_state_update message to the client.
+ * Uses consistent payload wrapping format: { type, payload: {...} }
  */
 async function pushStateUpdate(connectionId, sessionId, previousState, currentState, turnIndex, questionText = null) {
   const message = {
     type: MESSAGE_TYPES.SESSION_STATE_UPDATE,
-    timestamp: Date.now(),
-    sessionId,
-    previousState,
-    currentState,
-    turnIndex,
-    questionText
+    payload: {
+      sessionId,
+      previousState,
+      state: currentState,
+      turnIndex,
+      questionText,
+      timestamp: Date.now(),
+    }
   };
 
   console.debug(`Pushing state update to ${connectionId}: ${previousState} -> ${currentState}`);

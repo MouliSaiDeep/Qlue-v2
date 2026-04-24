@@ -301,7 +301,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _playPreview(String modelName) async {
     try {
-      final fileName = modelName.toLowerCase() == 'tiffany' ? 'tiffany.mp3' : 'matthew.mp3';
+      final fileName = '${modelName.toLowerCase()}.mp3';
       await _audioPlayer.stop();
       await _audioPlayer.play(AssetSource('audios/$fileName'));
     } catch (e) {
@@ -313,75 +313,115 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final t = AppThemeColors.of(context);
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final voices = [
-      {'name': 'Tiffany', 'desc': 'Warm & Professional'},
-      {'name': 'Matthew', 'desc': 'Clear & Authoritative'},
+      {'name': 'Tiffany', 'desc': 'Warm & Professional', 'gender': 'Female'},
+      {'name': 'Ruth', 'desc': 'Sophisticated & Clear', 'gender': 'Female'},
+      {'name': 'Joanna', 'desc': 'Calm & Articulate', 'gender': 'Female'},
+      {'name': 'Matthew', 'desc': 'Clear & Authoritative', 'gender': 'Male'},
+      {'name': 'Stephen', 'desc': 'Friendly & Natural', 'gender': 'Male'},
     ];
 
     showModalBottomSheet(
       context: context,
       useRootNavigator: true,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) => GlassCard(
-          borderRadius: 32,
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Select Voice Model', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: t.text)),
-              const SizedBox(height: 20),
-              ...voices.map((v) {
-                final isSelected = auth.voiceId == v['name'];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
-                  child: GestureDetector(
-                    onTap: () {
-                      auth.updateUserProfile(voiceId: v['name']!);
-                      setModalState(() {});
-                    },
-                    child: GlassCard(
-                      borderRadius: 16,
-                      padding: const EdgeInsets.all(16),
-                      tintColor: isSelected ? t.primary.withValues(alpha: 0.1) : null,
-                      hasMetallicBorder: isSelected,
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 40, height: 40,
-                            decoration: BoxDecoration(
-                              color: isSelected ? t.primary : t.bgSecondary,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(
-                              isSelected ? FeatherIcons.check : FeatherIcons.user,
-                              size: 18,
-                              color: isSelected ? Colors.white : t.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+        builder: (context, setModalState) => Consumer<AuthProvider>(
+          builder: (context, auth, _) => GlassCard(
+            borderRadius: 32,
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Select Voice Model', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: t.text)),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: t.primary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text('Generative', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: t.primary, letterSpacing: 0.5)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text('Powered by Amazon Polly Generative AI', style: TextStyle(fontSize: 11, color: t.textTertiary)),
+                const SizedBox(height: 20),
+                
+                // Scrollable list of voices
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.5,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: voices.map((v) {
+                        final isSelected = auth.voiceId == v['name'];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12.0),
+                          child: GlassCard(
+                            borderRadius: 16,
+                            padding: const EdgeInsets.all(16),
+                            tintColor: isSelected ? t.primary.withValues(alpha: 0.1) : null,
+                            hasMetallicBorder: isSelected,
+                            onTap: () async {
+                              try {
+                                final selectedVoice = v['name']!;
+                                await auth.updateUserProfile(voiceId: selectedVoice);
+                                if (mounted) {
+                                  Notify.success(context, "Voice model updated to $selectedVoice");
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  Notify.error(context, "Failed to update voice model");
+                                }
+                              }
+                              if (mounted) setModalState(() {});
+                            },
+                            child: Row(
                               children: [
-                                Text(v['name']!, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: t.text)),
-                                Text(v['desc']!, style: TextStyle(fontSize: 12, color: t.textTertiary)),
+                                Container(
+                                  width: 40, height: 40,
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? t.primary : t.bgSecondary,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    isSelected ? FeatherIcons.check : FeatherIcons.user,
+                                    size: 18,
+                                    color: isSelected ? Colors.white : t.textSecondary,
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(v['name']!, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: t.text)),
+                                      Text(v['desc']!, style: TextStyle(fontSize: 12, color: t.textTertiary)),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  onPressed: () => _playPreview(v['name']!),
+                                  icon: Icon(FeatherIcons.playCircle, color: t.primary),
+                                  tooltip: 'Preview Voice',
+                                ),
                               ],
                             ),
                           ),
-                          IconButton(
-                            onPressed: () => _playPreview(v['name']!),
-                            icon: Icon(FeatherIcons.playCircle, color: t.primary),
-                            tooltip: 'Preview Voice',
-                          ),
-                        ],
-                      ),
+                        );
+                      }).toList(),
                     ),
                   ),
-                );
-              }),
-              const SizedBox(height: 12),
-            ],
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
           ),
         ),
       ),

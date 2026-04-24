@@ -14,6 +14,8 @@ class AuthProvider extends ChangeNotifier {
   String _profession = "";
   List<String> _skills = [];
   String _voiceId = "Tiffany";
+  String _photoUrl = "";
+  String _displayName = "";
 
   bool _isBypassAuthenticated = false;
 
@@ -32,9 +34,9 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
   
-  // Interface expected by screens - using fallbacks to avoid null lints in untouchable screens
-  String get profileImageUrl => _currentUser?.photoURL ?? "";
-  String get displayName => _currentUser?.displayName ?? "User";
+  // Interface expected by screens
+  String get profileImageUrl => _photoUrl.isNotEmpty ? _photoUrl : (_currentUser?.photoURL ?? "");
+  String get displayName => _displayName.isNotEmpty ? _displayName : (_currentUser?.displayName ?? "User");
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   // google_sign_in 7.x uses singleton instance
@@ -170,6 +172,8 @@ class AuthProvider extends ChangeNotifier {
       _profession = data['profession'] ?? "";
       _skills = List<String>.from(data['skills'] ?? []);
       _voiceId = data['voiceId'] ?? "Tiffany";
+      _photoUrl = data['photoUrl'] ?? "";
+      _displayName = data['displayName'] ?? "";
       notifyListeners();
     } catch (e) {
       debugPrint("Fetch Profile Error: $e");
@@ -178,12 +182,24 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> updateUserProfile({String? name, String? imageUrl, String? profession, List<String>? skills, String? voiceId}) async {
     if (_currentUser == null) return;
+    
+    // Store old values for potential rollback
+    final oldProfession = _profession;
+    final oldSkills = List<String>.from(_skills);
+    final oldVoiceId = _voiceId;
+
     try {
-      // 1. Update Firebase if needed
+      // 1. Optimistic Local Update
+      if (profession != null) _profession = profession;
+      if (skills != null) _skills = List.from(skills);
+      if (voiceId != null) _voiceId = voiceId;
+      notifyListeners();
+
+      // 2. Update Firebase if needed
       if (name != null) await _currentUser!.updateDisplayName(name);
       if (imageUrl != null) await _currentUser!.updatePhotoURL(imageUrl);
       
-      // 2. Update Backend
+      // 3. Update Backend
       await DioClient().dio.put(
         ApiConstants.authProfile,
         data: {
@@ -195,16 +211,17 @@ class AuthProvider extends ChangeNotifier {
         },
       );
 
-      // 3. Local state update
-      if (profession != null) _profession = profession;
-      if (skills != null) _skills = List.from(skills);
-      if (voiceId != null) _voiceId = voiceId;
-
       await _currentUser!.reload();
       _currentUser = _auth.currentUser;
       notifyListeners();
     } catch (e) {
       debugPrint("Update Profile Error: $e");
+      // Revert on error
+      _profession = oldProfession;
+      _skills = oldSkills;
+      _voiceId = oldVoiceId;
+      notifyListeners();
+      rethrow; // Pass error back to UI if needed
     }
   }
 

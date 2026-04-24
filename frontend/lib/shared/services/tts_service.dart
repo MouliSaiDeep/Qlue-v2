@@ -50,9 +50,10 @@ class TtsService {
           await _player.resume();
           
           // Wait for completion
-          await _player.onPlayerComplete.first;
+          await _player.onPlayerComplete.first
+              .timeout(const Duration(seconds: 30), onTimeout: () => null);
           // Small gap to prevent overlapping or driver crashes
-          await Future.delayed(const Duration(milliseconds: 50));
+          await Future.delayed(const Duration(milliseconds: 30));
         } catch (e) {
           debugPrint('TTS Chunk Playback Error: $e');
           // Skip corrupt chunk and continue

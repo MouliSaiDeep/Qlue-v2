@@ -26,8 +26,14 @@ class InterviewProvider extends ChangeNotifier {
   int currentTurnIndex = 0;
   
   String questionText = "...";
+  // The streaming subtitle text (shown while AI is speaking)
+  String subtitleText = "";
+  // Whether we're currently streaming AI text
+  bool isStreamingText = false;
+  
   List<TranscriptEntry> transcript = [];
   String partialTranscript = "";
+  String finalTranscript = ""; // Last finalized user transcript for display
   
   bool isConnecting = false;
   bool isListening = false;
@@ -51,6 +57,9 @@ class InterviewProvider extends ChangeNotifier {
     errorMessage = null;
     moduleType = type;
     _isLastAudioChunkReceived = false;
+    subtitleText = "";
+    isStreamingText = false;
+    finalTranscript = "";
     notifyListeners();
 
     try {
@@ -120,6 +129,16 @@ class InterviewProvider extends ChangeNotifier {
         }
         break;
 
+      case 'session_text_stream':
+        // Handle streaming text from AI for subtitles
+        final streamText = payload?['text'] ?? msg['text'] ?? '';
+        if (streamText.isNotEmpty) {
+          subtitleText = streamText;
+          isStreamingText = true;
+          notifyListeners();
+        }
+        break;
+
 
       case 'session_state_update':
         questionText = payload['questionText'] ?? questionText;
@@ -131,7 +150,7 @@ class InterviewProvider extends ChangeNotifier {
           ));
         }
 
-        final state = payload['state'];
+        final state = payload?['state'];
         _updatePhaseFromState(state);
         break;
 
@@ -149,7 +168,8 @@ class InterviewProvider extends ChangeNotifier {
     }
   }
 
-  void _updatePhaseFromState(String state) {
+  void _updatePhaseFromState(String? state) {
+    if (state == null) return;
     switch (state) {
       case 'AI_SPEAKING':
         currentPhase = InterviewPhase.speaking;
@@ -177,6 +197,9 @@ class InterviewProvider extends ChangeNotifier {
     // Triggered when TTS finishes. Move to listening state if session is active and all chunks arrived.
     if (!isSessionEnded && currentPhase == InterviewPhase.speaking && _isLastAudioChunkReceived) {
       currentPhase = InterviewPhase.listening;
+      // When AI finishes speaking, clear the subtitle and show only the question
+      subtitleText = "";
+      isStreamingText = false;
       notifyListeners();
       _startListening();
     }
@@ -188,6 +211,7 @@ class InterviewProvider extends ChangeNotifier {
       text: text,
       timestamp: DateTime.now(),
     ));
+    finalTranscript = text;
     _wsClient.send('text_transcript', {
       'sessionId': sessionId,
       'text': text,

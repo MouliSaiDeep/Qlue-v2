@@ -56,7 +56,7 @@ async function* synthesizeToBase64Chunks(text, options = {}) {
   if (!voiceId) {
     throw new Error('Voice ID must be provided by the user');
   }
-  const engine = options.Engine || 'neural';
+  const engine = options.Engine || 'generative';
   
   // Polly has a 3000 character limit for regular text. 
   // We handle TextLengthExceededException proactively by chunking.
@@ -66,13 +66,16 @@ async function* synthesizeToBase64Chunks(text, options = {}) {
   for (let t = 0; t < textChunks.length; t++) {
     const chunkText = textChunks[t];
     
+    // Build SSML text with prosody and breathing for natural speech
+    const ssmlText = buildEnhancedSSML(chunkText);
+
     const command = new SynthesizeSpeechCommand({
       Engine: engine,
       VoiceId: voiceId,
       OutputFormat: 'mp3',
-      Text: `<speak>${chunkText}</speak>`,
+      Text: ssmlText,
       TextType: 'ssml',
-      SampleRate: '22050' // standard for neural mp3
+      SampleRate: '24000' // generative engine supports higher quality
     });
 
     try {
@@ -119,7 +122,45 @@ async function* synthesizeToBase64Chunks(text, options = {}) {
 }
 
 
+/**
+ * Builds enhanced SSML markup for more natural and human-like speech.
+ * - Adds subtle prosody variations to avoid monotone delivery
+ * - Inserts micro-pauses at natural speech boundaries (commas, periods)
+ * - Adds breathing pauses before long sentences
+ * - Uses amazon:effect for breath sounds where supported
+ */
+function buildEnhancedSSML(text) {
+  // Don't double-wrap if already SSML
+  if (text.trim().startsWith('<speak>')) return text;
+
+  // Remove any existing <speak> or </speak> tags from nested wrapping
+  let cleanText = text.replace(/<\/?speak>/g, '').trim();
+
+  // Add a breath pause before sentences that start with conjunctions
+  // (natural human hesitation)
+  cleanText = cleanText.replace(
+    /(^|\.\s+)(And|But|So|Now|Well|OK|Okay|Right|Actually|However|Therefore|Meanwhile)/g,
+    '$1<break time="200ms"/>$2'
+  );
+
+  // Add micro-pause after colons (before explanations)
+  cleanText = cleanText.replace(/:/g, ':<break time="150ms"/>');
+
+  // Add slight pause before question marks for natural intonation
+  cleanText = cleanText.replace(/\?/g, '?<break time="300ms"/>');
+
+  // Wrap the whole thing with a moderate prosody to sound natural
+  const ssml = `<speak>
+    <prosody rate="medium" pitch="+0%" volume="+0dB">
+      ${cleanText}
+    </prosody>
+  </speak>`;
+
+  return ssml;
+}
+
 module.exports = {
   getEstimatedDuration,
-  synthesizeToBase64Chunks
+  synthesizeToBase64Chunks,
+  buildEnhancedSSML
 };

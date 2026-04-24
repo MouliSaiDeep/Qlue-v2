@@ -13,10 +13,24 @@ const { getUserById } = require('../../models/user');
 const { getTranscriptBySession } = require('../../models/transcript');
 
 
-// Voice Mapping
+// Voice Mapping - Maps UI voice names to Polly VoiceIds
+// Generative engine supports: Tiffany, Gregory, Patrick, Kevin, Matthew, Justin, Joey, Stephen, Ivy
+// and female voices: Danielle, Joanna, Ruth, Salli, Kimberly, Kendra
 const VOICE_MAP = {
-    'Tiffany': 'Ruth',
-    'Matthew': 'Matthew'
+    'Tiffany': 'Tiffany',
+    'Matthew': 'Matthew',
+    'Gregory': 'Gregory',
+    'Ivy': 'Ivy',
+    'Joanna': 'Joanna',
+    'Kendra': 'Kendra',
+    'Kimberly': 'Kimberly',
+    'Salli': 'Salli',
+    'Joey': 'Joey',
+    'Justin': 'Justin',
+    'Kevin': 'Kevin',
+    'Patrick': 'Patrick',
+    'Stephen': 'Stephen',
+    'Ruth': 'Ruth'
 };
 
 /**
@@ -65,7 +79,7 @@ exports.handler = async (event) => {
  * 4. Pushes results to WebSocket connection
  */
 async function streamAIResponse(connectionId, sessionId, session, moduleType, prompt) {
-    const pollyVoice = VOICE_MAP[session.voiceId || 'Tiffany'] || 'Ruth';
+    const pollyVoice = VOICE_MAP[session.voiceId || 'Tiffany'] || 'Tiffany';
     let fullText = "";
     let sentenceBuffer = "";
     let globalAudioChunkIndex = 0;
@@ -94,7 +108,7 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
         lastProcessPromise = lastProcessPromise.then(async () => {
             try {
                 let allAudio = Buffer.alloc(0);
-                for await (const audioChunk of synthesizeToBase64Chunks(cleanSentence, { VoiceId: pollyVoice })) {
+                for await (const audioChunk of synthesizeToBase64Chunks(cleanSentence, { VoiceId: pollyVoice, Engine: 'generative' })) {
                     allAudio = Buffer.concat([allAudio, Buffer.from(audioChunk.audioData, 'base64')]);
                 }
 
@@ -118,8 +132,7 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
         // Notify client that AI is preparing to speak
         await postToConnection(connectionId, {
             type: 'session_text_stream',
-            text: "", 
-            status: "thinking"
+            payload: { text: "", status: "thinking" }
         });
 
         // LATENCY HIDING: If this is the start of the session, send an immediate intro
@@ -156,7 +169,7 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
                 textRefreshTimer = setTimeout(() => {
                     postToConnection(connectionId, {
                         type: 'session_text_stream',
-                        text: fullText
+                        payload: { text: fullText }
                     });
                     textRefreshTimer = null;
                 }, 200);

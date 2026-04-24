@@ -1,5 +1,6 @@
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
+import 'package:flutter/foundation.dart';
 
 class SttService {
   static final SttService _instance = SttService._internal();
@@ -8,13 +9,38 @@ class SttService {
 
   final SpeechToText _speech = SpeechToText();
   bool _isInitialized = false;
+  bool _isInitializing = false;
 
   Future<bool> init() async {
     if (_isInitialized) return true;
-    _isInitialized = await _speech.initialize(
-      onError: (error) => print('STT Error: $error'),
-      onStatus: (status) => print('STT Status: $status'),
-    );
+    if (_isInitializing) return false; // Prevent concurrent initialization
+    
+    _isInitializing = true;
+    try {
+      _isInitialized = await _speech.initialize(
+        onError: (error) {
+          debugPrint('STT Error: $error');
+          if (error.permanent) {
+            debugPrint('STT Permanent Error: ${error.errorMsg}');
+          }
+        },
+        onStatus: (status) {
+          debugPrint('STT Status: $status');
+        },
+        debugLogging: kDebugMode,
+      );
+      
+      if (!_isInitialized) {
+        debugPrint('STT: Initialization failed - speech recognition not available on this device');
+      } else {
+        debugPrint('STT: Initialization successful. Has permission: ${_speech.hasPermission}');
+      }
+    } catch (e) {
+      debugPrint('STT: Initialization exception: $e');
+      _isInitialized = false;
+    } finally {
+      _isInitializing = false;
+    }
     return _isInitialized;
   }
 
@@ -22,31 +48,65 @@ class SttService {
     required Function(String) onPartial,
     required Function(String) onFinal,
   }) async {
-    if (!_isInitialized) await init();
+    if (!_isInitialized) {
+      final success = await init();
+      if (!success) {
+        debugPrint('STT: Cannot start listening - not initialized');
+        return;
+      }
+    }
+
+    // Don't start if already listening — stop first
+    if (_speech.isListening) {
+      debugPrint('STT: Already listening, stopping first...');
+      await _speech.stop();
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
     
-    await _speech.listen(
-      onResult: (SpeechRecognitionResult result) {
-        if (result.finalResult) {
-          onFinal(result.recognizedWords);
-        } else {
-          onPartial(result.recognizedWords);
-        }
-      },
-      listenFor: const Duration(seconds: 60),
-      pauseFor: const Duration(seconds: 5),
-      partialResults: true,
-      cancelOnError: true,
-      listenMode: ListenMode.confirmation,
-    );
+    try {
+      await _speech.listen(
+        onResult: (SpeechRecognitionResult result) {
+          if (result.finalResult) {
+            debugPrint('STT Final: "${result.recognizedWords}"');
+            onFinal(result.recognizedWords);
+          } else {
+            debugPrint('STT Partial: "${result.recognizedWords}"');
+            onPartial(result.recognizedWords);
+          }
+        },
+        listenFor: const Duration(seconds: 60),
+        pauseFor: const Duration(seconds: 5),
+        partialResults: true,
+        cancelOnError: true,
+        listenMode: ListenMode.confirmation,
+        localeId: 'en_US',
+      );
+    } catch (e) {
+      debugPrint('STT: Error starting to listen: $e');
+    }
   }
 
   Future<void> stop() async {
-    await _speech.stop();
+    try {
+      if (_speech.isListening) {
+        await _speech.stop();
+      }
+    } catch (e) {
+      debugPrint('STT: Error stopping: $e');
+    }
   }
 
   Future<void> cancel() async {
-    await _speech.cancel();
+    try {
+      if (_speech.isListening) {
+        await _speech.cancel();
+      }
+    } catch (e) {
+      debugPrint('STT: Error canceling: $e');
+    }
   }
 
   bool get isListening => _speech.isListening;
+  bool get isInitialized => _isInitialized;
+  Future<bool> get hasPermission => _speech.hasPermission;
 }
