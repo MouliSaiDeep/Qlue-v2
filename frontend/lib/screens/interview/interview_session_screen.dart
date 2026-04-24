@@ -139,12 +139,14 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
     String topDisplayText;
     if (isConnecting) {
       topDisplayText = "Connecting...";
-    } else if (isAiSpeaking && provider.subtitleText.isNotEmpty) {
+    } else if (isAiSpeaking && provider.isStreamingText && provider.subtitleText.isNotEmpty) {
       topDisplayText = provider.subtitleText;
-    } else if (isAiSpeaking && provider.questionText.isNotEmpty && provider.questionText != "...") {
+    } else if (provider.questionText.isNotEmpty && provider.questionText != "...") {
       topDisplayText = provider.questionText;
+    } else if (provider.subtitleText.isNotEmpty) {
+      topDisplayText = provider.subtitleText;
     } else {
-      topDisplayText = provider.questionText;
+      topDisplayText = "Waiting...";
     }
 
     // Determine bottom display text for user transcription

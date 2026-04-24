@@ -17,7 +17,7 @@ exports.handler = async (event) => {
         // [Mouli Week 4: Voice Selection] Fetch user's preferred voice
         console.debug(`Fetching user profile for ${userId}...`);
         const user = await getUserById(userId);
-        const voiceId = user?.voiceId || 'Tiffany';
+        const voiceId = body.voiceId || user?.voiceId || 'Tiffany';
 
         // [Mouli Week 4: Concurrency Lock]
         console.debug(`Checking for active sessions for ${userId}...`);
@@ -38,6 +38,7 @@ exports.handler = async (event) => {
         const itemData = { voiceId };
         if (body.resumeId) itemData.resumeId = body.resumeId;
         if (body.websiteUrl) itemData.websiteUrl = body.websiteUrl;
+        if (body.engine) itemData.engine = body.engine;
 
         console.info(`Creating new session ${sessionId} for ${userId} (Module: ${moduleType})`);
         await createSession(sessionId, userId, moduleType, itemData);

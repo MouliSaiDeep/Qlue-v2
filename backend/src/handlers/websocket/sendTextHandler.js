@@ -1,5 +1,6 @@
+const { getSession, INTERVIEW_STATES, updateSessionState } = require('../../models/session');
 const { postToConnection } = require('../../lib/websocket');
-const { getSession, INTERVIEW_STATES } = require('../../models/session');
+const { SPEAKERS, saveTranscript, getTranscriptBySession } = require('../../models/transcript');
 const { pushStateUpdate } = require('./stateUpdateHandler');
 
 // Handlers
@@ -10,7 +11,6 @@ const { synthesizeToBase64Chunks } = require('../../lib/polly');
 const { invokeModelStream, buildResumeQuestionPrompt, buildHRQuestionPrompt, buildWebsiteTeachPrompt } = require('../../lib/bedrock');
 const { getResumeById } = require('../../models/resume');
 const { getUserById } = require('../../models/user');
-const { getTranscriptBySession } = require('../../models/transcript');
 
 
 // Voice Mapping - Maps UI voice names to Polly VoiceIds
@@ -108,7 +108,8 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
         lastProcessPromise = lastProcessPromise.then(async () => {
             try {
                 let allAudio = Buffer.alloc(0);
-                for await (const audioChunk of synthesizeToBase64Chunks(cleanSentence, { VoiceId: pollyVoice, Engine: 'generative' })) {
+                const engine = session.itemData?.engine || 'generative';
+                for await (const audioChunk of synthesizeToBase64Chunks(cleanSentence, { VoiceId: pollyVoice, Engine: engine })) {
                     allAudio = Buffer.concat([allAudio, Buffer.from(audioChunk.audioData, 'base64')]);
                 }
 
@@ -121,7 +122,17 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
                     }
                 });
             } catch (err) {
-                console.error('Sentence processing failed in background:', err);
+                console.error('Sentence processing failed:', err);
+                // Notify frontend that audio synthesis failed for this sentence
+                await postToConnection(connectionId, {
+                    type: 'error',
+                    payload: {
+                        message: 'Audio synthesis failed: ' + err.message,
+                        code: 'TTS_ERROR'
+                    }
+                });
+                // Re-throw so the outer streamAIResponse catch can handle it
+                throw err;
             }
         });
     };
@@ -185,7 +196,20 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
 
         console.info(`[Stream] Awaiting final background synthesis...`);
         await lastProcessPromise;
-        
+
+        // Send the final question text as a state update so frontend persists it
+        await postToConnection(connectionId, {
+            type: 'session_state_update',
+            payload: {
+                sessionId,
+                previousState: 'AI_SPEAKING',
+                state: 'AI_SPEAKING',
+                turnIndex: session.turnCount,
+                questionText: fullText,
+                timestamp: Date.now()
+            }
+        });
+
         // FINAL SIGNAL: Send an empty chunk with isLast:true to signal completion
         await postToConnection(connectionId, {
             type: 'tts_audio_chunk',
@@ -258,44 +282,51 @@ async function handleSessionInit(connectionId, body) {
 }
 
 async function handleTextTranscript(connectionId, body) {
-    const { sessionId, text } = body.payload || {};
+  const { sessionId, text } = body.payload || {};
 
-    if (!sessionId || !text) throw new Error('Missing sessionId or text');
+  if (!sessionId || !text) throw new Error('Missing sessionId or text');
 
-    // 1. Process user input (non-streaming parts: scoring, etc)
-    // We call the existing handler but we'll ignore its question generation part 
-    // or we'll refactor it to just do scoring.
-    // For now, let's just do it here to be fast.
-    const session = await getSession(sessionId);
-    const transcripts = await getTranscriptBySession(sessionId);
-    const history = transcripts.map(t => ({
-        role: t.speaker === 'USER' ? 'user' : 'assistant',
-        content: t.text
-    }));
-    history.push({ role: 'user', content: text });
+  const session = await getSession(sessionId);
+  if (!session) throw new Error('Session not found');
 
-    // 2. Build Next Question Prompt
-    let prompt = [];
-    if (session.moduleType === 'RESUME') {
-        let resumeId = session.itemData?.resumeId;
-        if (!resumeId) {
-            const user = await getUserById(session.userId);
-            resumeId = user.activeResumeId;
-        }
-        const resume = await getResumeById(resumeId);
-        prompt = buildResumeQuestionPrompt(resume?.parsedData, history, session.turnCount + 1);
-    } else if (session.moduleType === 'WEBSITE') {
-        prompt = buildWebsiteTeachPrompt("", "", history, true);
-    } else {
-        prompt = buildHRQuestionPrompt("Professional Background", history);
+  // 1. Save user transcript
+  await saveTranscript(sessionId, session.turnCount || 0, SPEAKERS.USER, text);
+
+  // 2. Advance turn count in DB
+  const nextTurnCount = (session.turnCount || 0) + 1;
+  await updateSessionState(sessionId, INTERVIEW_STATES.PROCESSING_RESPONSE, null, {
+    turnCount: nextTurnCount
+  });
+
+  // 3. Build history with new user message
+  const transcripts = await getTranscriptBySession(sessionId);
+  const history = transcripts.map(t => ({
+    role: t.speaker === 'USER' ? 'user' : 'assistant',
+    content: t.text
+  }));
+
+  // 4. Build prompt
+  let prompt = [];
+  if (session.moduleType === 'RESUME') {
+    let resumeId = session.itemData?.resumeId;
+    if (!resumeId) {
+      const user = await getUserById(session.userId);
+      resumeId = user.activeResumeId;
     }
+    const resume = await getResumeById(resumeId);
+    prompt = buildResumeQuestionPrompt(resume?.parsedData, history, nextTurnCount);
+  } else if (session.moduleType === 'WEBSITE') {
+    prompt = buildWebsiteTeachPrompt("", "", history, true);
+  } else {
+    prompt = buildHRQuestionPrompt("Professional Background", history);
+  }
 
-    // 3. Stream the response
-    await pushStateUpdate(connectionId, sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.AI_SPEAKING, session.turnCount + 1, "...");
-    
-    await streamAIResponse(connectionId, sessionId, session, session.moduleType, prompt);
+  // 5. Push state and stream response
+  await pushStateUpdate(connectionId, sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.AI_SPEAKING, nextTurnCount, "...");
 
-    return { statusCode: 200 };
+  await streamAIResponse(connectionId, sessionId, session, session.moduleType, prompt);
+
+  return { statusCode: 200 };
 }
 
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/network/dio_client.dart';
 import '../../../core/network/websocket_client.dart';
 import '../../../core/constants/api_constants.dart';
@@ -63,12 +64,19 @@ class InterviewProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // Get voice from settings
+      final prefs = await SharedPreferences.getInstance();
+      final voiceId = prefs.getString('selected_voice') ?? 'Tiffany';
+      final engine = prefs.getString('selected_engine') ?? 'generative';
+
       final response = await DioClient().dio.post(
         ApiConstants.interviewInit,
         data: {
           'moduleType': type,
           if (resumeId != null) 'resumeId': resumeId,
           if (websiteUrl != null) 'websiteUrl': websiteUrl,
+          'voiceId': voiceId,
+          'engine': engine,
         },
       );
 
@@ -139,10 +147,10 @@ class InterviewProvider extends ChangeNotifier {
         }
         break;
 
-
       case 'session_state_update':
-        questionText = payload['questionText'] ?? questionText;
-        if (payload['questionText'] != null) {
+        final newQuestion = payload['questionText'];
+        if (newQuestion != null && newQuestion != "...") {
+          questionText = newQuestion;
           transcript.add(TranscriptEntry(
             role: 'ai',
             text: questionText,
@@ -197,8 +205,8 @@ class InterviewProvider extends ChangeNotifier {
     // Triggered when TTS finishes. Move to listening state if session is active and all chunks arrived.
     if (!isSessionEnded && currentPhase == InterviewPhase.speaking && _isLastAudioChunkReceived) {
       currentPhase = InterviewPhase.listening;
-      // When AI finishes speaking, clear the subtitle and show only the question
-      subtitleText = "";
+      // DON'T clear subtitleText — keep the final question visible
+      // subtitleText = "";
       isStreamingText = false;
       notifyListeners();
       _startListening();

@@ -130,31 +130,36 @@ async function* synthesizeToBase64Chunks(text, options = {}) {
  * - Uses amazon:effect for breath sounds where supported
  */
 function buildEnhancedSSML(text) {
-  // Don't double-wrap if already SSML
+  // If already wrapped in <speak>, return as-is
   if (text.trim().startsWith('<speak>')) return text;
 
-  // Remove any existing <speak> or </speak> tags from nested wrapping
+  // Remove any existing <speak> or </speak> fragments to avoid nesting
   let cleanText = text.replace(/<\/?speak>/g, '').trim();
 
-  // Add a breath pause before sentences that start with conjunctions
-  // (natural human hesitation)
+  // Escape XML special characters so they don't break SSML parsing
+  cleanText = cleanText
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+  // Add micro-pauses after punctuation for natural rhythm
+  cleanText = cleanText
+    .replace(/:\s+/g, '<break time="200ms"/> ')
+    .replace(/;\s+/g, '<break time="150ms"/> ')
+    .replace(/,\s+/g, '<break time="100ms"/> ');
+
+  // Add slightly longer pause before question marks
+  cleanText = cleanText.replace(/\?\s*/g, '<break time="200ms"/>? ');
+
+  // Add breath pause before conjunctions at sentence start
   cleanText = cleanText.replace(
-    /(^|\.\s+)(And|But|So|Now|Well|OK|Okay|Right|Actually|However|Therefore|Meanwhile)/g,
-    '$1<break time="200ms"/>$2'
+    /(^|\.\s+)(And|But|So|Now|Well|OK|Okay|Right|Actually|However|Therefore|Meanwhile)\b/g,
+    '$1<break time="300ms"/> $2'
   );
 
-  // Add micro-pause after colons (before explanations)
-  cleanText = cleanText.replace(/:/g, ':<break time="150ms"/>');
-
-  // Add slight pause before question marks for natural intonation
-  cleanText = cleanText.replace(/\?/g, '?<break time="300ms"/>');
-
-  // Wrap the whole thing with a moderate prosody to sound natural
-  const ssml = `<speak>
-    <prosody rate="medium" pitch="+0%" volume="+0dB">
-      ${cleanText}
-    </prosody>
-  </speak>`;
+  // Wrap with moderate prosody for natural speech
+  const ssml = `<speak><prosody rate="95%" pitch="+0%">${cleanText}</prosody></speak>`;
 
   return ssml;
 }
