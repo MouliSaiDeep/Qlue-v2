@@ -8,8 +8,10 @@ const { postToConnection } = require('../../lib/websocket');
 exports.handler = async (event) => {
   const connectionId = event.requestContext.connectionId;
   const token = event.queryStringParameters?.token;
+  console.info(`[Connect] New connection attempt. ID: ${connectionId}, QueryParams:`, JSON.stringify(event.queryStringParameters));
 
   if (!token) {
+    console.error(`[Connect] Missing authentication token for connectionId: ${connectionId}`);
     return { statusCode: 401, body: 'Missing authentication token' };
   }
 

@@ -13,6 +13,7 @@ class AuthProvider extends ChangeNotifier {
   String _email = "";
   String _profession = "";
   List<String> _skills = [];
+  String _voiceId = "Tiffany";
 
   bool _isBypassAuthenticated = false;
 
@@ -24,6 +25,7 @@ class AuthProvider extends ChangeNotifier {
   String get email => _email.isNotEmpty ? _email : (_currentUser?.email ?? "");
   String get profession => _profession;
   List<String> get skills => _skills;
+  String get voiceId => _voiceId;
 
   void setBypassAuthenticated() {
     _isBypassAuthenticated = true;
@@ -167,13 +169,14 @@ class AuthProvider extends ChangeNotifier {
       _email = data['email'] ?? "";
       _profession = data['profession'] ?? "";
       _skills = List<String>.from(data['skills'] ?? []);
+      _voiceId = data['voiceId'] ?? "Tiffany";
       notifyListeners();
     } catch (e) {
       debugPrint("Fetch Profile Error: $e");
     }
   }
 
-  Future<void> updateUserProfile({String? name, String? imageUrl, String? profession, List<String>? skills}) async {
+  Future<void> updateUserProfile({String? name, String? imageUrl, String? profession, List<String>? skills, String? voiceId}) async {
     if (_currentUser == null) return;
     try {
       // 1. Update Firebase if needed
@@ -188,12 +191,14 @@ class AuthProvider extends ChangeNotifier {
           if (imageUrl != null) 'photoUrl': imageUrl,
           if (profession != null) 'profession': profession,
           if (skills != null) 'skills': skills,
+          if (voiceId != null) 'voiceId': voiceId,
         },
       );
 
       // 3. Local state update
       if (profession != null) _profession = profession;
       if (skills != null) _skills = List.from(skills);
+      if (voiceId != null) _voiceId = voiceId;
 
       await _currentUser!.reload();
       _currentUser = _auth.currentUser;

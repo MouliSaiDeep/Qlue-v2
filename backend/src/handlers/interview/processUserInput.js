@@ -1,7 +1,7 @@
 const { getSession, updateSessionState } = require('../../models/session');
 const { SPEAKERS, saveTranscript } = require('../../models/transcript');
 const { transitionState, INTERVIEW_STATES } = require('./controlTurnFlow');
-const { invokeModel, buildScoringPrompt } = require('../../lib/bedrock');
+const { invokeModel, buildScoringPrompt, buildWebsiteTeachPrompt, buildSelfIntroEvalPrompt } = require('../../lib/bedrock');
 const { CONCEPT_STATES, updateConceptState } = require('../../models/conceptState');
 const generateQuestion = require('./generateQuestion');
 const terminateSession = require('./terminateSession');
@@ -123,16 +123,69 @@ exports.handler = async (event) => {
             return await terminateSession.handler({ body: JSON.stringify({ sessionId, reason: 'TIME_LIMIT' }) });
         }
 
-        // --- 5. GENERATE NEXT QUESTION ---
-        const genQstnEvent = {
-            body: JSON.stringify({ sessionId, moduleType: session.moduleType, currentConceptId })
-        };
-        const genQstnRes = await generateQuestion.handler(genQstnEvent);
-        const resolvedFollowUpData = JSON.parse(genQstnRes.body);
+        // --- 5. GENERATE NEXT RESPONSE (Specialized for Tutor Mode) ---
+        let nextAIResponse = "";
+        let onlyQuestion = "";
+        
+        if (session.moduleType === 'WEBSITE') {
+            const { scrapeWebsite } = require('../../lib/scraper');
+            const { getConceptsForWebsite } = require('../../models/conceptState');
+            
+            const websiteUrl = session.itemData?.websiteUrl || "";
+            const content = await scrapeWebsite(websiteUrl);
+            const concepts = await getConceptsForWebsite(websiteUrl);
+            const targetConcept = currentConceptId || (concepts.length > 0 ? concepts[0] : "General Overview");
 
-        if (session.moduleType === 'WEBSITE' && resolvedFollowUpData.outOfConcepts) {
-            await updateSessionState(sessionId, INTERVIEW_STATES.PROCESSING_RESPONSE, INTERVIEW_STATES.PROCESSING_RESPONSE, { accumulatedScores: newAccumulated });
-            return await terminateSession.handler({ body: JSON.stringify({ sessionId, reason: 'CONCEPTS_MASTERED' }) });
+            const prompt = buildWebsiteTeachPrompt(targetConcept, content, (await getTranscriptBySession(sessionId)).map(t => ({
+                role: t.speaker === 'USER' ? 'user' : 'assistant',
+                content: t.text
+            })), true);
+            
+            const bedrockResult = await invokeModel(undefined, { messages: prompt });
+            if (bedrockResult.content?.[0]?.text) {
+                try {
+                    const parsed = JSON.parse(bedrockResult.content[0].text);
+                    nextAIResponse = parsed.response;
+                    onlyQuestion = nextAIResponse;
+                    
+                    // Update concept mastery if correct
+                    if (parsed.isCorrect) {
+                        await updateConceptState(sessionId, targetConcept, CONCEPT_STATES.MASTERED, 1);
+                    }
+                } catch (e) {
+                    nextAIResponse = bedrockResult.content[0].text;
+                    onlyQuestion = nextAIResponse;
+                }
+            }
+        } else if (session.moduleType === 'INTRO') {
+            const prompt = buildSelfIntroEvalPrompt(textTranscript);
+            const bedrockResult = await invokeModel(undefined, { messages: prompt });
+            
+            if (bedrockResult.content?.[0]?.text) {
+                try {
+                    const parsed = JSON.parse(bedrockResult.content[0].text);
+                    nextAIResponse = parsed.response;
+                    onlyQuestion = nextAIResponse;
+                } catch (e) {
+                    nextAIResponse = bedrockResult.content[0].text;
+                    onlyQuestion = nextAIResponse;
+                }
+            }
+        } else {
+            // Standard Interview Flow
+            const genQstnEvent = {
+                body: JSON.stringify({ sessionId, moduleType: session.moduleType, currentConceptId })
+            };
+            const genQstnRes = await generateQuestion.handler(genQstnEvent);
+            const bodyJson = JSON.parse(genQstnRes.body);
+            const resolvedFollowUpData = bodyJson.data;
+
+            if (!bodyJson.success || !resolvedFollowUpData) {
+                throw new Error('Follow-up question generation failed');
+            }
+
+            nextAIResponse = resolvedFollowUpData.aiResponse;
+            onlyQuestion = resolvedFollowUpData.onlyQuestion || nextAIResponse;
         }
 
         await transitionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, {
@@ -143,14 +196,19 @@ exports.handler = async (event) => {
         return {
             statusCode: 200,
             body: JSON.stringify({
-                sessionId,
-                scoresGenerated: scores,
-                accumulatedScores: newAccumulated,
-                nextAIResponse: resolvedFollowUpData.aiResponse,
-                state: INTERVIEW_STATES.AI_SPEAKING,
-                message: 'Turn completed.'
+                success: true, // Ensuring standard success wrapper for sendTextHandler
+                data: {
+                    sessionId,
+                    scoresGenerated: scores,
+                    accumulatedScores: newAccumulated,
+                    nextAIResponse: nextAIResponse,
+                    onlyQuestion: onlyQuestion,
+                    state: INTERVIEW_STATES.AI_SPEAKING,
+                    message: 'Turn completed.'
+                }
             })
         };
+
     } catch (err) {
         console.error('ProcessUserInput Failed:', err);
         return { statusCode: 500, body: JSON.stringify({ error: err.message }) };

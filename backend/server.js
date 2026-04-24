@@ -26,6 +26,12 @@ const setActiveResume = require("./src/handlers/resume/setActiveResume").handler
 const validateResumeHash = require("./src/handlers/resume/validateResumeHash").handler;
 const processResumeUpload = require("./src/handlers/resume/processResumeUpload").handler;
 
+// Interview Handlers
+const initializeSession = require("./src/handlers/interview/initializeSession").handler;
+const processUserInput = require("./src/handlers/interview/processUserInput").handler;
+const generateQuestion = require("./src/handlers/interview/generateQuestion").handler;
+const terminateSession = require("./src/handlers/interview/terminateSession").handler;
+
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
@@ -96,6 +102,13 @@ app.delete("/resume/detail", lambdaToExpress(deleteResume));
 app.put("/resume/active", lambdaToExpress(setActiveResume));
 app.post("/resume/validate-hash", lambdaToExpress(validateResumeHash));
 app.post("/resume/process", lambdaToExpress(processResumeUpload));
+
+// Interview Routes
+app.use("/interview", authMiddleware);
+app.post("/interview/init", lambdaToExpress(initializeSession));
+app.post("/interview/process", lambdaToExpress(processUserInput));
+app.post("/interview/question", lambdaToExpress(generateQuestion));
+app.post("/interview/terminate", lambdaToExpress(terminateSession));
 
 // Root
 app.get("/", (req, res) => {

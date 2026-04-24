@@ -128,7 +128,14 @@ GoRouter buildAppRouter(AuthProvider authProvider) {
         path: '/interview/session/:sessionId',
         builder: (context, state) {
           final sessionId = state.pathParameters['sessionId']!;
-          return InterviewSessionScreen(interviewId: sessionId);
+          final resumeId = state.uri.queryParameters['resumeId'];
+          final websiteUrl = state.uri.queryParameters['websiteUrl'];
+          
+          return InterviewSessionScreen(
+            interviewId: sessionId,
+            resumeId: resumeId,
+            websiteUrl: websiteUrl,
+          );
         },
       ),
       GoRoute(

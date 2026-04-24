@@ -6,7 +6,9 @@ const { success, unauthorized, badRequest, notFound, internalError } = require('
  */
 exports.handler = async (event) => {
     try {
-        const userId = event.requestContext?.authorizer?.uid || event.requestContext?.authorizer?.claims?.sub;
+        const authorizer = event.requestContext?.authorizer;
+        const userId = authorizer?.uid || authorizer?.principalId || authorizer?.claims?.sub;
+
         if (!userId) {
             return unauthorized('Missing user context');
         }

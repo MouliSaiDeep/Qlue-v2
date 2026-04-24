@@ -32,14 +32,20 @@ class DioClient {
         onError: (DioException e, handler) async {
           if (e.response?.statusCode == 401) {
             final user = FirebaseAuth.instance.currentUser;
-            if (user != null) {
-              // Force refresh the token
-              final token = await user.getIdToken(true);
-              e.requestOptions.headers['Authorization'] = 'Bearer $token';
-              
-              // Retry the request
-              final response = await _dio.fetch(e.requestOptions);
-              return handler.resolve(response);
+            if (user != null && e.requestOptions.headers['_retry'] != true) {
+              e.requestOptions.headers['_retry'] = true;
+              try {
+                // Force refresh the token
+                final token = await user.getIdToken(true);
+                e.requestOptions.headers['Authorization'] = 'Bearer $token';
+                
+                // Retry the request using a temporary Dio to avoid infinite interceptor loops
+                final retryDio = Dio(BaseOptions(baseUrl: ApiConstants.baseUrl));
+                final response = await retryDio.fetch(e.requestOptions);
+                return handler.resolve(response);
+              } catch (retryError) {
+                return handler.next(e);
+              }
             }
           }
           return handler.next(e);

@@ -56,20 +56,23 @@ class WebSocketClient {
     _status = WebSocketStatus.disconnected;
     _stopHeartbeat();
     
-    if (_lastUrl != null) {
-      final delay = math.min(
-        math.pow(2, _reconnectAttempts) * 1000,
-        AppConstants.maxWebsocketReconnectDelay.inMilliseconds.toDouble(),
-      ).toInt();
-      
-      _reconnectAttempts++;
-      Timer(Duration(milliseconds: delay), () {
-        if (_status == WebSocketStatus.disconnected && _lastUrl != null) {
-          final uri = Uri.parse(_lastUrl!);
-          connect(uri.origin + uri.path, uri.queryParameters['token'] ?? '');
-        }
-      });
+    // Stop after 5 attempts to prevent infinite loops
+    if (_reconnectAttempts >= 5 || _lastUrl == null) {
+      return;
     }
+
+    final delay = math.min(
+      math.pow(2, _reconnectAttempts) * 1000,
+      AppConstants.maxWebsocketReconnectDelay.inMilliseconds.toDouble(),
+    ).toInt();
+    
+    _reconnectAttempts++;
+    Timer(Duration(milliseconds: delay), () {
+      if (_status == WebSocketStatus.disconnected && _lastUrl != null) {
+        final uri = Uri.parse(_lastUrl!);
+        connect(uri.origin + uri.path, uri.queryParameters['token'] ?? '');
+      }
+    });
   }
 
   void send(String type, Map<String, dynamic> payload) {

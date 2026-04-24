@@ -9,6 +9,9 @@ import '../../components/glass_card.dart';
 import '../../components/avatar.dart';
 import '../../components/spectral_background.dart';
 import '../../context/auth_provider.dart';
+import '../../core/network/dio_client.dart';
+import '../../core/notifications.dart';
+import '../../core/constants/api_constants.dart';
 
 class AIModulesScreen extends StatefulWidget {
   const AIModulesScreen({super.key});
@@ -22,6 +25,7 @@ class _AIModulesScreenState extends State<AIModulesScreen>
   late TabController _tabController;
   ResumeModel? _selectedResume;
   final TextEditingController _urlController = TextEditingController();
+  bool _isValidatingUrl = false;
 
   @override
   void initState() {
@@ -368,6 +372,19 @@ class _AIModulesScreenState extends State<AIModulesScreen>
           "Resume",
           "assets/images/Resume.png",
           onFeatureTap: _showResumePopup,
+          onStartTap: () {
+            final resumes = context.read<ResumeProvider>().resumes;
+            if (resumes.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Please upload a resume first")),
+              );
+              context.push('/resume/upload');
+            } else if (_selectedResume == null) {
+              _showResumePopup();
+            } else {
+              context.push('/interview/session/new?resumeId=${_selectedResume!.resumeId}');
+            }
+          },
         ),
         const SizedBox(height: 24),
         _buildModuleCard(
@@ -377,6 +394,7 @@ class _AIModulesScreenState extends State<AIModulesScreen>
           "Analyze your culture fit.",
           "HR",
           "assets/images/hr.png",
+          onStartTap: () => context.push('/interview/session/new?type=HR'),
         ),
       ],
     );
@@ -413,6 +431,43 @@ class _AIModulesScreenState extends State<AIModulesScreen>
               ),
             ),
           ),
+          onFeatureTap: () {}, // Handled by text field
+          isLoading: _isValidatingUrl,
+          onStartTap: _isValidatingUrl ? null : () async {
+            final url = _urlController.text.trim();
+            if (url.isEmpty) {
+              Notify.error(context, "Please enter a website URL first");
+              return;
+            }
+
+            final uri = Uri.tryParse(url);
+            if (uri == null || !uri.hasAbsolutePath) {
+              Notify.error(context, "Invalid URL format.");
+              return;
+            }
+
+            setState(() => _isValidatingUrl = true);
+            try {
+              final response = await context.read<DioClient>().dio.post(
+                ApiConstants.websiteValidate,
+                data: {'websiteUrl': url},
+              );
+
+              if (response.data['isEducational'] == true) {
+                if (mounted) {
+                  context.push('/interview/session/new?websiteUrl=${Uri.encodeComponent(url)}');
+                }
+              } else {
+                if (mounted) {
+                  Notify.error(context, response.data['reason'] ?? "This website does not contain educational content.");
+                }
+              }
+            } catch (e) {
+              if (mounted) Notify.error(context, "Network error during URL validation.");
+            } finally {
+              if (mounted) setState(() => _isValidatingUrl = false);
+            }
+          },
         ),
         const SizedBox(height: 24),
         _buildModuleCard(
@@ -422,6 +477,7 @@ class _AIModulesScreenState extends State<AIModulesScreen>
           "Evaluate clarity and delivery.",
           "Intro",
           "assets/images/SelfIntro.png",
+          onStartTap: () => context.push('/interview/session/new?type=INTRO'),
         ),
       ],
     );
@@ -435,7 +491,9 @@ class _AIModulesScreenState extends State<AIModulesScreen>
     String tag,
     String imagePath, {
     VoidCallback? onFeatureTap,
+    VoidCallback? onStartTap,
     Widget? featureWidget,
+    bool isLoading = false,
   }) {
     Color glowColor;
     switch (tag.toLowerCase()) {
@@ -559,7 +617,7 @@ class _AIModulesScreenState extends State<AIModulesScreen>
 
                   // METALLIC START BUTTON
                   GestureDetector(
-                    onTap: () => context.push('/interview/session/mock-id'),
+                    onTap: onStartTap,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 28,
@@ -580,14 +638,23 @@ class _AIModulesScreenState extends State<AIModulesScreen>
                           ),
                         ],
                       ),
-                      child: const Text(
-                        "Start Practice",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                        ),
-                      ),
+                      child: isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              "Start Practice",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                            ),
                     ),
                   ),
                 ],

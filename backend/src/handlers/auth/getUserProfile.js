@@ -6,7 +6,9 @@ const { getUserById } = require('../../models/user');
 exports.handler = async (event) => {
     try {
         // userId sourced from the Lambda Authorizer context (validateToken.js)
-        const userId = event.requestContext?.authorizer?.uid || event.requestContext?.authorizer?.claims?.sub;
+        const authorizer = event.requestContext?.authorizer;
+        const userId = authorizer?.uid || authorizer?.principalId || authorizer?.claims?.sub;
+
 
         if (!userId) {
             return {

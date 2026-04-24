@@ -141,7 +141,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  String voiceModel = "Tiffany";
   bool notifs = true;
   bool voice = true;
 
@@ -312,6 +311,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _showVoiceSelectionSheet() {
     final t = AppThemeColors.of(context);
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     final voices = [
       {'name': 'Tiffany', 'desc': 'Warm & Professional'},
       {'name': 'Matthew', 'desc': 'Clear & Authoritative'},
@@ -332,12 +332,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Text('Select Voice Model', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: t.text)),
               const SizedBox(height: 20),
               ...voices.map((v) {
-                final isSelected = voiceModel == v['name'];
+                final isSelected = auth.voiceId == v['name'];
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12.0),
                   child: GestureDetector(
                     onTap: () {
-                      setState(() => voiceModel = v['name']!);
+                      auth.updateUserProfile(voiceId: v['name']!);
                       setModalState(() {});
                     },
                     child: GlassCard(
@@ -907,7 +907,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         label: "Voice Model",
                         iconColor: t.primary,
                         iconBg: t.primary.withValues(alpha: 0.1),
-                        right: Text(voiceModel, style: TextStyle(fontSize: 13, color: t.textSecondary)),
+                        right: Text(auth.voiceId, style: TextStyle(fontSize: 13, color: t.textSecondary)),
                         onPress: _showVoiceSelectionSheet,
                       ),
                     ],

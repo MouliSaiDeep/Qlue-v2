@@ -1,6 +1,6 @@
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, PutCommand, QueryCommand } = require("@aws-sdk/lib-dynamodb");
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -17,7 +17,7 @@ const SPEAKERS = {
  */
 async function saveTranscript(sessionId, turnIndex, speaker, text) {
     const transcript = {
-        transcriptId: uuidv4(),
+        transcriptId: randomUUID(),
         sessionId,
         turnIndex,
         speaker,

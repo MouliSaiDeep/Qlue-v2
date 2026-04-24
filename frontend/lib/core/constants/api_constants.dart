@@ -24,6 +24,7 @@ class ApiConstants {
   static const String resumeUpdate = '/resume/detail';  // PUT with query param
   
   static const String scraperFetch = '/scraper/fetch';
+  static const String websiteValidate = '/website/validate';
   
   static const String feedbackReport = '/feedback/report';
   static const String sessionHistory = '/session/history';

@@ -7,7 +7,9 @@ const USERS_TABLE = process.env.USERS_TABLE || 'qlue-users';
  */
 exports.handler = async (event) => {
     try {
-        const userId = event.requestContext?.authorizer?.uid || event.requestContext?.authorizer?.claims?.sub;
+        const authorizer = event.requestContext?.authorizer;
+        const userId = authorizer?.uid || authorizer?.principalId || authorizer?.claims?.sub;
+
         if (!userId) {
             return {
                 statusCode: 401,

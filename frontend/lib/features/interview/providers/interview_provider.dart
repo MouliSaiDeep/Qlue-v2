@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/network/dio_client.dart';
 import '../../../core/network/websocket_client.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../shared/services/stt_service.dart';
+import '../../../shared/services/tts_service.dart';
+
 
 enum InterviewPhase { ready, speaking, listening, processing }
 
@@ -36,7 +39,9 @@ class InterviewProvider extends ChangeNotifier {
   Timer? _silenceTimer;
 
   final SttService _sttService = SttService();
+  final TtsService _ttsService = TtsService();
   final WebSocketClient _wsClient = WebSocketClient();
+
 
   Future<void> initSession(String type, {String? resumeId, String? websiteUrl}) async {
     isConnecting = true;
@@ -50,19 +55,23 @@ class InterviewProvider extends ChangeNotifier {
       final response = await DioClient().dio.post(
         ApiConstants.interviewInit,
         data: {
-          'type': type,
+          'moduleType': type,
           if (resumeId != null) 'resumeId': resumeId,
           if (websiteUrl != null) 'websiteUrl': websiteUrl,
         },
       );
 
       sessionId = response.data['sessionId'];
-      final wsUrl = response.data['wsUrl'];
-      final token = response.data['token'];
+      // Use the wsUrl from the backend; fallback to .env WEBSOCKET_URL
+      final wsUrl = response.data['wsUrl'] ?? ApiConstants.websocketUrl;
+
+      // Get the real Firebase ID token for WebSocket authentication
+      final firebaseUser = FirebaseAuth.instance.currentUser;
+      final token = await firebaseUser?.getIdToken() ?? '';
 
       await _connectWebSocket(wsUrl, token);
     } catch (e) {
-      errorMessage = "Failed to initialize session.";
+      errorMessage = "Failed to initialize session: ${e.toString()}";
       isConnecting = false;
       notifyListeners();
     }
@@ -71,8 +80,10 @@ class InterviewProvider extends ChangeNotifier {
   Future<void> _connectWebSocket(String url, String token) async {
     await _wsClient.connect(url, token);
     _wsClient.onMessage.listen(_handleIncomingMessage);
+    _ttsService.onPlaybackComplete = onAudioPlaybackComplete;
     startInterview();
   }
+
 
   void startInterview() {
     _wsClient.send('session_init', {
@@ -89,13 +100,11 @@ class InterviewProvider extends ChangeNotifier {
 
     switch (type) {
       case 'tts_audio_chunk':
-        final audioData = List<int>.from(payload['data']);
-        _audioChunkQueue.add(audioData);
-        if (payload['isLast'] == true) {
-          currentPhase = InterviewPhase.speaking;
-          notifyListeners();
-        }
+        final base64Data = payload['audioData'] ?? '';
+        final isLast = payload['isLast'] == true;
+        _ttsService.playBase64Chunk(base64Data, isLast);
         break;
+
 
       case 'session_state_update':
         questionText = payload['questionText'] ?? questionText;
@@ -127,18 +136,18 @@ class InterviewProvider extends ChangeNotifier {
 
   void _updatePhaseFromState(String state) {
     switch (state) {
-      case 'AISPEAKING':
+      case 'AI_SPEAKING':
         currentPhase = InterviewPhase.speaking;
         break;
-      case 'USERRESPONDING':
+      case 'USER_RESPONDING':
         currentPhase = InterviewPhase.listening;
         _startListening();
         break;
-      case 'PROCESSINGRESPONSE':
+      case 'PROCESSING_RESPONSE':
         currentPhase = InterviewPhase.processing;
         _stopListening();
         break;
-      case 'SILENCEDETECTED':
+      case 'SILENCE_DETECTED':
         _silenceStrikes++;
         if (_silenceStrikes >= AppConstants.maxSilenceStrikes) {
           isSessionEnded = true;
@@ -167,7 +176,10 @@ class InterviewProvider extends ChangeNotifier {
       text: text,
       timestamp: DateTime.now(),
     ));
-    _wsClient.send('text_transcript', {'text': text});
+    _wsClient.send('text_transcript', {
+      'sessionId': sessionId,
+      'text': text,
+    });
     notifyListeners();
   }
 
@@ -178,7 +190,9 @@ class InterviewProvider extends ChangeNotifier {
   }
 
   Future<void> endSession() async {
-    _wsClient.send('terminate_session', {});
+    _wsClient.send('terminate_session', {
+      'sessionId': sessionId,
+    });
     try {
       await DioClient().dio.post(ApiConstants.interviewTerminate, data: {'sessionId': sessionId});
     } catch (e) {}

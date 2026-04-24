@@ -4,7 +4,7 @@ const { DynamoDBDocumentClient, PutCommand, UpdateCommand, GetCommand, QueryComm
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
 
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE_NAME || "Sessions";
+const SESSIONS_TABLE = process.env.SESSIONS_TABLE || "Sessions";
 
 const INTERVIEW_STATES = {
     INITIALIZING: "INITIALIZING",
@@ -21,11 +21,13 @@ const INTERVIEW_STATES = {
 /**
  * Creates a new interview session in DynamoDB.
  */
-async function createSession(sessionId, userId, moduleType) {
+async function createSession(sessionId, userId, moduleType, itemData = {}) {
     const session = {
         sessionId,
         userId,
         moduleType,
+        itemData, // [Mouli Week 4: Context Injection] Store resumeId/websiteUrl context
+        voiceId: itemData.voiceId || 'Tiffany',
         currentState: INTERVIEW_STATES.INITIALIZING,
         turnCount: 0,
         startTime: new Date().toISOString(),

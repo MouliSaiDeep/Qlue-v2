@@ -532,7 +532,7 @@ class ResumeDetailScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16),
                       onTap: () {
                         Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const InterviewSessionScreen()),
+                          MaterialPageRoute(builder: (_) => InterviewSessionScreen(resumeId: resumeId)),
                         );
                       },
                       child: SizedBox(

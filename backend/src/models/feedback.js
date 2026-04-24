@@ -2,7 +2,7 @@
  * Model for managing Feedback records in DynamoDB.
  */
 const ddb = require('../lib/dynamodb');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
 const TABLE_NAME = process.env.FEEDBACK_TABLE || 'Feedback';
 
@@ -10,7 +10,7 @@ const TABLE_NAME = process.env.FEEDBACK_TABLE || 'Feedback';
  * Creates and stores a new feedback report.
  */
 async function createFeedbackReport(data) {
-  const feedbackId = uuidv4();
+  const feedbackId = randomUUID();
   const item = {
     feedbackId,
     ...data,

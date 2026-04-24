@@ -7,7 +7,9 @@ const { saveUser, getUserById } = require('../../models/user');
  */
 exports.handler = async (event) => {
     try {
-        const uid = event.requestContext?.authorizer?.uid;
+        const authorizer = event.requestContext?.authorizer;
+        const uid = authorizer?.uid || authorizer?.principalId || authorizer?.claims?.sub;
+
         
         if (!uid) {
             return {
