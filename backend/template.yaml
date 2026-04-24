@@ -7,7 +7,8 @@ Globals:
     Runtime: nodejs20.x
     Layers:
       - !Ref QlueSharedLayer
-      - !Ref DependencyLayer
+      - !Ref AppDependenciesLayer
+
     Environment:
       Variables:
         USERS_TABLE: !Ref UsersTable
@@ -91,10 +92,20 @@ Resources:
           AttributeType: N
         - AttributeName: status
           AttributeType: S
+        - AttributeName: activeMarker
+          AttributeType: S
       KeySchema:
         - AttributeName: sessionId
           KeyType: HASH
       GlobalSecondaryIndexes:
+        - IndexName: UserActiveIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: activeMarker
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
         - IndexName: GSI_UserIdStartedAt
           KeySchema:
             - AttributeName: userId
@@ -451,7 +462,7 @@ Resources:
         - nodejs20.x
       RetentionPolicy: Retain
 
-  DependencyLayer:
+  AppDependenciesLayer:
     Type: AWS::Serverless::LayerVersion
     Metadata:
       BuildMethod: nodejs20.x
@@ -460,6 +471,8 @@ Resources:
       CompatibleRuntimes:
         - nodejs20.x
       RetentionPolicy: Retain
+
+
 
   # ==============================================================================
   # SNS TOPICS
@@ -749,7 +762,9 @@ Resources:
             BucketName: !Ref ResumesBucket
         - AmazonTextractFullAccess
         - AmazonBedrockFullAccess
+        - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
         - Statement:
+
             - Effect: Allow
               Action: lambda:InvokeFunction
               Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${AWS::StackName}-ProcessResumeUploadFunction-*"
@@ -831,8 +846,11 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ResumesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
         - S3CrudPolicy:
             BucketName: !Ref ResumesBucket
+
 
   SetActiveResumeFunction:
     Type: AWS::Serverless::Function
@@ -890,13 +908,17 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
         - DynamoDBCrudPolicy: { TableName: !Ref ConceptStatesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
-        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'], Resource: '*' }]
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
+        - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
+
 
   ProcessUserInputFunction:
     Type: AWS::Serverless::Function
@@ -913,13 +935,17 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
         - DynamoDBCrudPolicy: { TableName: !Ref ConceptStatesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
-        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'], Resource: '*' }]
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
+        - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
+
 
   GenerateQuestionFunction:
     Type: AWS::Serverless::Function
@@ -936,13 +962,17 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
         - DynamoDBCrudPolicy: { TableName: !Ref ConceptStatesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
-        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'], Resource: '*' }]
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
+        - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
+
 
   ManageContextWindowFunction:
     Type: AWS::Serverless::Function
@@ -959,13 +989,17 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
         - DynamoDBCrudPolicy: { TableName: !Ref ConceptStatesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
-        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'], Resource: '*' }]
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
+        - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
+
 
   ControlTurnFlowFunction:
     Type: AWS::Serverless::Function
@@ -982,13 +1016,17 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
         - DynamoDBCrudPolicy: { TableName: !Ref ConceptStatesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
-        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'], Resource: '*' }]
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
+        - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
+
 
   TerminateSessionFunction:
     Type: AWS::Serverless::Function
@@ -1005,14 +1043,18 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
         - DynamoDBCrudPolicy: { TableName: !Ref ConceptStatesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
-        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'], Resource: '*' }]
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
+        - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
         - SNSPublishMessagePolicy: { TopicName: !GetAtt FeedbackTriggerTopic.TopicName }
+
 
   # ========= WEBSOCKET =========
   ConnectHandlerFunction:
@@ -1024,7 +1066,9 @@ Resources:
       Timeout: 10
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTable }
+        - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
         - Statement: [{ Effect: Allow, Action: ['execute-api:ManageConnections'], Resource: '*' }]
+
 
   DisconnectHandlerFunction:
     Type: AWS::Serverless::Function
@@ -1032,7 +1076,7 @@ Resources:
       Handler: handlers/websocket/disconnectHandler.handler
       CodeUri: src/
       MemorySize: 256
-      Timeout: 10
+      Timeout: 30
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTable }
         - Statement: [{ Effect: Allow, Action: ['execute-api:ManageConnections'], Resource: '*' }]
@@ -1043,10 +1087,22 @@ Resources:
       Handler: handlers/websocket/sendTextHandler.handler
       CodeUri: src/
       MemorySize: 512
-      Timeout: 30
+      Timeout: 120
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref ConceptStatesTable }
         - Statement: [{ Effect: Allow, Action: ['execute-api:ManageConnections'], Resource: '*' }]
+        - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
+        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'], Resource: '*' }]
+        - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
+        - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
+        - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
+
+
 
   StateUpdateHandlerFunction:
     Type: AWS::Serverless::Function
@@ -1084,6 +1140,7 @@ Resources:
           Properties:
             Topic: !Ref FeedbackTriggerTopic
       Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
@@ -1109,6 +1166,7 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
@@ -1134,6 +1192,7 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
@@ -1159,6 +1218,7 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
@@ -1184,6 +1244,7 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
@@ -1209,6 +1270,7 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }

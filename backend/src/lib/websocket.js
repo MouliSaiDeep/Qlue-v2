@@ -2,6 +2,7 @@
  * WebSocket API Gateway helpers and connection managers.
  */
 const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
+const { NodeHttpHandler } = require('@smithy/node-http-handler');
 const ddb = require('./dynamodb');
 
 const WS_CONNECTIONS_TABLE = process.env.WS_CONNECTIONS_TABLE;
@@ -15,7 +16,11 @@ function getApiClient(endpoint) {
     const httpsEndpoint = endpoint.replace('wss://', 'https://');
     apigwClients.set(endpoint, new ApiGatewayManagementApiClient({
       endpoint: httpsEndpoint,
-      region: process.env.AWS_REGION || 'us-east-1'
+      region: process.env.AWS_REGION || 'us-east-1',
+      requestHandler: new NodeHttpHandler({
+        connectionTimeout: 5000,
+        requestTimeout: 15000
+      })
     }));
   }
   return apigwClients.get(endpoint);

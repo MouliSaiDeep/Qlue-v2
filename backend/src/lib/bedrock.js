@@ -1,12 +1,17 @@
 /**
  * Amazon Bedrock Client Wrapper specifically tuned for Qlue's Nemotron-4-340b-instruct pipeline.
  */
-const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
+const { BedrockRuntimeClient, InvokeModelCommand, InvokeModelWithResponseStreamCommand } = require('@aws-sdk/client-bedrock-runtime');
+const { NodeHttpHandler } = require('@smithy/node-http-handler');
 const { getBedrockConfig } = require('./secrets');
 const { ERROR_CODES, QlueError } = require('./errors');
 
 const bedrockClient = new BedrockRuntimeClient({ 
-  region: process.env.AWS_REGION || 'us-east-1'
+  region: process.env.AWS_REGION || 'us-east-1',
+  requestHandler: new NodeHttpHandler({
+    connectionTimeout: 5000,
+    requestTimeout: 15000
+  })
 });
 
 // The required Model ID
@@ -62,6 +67,46 @@ async function invokeModel(modelId = DEFAULT_MODEL_ID, body, options = {}) {
 }
 
 /**
+ * Executes a Model Invocation with Streaming Output for low latency
+ * @param {string} modelId 
+ * @param {object} body 
+ * @param {function} onToken Callback for each received token
+ */
+async function invokeModelStream(modelId = DEFAULT_MODEL_ID, body, onToken) {
+    const command = new InvokeModelWithResponseStreamCommand({
+        body: JSON.stringify(body),
+        modelId,
+        contentType: 'application/json',
+        accept: 'application/json'
+    });
+
+    try {
+        const response = await bedrockClient.send(command);
+        let fullText = "";
+
+        for await (const event of response.body) {
+            const chunk = JSON.parse(new TextDecoder().decode(event.chunk.bytes));
+            
+            // Nemotron / OpenAI format
+            if (chunk.choices && chunk.choices[0].delta?.content) {
+                const token = chunk.choices[0].delta.content;
+                fullText += token;
+                if (onToken) onToken(token);
+            } else if (chunk.choices && chunk.choices[0].text) {
+                const token = chunk.choices[0].text;
+                fullText += token;
+                if (onToken) onToken(token);
+            }
+        }
+        return fullText;
+    } catch (error) {
+        console.error('Bedrock Streaming Error:', error);
+        throw new QlueError('Bedrock Streaming Error', ERROR_CODES.BEDROCK_ERROR, 500, error.message);
+    }
+}
+
+
+/**
  * Builds the system prompt for Resume technical questions
  */
 function buildResumeQuestionPrompt(parsedData, conversationHistory, turnIndex) {
@@ -71,7 +116,7 @@ function buildResumeQuestionPrompt(parsedData, conversationHistory, turnIndex) {
       content: `You are an expert technical interviewer. You are conducting an interview based on the following candidate resume parsing:
 ${JSON.stringify(parsedData)}
 Your goal is to ask a targeted, challenging technical question about their experience. Keep your question concise.
-Format your output strictly as a JSON object: {"question": "Your question text here"}`
+Return ONLY the question text, no JSON or extra formatting. Your response will be spoken directly to the user.`
     },
     ...conversationHistory
   ];
@@ -86,7 +131,7 @@ function buildHRQuestionPrompt(topic, conversationHistory) {
       role: 'system',
       content: `You are an HR recruiter. We are discussing the topic: ${topic}.
 Please ask a behavioral question using the STAR (Situation, Task, Action, Result) framework. Keep it concise.
-Format your output strictly as a JSON object: {"question": "Your question text here"}`
+Return ONLY the question text, no JSON or extra formatting. Your response will be spoken directly to the user.`
     },
     ...conversationHistory
   ];
@@ -95,19 +140,26 @@ Format your output strictly as a JSON object: {"question": "Your question text h
 /**
  * Builds the system prompt for Website conceptual teaching
  */
-function buildWebsiteTeachPrompt(concept, content, conceptState) {
-  return [
-    {
-      role: 'system',
-      content: `You are an expert tutor teaching the user about the website content provided below.
+function buildWebsiteTeachPrompt(concept, content, conversationHistory, isAnswering = false) {
+  const systemPrompt = isAnswering
+    ? `You are an expert mentor helping the user understand the website content provided below.
 Content: ${content}
-
 Currently, you are explaining the concept: "${concept}".
-The current state of understanding is: ${JSON.stringify(conceptState)}
 
-Provide an explanation or ask a checking question to verify the user understands.
-Format your output strictly as a JSON object: {"response": "Your tutor response", "conceptMastered": boolean}`
-    }
+The user has just answered your question.
+1. Evaluate the user's answer.
+2. If CORRECT: Give a warm compliment and proceed to ask the next logical question or explain the next nuance of ${concept}.
+3. If WRONG: Explain the concept correctly in simple words (2-3 lines max) and ask: "Did you understand?". Be supportive and behave like a mentor.
+Format your output strictly as a JSON object: {"response": "Your mentor response", "isCorrect": boolean}`
+    : `You are an expert mentor teaching the user about the website content provided below.
+Content: ${content}
+Goal: Teach the concept: "${concept}".
+Ask an initial question or provide a brief overview to start the conversation about "${concept}".
+Return ONLY the response text, no JSON or extra formatting. Your response will be spoken directly to the user.`;
+
+  return [
+    { role: 'system', content: systemPrompt },
+    ...conversationHistory
   ];
 }
 
@@ -115,14 +167,19 @@ Format your output strictly as a JSON object: {"response": "Your tutor response"
  * Builds the system prompt for evaluating Self-Introductions
  */
 function buildSelfIntroEvalPrompt(transcript) {
-  return {
-    prompt: `You are an expert communication coach evaluating a self-introduction.
-Please evaluate the following transcript and provide feedback on clarity, confidence, and structure.
-Transcript:
-${JSON.stringify(transcript)}
-
-Format your output strictly as JSON with keys: "feedback", "rating" (1-10)`
-  };
+  return [
+    {
+      role: 'system',
+      content: `You are an expert communication coach. The user just gave their self-introduction.
+Please evaluate their response. 
+1. Acknowledge their effort.
+2. Identify exactly what is lacking (e.g., missing achievements, lack of structure, weak opening).
+3. Provide 2-3 actionable suggestions to make it better.
+Keep the tone encouraging.
+Format your output strictly as a JSON object: {"response": "Your coaching feedback and suggestions"}`
+    },
+    { role: 'user', content: transcript }
+  ];
 }
 
 /**
@@ -173,5 +230,6 @@ module.exports = {
   buildSelfIntroEvalPrompt,
   buildScoringPrompt,
   buildFeedbackPrompt,
-  buildConceptExtractionPrompt
+  buildConceptExtractionPrompt,
+  invokeModelStream
 };
