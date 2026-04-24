@@ -110,6 +110,11 @@ class InterviewProvider extends ChangeNotifier {
           notifyListeners();
         }
         break;
+        
+      case 'session_text_stream':
+        questionText = payload['text'] ?? questionText;
+        notifyListeners();
+        break;
 
 
       case 'session_state_update':

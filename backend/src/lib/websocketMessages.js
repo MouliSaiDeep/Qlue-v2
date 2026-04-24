@@ -8,6 +8,7 @@ const MESSAGE_TYPES = {
   HEARTBEAT: 'heartbeat',
   SESSION_RESUME: 'session_resume',
   SESSION_STATE_UPDATE: 'session_state_update',
+  TTS_AUDIO_CHUNK: 'tts_audio_chunk',
   ERROR: 'error'
 };
 

@@ -11,6 +11,7 @@ const { invokeModelStream, buildResumeQuestionPrompt, buildHRQuestionPrompt, bui
 const { getResumeById } = require('../../models/resume');
 const { getUserById } = require('../../models/user');
 const { getTranscriptBySession } = require('../../models/transcript');
+const { MESSAGE_TYPES } = require('../../lib/websocketMessages');
 
 
 // Voice Mapping
@@ -97,10 +98,12 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
             try {
                 for await (const audioChunk of synthesizeToBase64Chunks(cleanSentence, { VoiceId: pollyVoice })) {
                     await postToConnection(connectionId, {
-                        type: 'audio_chunk',
-                        chunkIndex: globalAudioChunkIndex++,
-                        audioData: audioChunk.audioData,
-                        isLast: false
+                        type: MESSAGE_TYPES.TTS_AUDIO_CHUNK,
+                        payload: {
+                            chunkIndex: globalAudioChunkIndex++,
+                            audioData: audioChunk.audioData,
+                            isLast: false
+                        }
                     });
                 }
             } catch (err) {
@@ -117,8 +120,10 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
         // Notify client that AI is preparing to speak
         await postToConnection(connectionId, {
             type: 'session_text_stream',
-            text: "", 
-            status: "thinking"
+            payload: {
+                text: "", 
+                status: "thinking"
+            }
         });
 
         // LATENCY HIDING: If this is the start of the session, send an immediate intro
@@ -155,7 +160,7 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
                 textRefreshTimer = setTimeout(() => {
                     postToConnection(connectionId, {
                         type: 'session_text_stream',
-                        text: fullText
+                        payload: { text: fullText }
                     });
                     textRefreshTimer = null;
                 }, 200);
@@ -174,9 +179,11 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
         
         // FINAL SIGNAL: Send an empty chunk with isLast:true to signal completion
         await postToConnection(connectionId, {
-            type: 'audio_chunk',
-            audioData: '',
-            isLast: true
+            type: MESSAGE_TYPES.TTS_AUDIO_CHUNK,
+            payload: {
+                audioData: '',
+                isLast: true
+            }
         });
 
         console.info(`[Stream] Sequential processing complete.`);
