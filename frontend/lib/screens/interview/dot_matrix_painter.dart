@@ -27,7 +27,7 @@ class AiDotMatrixPainter extends CustomPainter {
     final dotSpacing = 13.0;
     
     // 1. ATMOSPHERIC LIGHT LEAKS
-    _drawSpectralGlow(canvas, center, maxRadius);
+    _drawSpectralGlow(canvas, center, maxRadius, baseColor, intensity);
 
     // 2. THE DOT CORE ENGINE
     final Paint dotPaint = Paint()..style = PaintingStyle.fill;
@@ -98,17 +98,24 @@ class AiDotMatrixPainter extends CustomPainter {
     }
   }
 
-  void _drawSpectralGlow(Canvas canvas, Offset center, double radius) {
-    final glowPaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-           baseColor.withOpacity(0.2 + intensity * 0.25), // was 0.1 + intensity * 0.1
-           baseColor.withOpacity(0.0),
-        ],
-        stops: const [0.4, 1.0],
-      ).createShader(Rect.fromCircle(center: center, radius: radius * 1.5));
+  void _drawSpectralGlow(Canvas canvas, Offset center, double radius, Color baseColor, double intensity) {
+    final glowRadius = radius * (1.5 + intensity * 0.5); // was 2.0 + intensity * 1.5
     
-    canvas.drawCircle(center, radius * 1.5, glowPaint..maskFilter = const MaskFilter.blur(BlurStyle.normal, 40));
+    final gradient = RadialGradient(
+      colors: [
+        baseColor.withOpacity(0.15 + intensity * 0.1), // was 0.2 + intensity * 0.25
+        baseColor.withOpacity(0.05),
+        Colors.transparent,
+      ],
+      stops: const [0.2, 0.5, 1.0],
+    );
+
+    final rect = Rect.fromCircle(center: center, radius: glowRadius);
+    final paint = Paint()
+      ..shader = gradient.createShader(rect)
+      ..blendMode = BlendMode.screen;
+
+    canvas.drawCircle(center, glowRadius, paint);
   }
 
   @override

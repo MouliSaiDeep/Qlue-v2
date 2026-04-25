@@ -44,6 +44,7 @@ class InterviewProvider extends ChangeNotifier {
 
   final List<List<int>> _audioChunkQueue = [];
   int _silenceStrikes = 0;
+  int get silenceStrikes => _silenceStrikes;
   Timer? _silenceTimer;
 
   final SttService _sttService = SttService();
@@ -54,26 +55,54 @@ class InterviewProvider extends ChangeNotifier {
   bool _isCleanedUp = false;
 
 
+  void resetForNewSession() {
+    isSessionEnded = false;
+    isConnecting = true;
+    _isCleanedUp = false;
+    _isStartingListening = false;
+    _isLastAudioChunkReceived = false;
+    sessionId = null;
+    subtitleText = "";
+    isStreamingText = false;
+    finalTranscript = "";
+    partialTranscript = "";
+    questionText = "";
+    finalQuestionText = "";
+    transcript.clear();
+    currentPhase = InterviewPhase.ready;
+    currentTurnIndex = 0;
+    _silenceStrikes = 0;
+    errorMessage = null;
+    _wsClient.disconnect();
+    notifyListeners();
+  }
+
+
   Future<void> initSession(String type, {String? resumeId, String? websiteUrl}) async {
+    // FULL RESET to prevent old session bleed
+    _cleanup();
+    _isCleanedUp = false;
+    _isStartingListening = false;
+    _isLastAudioChunkReceived = false;
+    
     isConnecting = true;
     isSessionEnded = false;
     _silenceStrikes = 0;
     errorMessage = null;
     assert(type == 'RESUME' || type == 'HR' || type == 'WEBSITE' || type == 'INTRO', 'Invalid moduleType');
     moduleType = type;
-    _isLastAudioChunkReceived = false;
+    
+    // RESET ALL TEXT
     subtitleText = "";
     isStreamingText = false;
     finalTranscript = "";
-    
-    // RESET STATE
-    questionText = "...";
-    finalQuestionText = "";
     partialTranscript = "";
+    questionText = "";
+    finalQuestionText = "";
     transcript.clear();
     currentPhase = InterviewPhase.ready;
     currentTurnIndex = 0;
-    
+
     notifyListeners();
 
     try {
@@ -351,5 +380,6 @@ class InterviewProvider extends ChangeNotifier {
     _stopListening();
     _stopSilenceTimer();
     _wsClient.disconnect();
+    sessionId = null; // ADD THIS
   }
 }

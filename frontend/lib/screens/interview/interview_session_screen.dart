@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:feather_icons/feather_icons.dart';
 import 'package:go_router/go_router.dart';
 import 'dot_matrix_painter.dart';
 import '../../core/theme.dart';
-import '../../components/glass_card.dart';
 import '../../features/interview/providers/interview_provider.dart';
 import 'package:provider/provider.dart';
 
@@ -35,32 +33,36 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
   double _time = 0;
   double _intensity = 0.0;
   
-  Offset? _tapOffset;
-  double _lastTapTime = 0;
   bool _isEnding = false;
+  bool _hasNavigated = false;
 
   @override
   void initState() {
     super.initState();
-    
-    _animationController = AnimationController(vsync: this, duration: const Duration(days: 1))
-      ..addListener(() {
+
+    // CRITICAL: Reset provider to prevent redirect from old session
+    final provider = context.read<InterviewProvider>();
+    provider.resetForNewSession();
+
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(days: 1),
+    )..addListener(() {
         if (!mounted) return;
         setState(() => _time += 0.016);
       });
     _animationController.repeat();
 
-    _intensityController = AnimationController(vsync: this, duration: const Duration(milliseconds: 500))
-      ..addListener(() {
+    _intensityController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    )..addListener(() {
         if (!mounted) return;
         setState(() => _intensity = _intensityController.value);
       });
 
-    // Initialize Real Session
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final interviewProvider = context.read<InterviewProvider>();
-      
-      // Attach listener for intensity simulation
       interviewProvider.addListener(() {
         if (mounted) {
           _simulateIntensity(interviewProvider.currentPhase);
@@ -71,7 +73,7 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
       assert(type == 'RESUME' || type == 'HR' || type == 'WEBSITE' || type == 'INTRO', 'Invalid moduleType');
 
       interviewProvider.initSession(
-        type, 
+        type,
         resumeId: widget.resumeId,
         websiteUrl: widget.websiteUrl,
       );
@@ -84,12 +86,30 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
     await provider.endSession();
   }
 
-  void _handleTap(TapDownDetails details, BoxConstraints constraints) {
-    // Calculate local position relative to the 360x360 box
-    setState(() {
-      _tapOffset = details.localPosition;
-      _lastTapTime = _time;
-    });
+
+
+  void _showEndInterviewDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text("End Interview?", style: TextStyle(color: Colors.white)),
+        content: const Text("Are you sure you want to end this session?", style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("CANCEL", style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _handleEnd(context.read<InterviewProvider>());
+            },
+            child: const Text("END SESSION", style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
   }
 
   bool _isSimulating = false;
@@ -121,345 +141,239 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
 
   @override
   Widget build(BuildContext context) {
-    final t = AppThemeColors.of(context);
+    final t = AppThemeColors.dark;
     final provider = context.watch<InterviewProvider>();
-    
     final isTutor = provider.moduleType == 'WEBSITE';
+    final isConnecting = provider.isConnecting;
+    final isAiSpeaking = provider.currentPhase == InterviewPhase.speaking;
+    final isListening = provider.currentPhase == InterviewPhase.listening;
 
-    // Auto-End Navigation
-    if (provider.isSessionEnded) {
-       WidgetsBinding.instance.addPostFrameCallback((_) {
-         if (mounted) {
-           if (isTutor) {
-             context.go('/dashboard');
-           } else {
-             context.pushReplacement('/feedback/${provider.sessionId}');
-           }
-         }
-       });
+    // AUTO-END INTERVIEW
+    if (provider.isSessionEnded && !_hasNavigated) {
+      _hasNavigated = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          if (isTutor) {
+            context.go('/dashboard');
+          } else {
+            context.pushReplacement('/feedback/${provider.sessionId}');
+          }
+        }
+      });
     }
 
-    final interviewPhase = provider.currentPhase;
-    bool isAiSpeaking = interviewPhase == InterviewPhase.speaking;
-    bool isListening = interviewPhase == InterviewPhase.listening;
-    bool isProcessing = interviewPhase == InterviewPhase.processing;
-    bool isConnecting = provider.isConnecting;
-
-    // STATE-SPECIFIC CHROMATICS
-    Color activeColor = t.emeraldPrimary; 
-    if (isListening) activeColor = Colors.orangeAccent;
-    if (isProcessing) activeColor = Colors.blueAccent;
-    if (isConnecting) activeColor = Colors.white.withValues(alpha: 0.3);
-
-    // Determine what text to show on top:
-    // - While AI is speaking: show streaming subtitle text
-    // - After AI finishes: show only the question text
-    // - While connecting: show "Connecting..."
-    String topDisplayText;
+    // Determine status text for bottom
+    String statusText = "";
     if (isConnecting) {
-      topDisplayText = "Connecting...";
-    } else if (isAiSpeaking && provider.isStreamingText && provider.subtitleText.isNotEmpty) {
-      // While AI is speaking: show streaming subtitle with typing effect
-      topDisplayText = provider.subtitleText;
-    } else if (provider.finalQuestionText.isNotEmpty) {
-      // After AI finishes: show the finalized question
-      topDisplayText = provider.finalQuestionText;
-    } else if (provider.questionText.isNotEmpty && provider.questionText != "...") {
-      topDisplayText = provider.questionText;
+      statusText = "Establishing connection...";
+    } else if (isAiSpeaking && provider.isStreamingText) {
+      statusText = "Qlue is thinking...";
+    } else if (isAiSpeaking) {
+      statusText = "Qlue is speaking...";
+    } else if (isListening) {
+      statusText = "Listening...";
+    }
+
+    // Determine AI text to show at top
+    String aiText = "";
+    if (!isConnecting) {
+      if (provider.isStreamingText && provider.subtitleText.isNotEmpty) {
+        aiText = provider.subtitleText;
+      } else if (provider.finalQuestionText.isNotEmpty) {
+        aiText = provider.finalQuestionText;
+      } else if (provider.questionText.isNotEmpty && provider.questionText != "...") {
+        aiText = provider.questionText;
+      }
+    }
+
+    // Determine user text to show at bottom
+    String userText = "";
+    if (provider.isListening && provider.partialTranscript.isNotEmpty) {
+      userText = provider.partialTranscript;
+    } else if (provider.finalTranscript.isNotEmpty) {
+      userText = provider.finalTranscript;
+    }
+
+    // Determine sphere color
+    Color sphereColor;
+    if (isConnecting) {
+      sphereColor = Colors.white;
+    } else if (isAiSpeaking) {
+      sphereColor = t.emeraldPrimary; // Blue-ish emerald when AI speaks
+    } else if (isListening) {
+      sphereColor = Colors.orangeAccent; // Orange when listening
     } else {
-      topDisplayText = "Waiting...";
+      sphereColor = Colors.white;
     }
 
-    // Determine bottom display text for user transcription
-    String bottomDisplayText = "";
-    bool showUserTranscription = false;
-    
-    if (isListening && provider.partialTranscript.isNotEmpty) {
-      bottomDisplayText = provider.partialTranscript;
-      showUserTranscription = true;
-    } else if ((isProcessing || isAiSpeaking) && provider.finalTranscript.isNotEmpty) {
-      // Keep showing last user transcript while AI is responding
-      bottomDisplayText = provider.finalTranscript;
-      showUserTranscription = true;
-    }
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // Spectral Background
+          Positioned.fill(
+            child: CustomPaint(
+              painter: AiDotMatrixPainter(
+                time: _time,
+                intensity: _intensity,
+                baseColor: sphereColor,
+                isInwards: !isAiSpeaking,
+                tapOffset: null,
+                tapTime: 0,
+              ),
+              size: Size.infinite,
+            ),
+          ),
 
-    return PopScope(
-      canPop: false, // Prevent system back navigation
-      onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        // Optionally show a dialog here, or just ignore
-      },
-      child: Scaffold(
-        backgroundColor: Colors.black, 
-        body: Stack(
-          children: [
-            // 1. THE LAYOUT ENGINE
-            SafeArea(
-              child: Column(
-                children: [
-                  // TOP: SESSION CONTROL
+          // Safe area content
+          SafeArea(
+            child: Column(
+              children: [
+                // TOP BAR
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: t.emeraldPrimary.withValues(alpha: 0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          "INTERVIEW MODE",
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w900,
+                            color: t.emeraldPrimary.withValues(alpha: 0.6),
+                            letterSpacing: 4,
+                          ),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () => _showEndInterviewDialog(context),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.redAccent.withValues(alpha: 0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            "END",
+                            style: TextStyle(
+                              color: Colors.redAccent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              fontFamily: 'monospace',
+                              letterSpacing: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // AI QUESTION TEXT (TOP) - Plain white text like initial version
+                if (aiText.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        if (isTutor)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.teal.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.teal.withValues(alpha: 0.3)),
-                            ),
-                            child: const Text(
-                              "TUTOR MODE",
-                              style: TextStyle(color: Colors.teal, fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                          )
-                        else
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: t.emeraldPrimary.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: t.emeraldPrimary.withValues(alpha: 0.3)),
-                            ),
-                            child: Text(
-                              "INTERVIEW MODE",
-                              style: TextStyle(color: t.emeraldPrimary, fontSize: 11, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        const Spacer(),
-                        GestureDetector(
-                          onTap: _isEnding ? null : () => _handleEnd(provider),
-                          child: SizedBox(
-                            width: 80,
-                            height: 44,
-                            child: GlassCard(
-                              borderRadius: 12,
-                              padding: EdgeInsets.zero,
-                              hasMetallicBorder: true,
-                              child: Center(
-                                child: Text(
-                                  "END",
-                                  style: TextStyle(
-                                    color: Colors.redAccent.withValues(alpha: 0.8),
-                                    fontSize: 12,
-                                    fontFamily: 'monospace',
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 2
-                                  ),
-                                )
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      aiText,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w600,
+                        color: isTutor ? Colors.tealAccent : Colors.white.withValues(alpha: 0.9),
+                        height: 1.4,
+                        letterSpacing: -0.5,
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 6,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
 
-                // AI SUBTITLE / QUESTION BROADCAST (Scrollable)
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 40),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 220),
-                          child: SingleChildScrollView(
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                              decoration: BoxDecoration(
-                                color: t.emeraldLight,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: t.emeraldPrimary.withValues(alpha: 0.3),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    isConnecting
-                                        ? "ESTABLISHING NEURAL LINK"
-                                        : (isAiSpeaking ? "AI SPEAKING" : "SYSTEM BROADCAST"),
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontFamily: 'monospace',
-                                      fontWeight: FontWeight.w900,
-                                      color: isAiSpeaking
-                                          ? t.emeraldPrimary.withValues(alpha: 0.6)
-                                          : Colors.white.withValues(alpha: 0.2),
-                                      letterSpacing: 4,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    topDisplayText,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontFamily: 'monospace',
-                                      fontWeight: FontWeight.w700,
-                                      color: isTutor
-                                          ? Colors.tealAccent
-                                          : t.emeraldPrimary.withValues(alpha: 0.95),
-                                      height: 1.3,
-                                      letterSpacing: -0.8,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 10,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  if (isAiSpeaking) ...[
-                                    const SizedBox(height: 8),
-                                    _buildSpeakingIndicator(t),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                // SPACER - pushes content to center/bottom
+                const Spacer(),
+
+                // CENTER SPHERE AREA (empty, sphere is in background)
+                const SizedBox(height: 200),
+
+                const Spacer(),
+
+                // USER TRANSCRIPTION (BOTTOM)
+                if (userText.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                    child: Text(
+                      userText,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w500,
+                        color: Colors.orangeAccent.withValues(alpha: 0.8),
+                        height: 1.4,
+                        letterSpacing: -0.3,
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                ),
 
-                // THE SPECTRAL CORE
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: SizedBox(
-                    width: 320,
-                    height: 320,
-                    child: _isEnding 
-                      ? Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const CircularProgressIndicator(color: Colors.white),
-                            const SizedBox(height: 20),
-                            Text(
-                              isTutor ? "Closing Session..." : "Generating your interview feedback...",
-                              style: const TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'monospace'),
-                            ),
-                          ],
-                        )
-                      : LayoutBuilder(
-                          builder: (context, constraints) {
-                        return GestureDetector(
-                          onTapDown: (details) => _handleTap(details, constraints),
-                          child: RepaintBoundary(
-                            child: CustomPaint(
-                              painter: AiDotMatrixPainter(
-                                time: _time,
-                                baseColor: activeColor,
-                                intensity: isConnecting ? 0.05 : _intensity,
-                                isInwards: isListening,
-                                tapOffset: _tapOffset,
-                                tapTime: _lastTapTime,
-                              ),
-                            ),
-                          ),
-                        );
-                      }
-                    ),
-                  ),
-                ),
-
-                // USER TRANSCRIPTION CAPTURE (Scrollable)
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 40),
-                    alignment: Alignment.topCenter,
-                    child: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // User transcription text
-                          if (showUserTranscription) ...[
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                              decoration: BoxDecoration(
-                                color: Colors.orangeAccent.withValues(alpha: 0.12), // Slightly more visible
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: Colors.orangeAccent.withValues(alpha: 0.3),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Column(
-                                children: [
-                                  Text(
-                                    "YOU",
-                                    style: TextStyle(
-                                      fontSize: 10, // Slightly larger
-                                      fontFamily: 'monospace',
-                                      fontWeight: FontWeight.w900,
-                                      color: Colors.orangeAccent.withValues(alpha: 0.6),
-                                      letterSpacing: 4,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    bottomDisplayText,
-                                    style: TextStyle(
-                                      fontSize: 15, // Slightly larger
-                                      fontFamily: 'monospace',
-                                      color: Colors.orangeAccent.withValues(alpha: isListening ? 0.9 : 0.6),
-                                      fontStyle: isListening ? FontStyle.italic : FontStyle.normal,
-                                      height: 1.3,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 10,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-                          Text(
-                            isConnecting ? "ENCRYPTING" : (isProcessing ? "NEURAL PROCESSING" : (isAiSpeaking ? "SIGNAL BROADCAST" : "SIGNAL CAPTURE")),
-                            style: TextStyle(fontSize: 10, fontFamily: 'monospace', fontWeight: FontWeight.w900, color: activeColor.withValues(alpha: 0.2), letterSpacing: 6),
-                          ),
-                        ],
+                // STATUS TEXT (BOTTOM)
+                if (statusText.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 24, top: 8),
+                    child: Text(
+                      statusText,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white.withValues(alpha: 0.4),
+                        letterSpacing: 2,
                       ),
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 40),
+                // SILENCE STRIKES INDICATOR
+                if (provider.silenceStrikes > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(3, (index) {
+                        return Container(
+                          width: 6,
+                          height: 6,
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: index < provider.silenceStrikes
+                                ? Colors.redAccent.withValues(alpha: 0.8)
+                                : Colors.white.withValues(alpha: 0.1),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
               ],
             ),
           ),
         ],
       ),
-    ));
-  }
-
-  /// Animated speaking indicator (three pulsing dots) shown while AI is speaking
-  Widget _buildSpeakingIndicator(AppThemeColors t) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(3, (index) {
-        return AnimatedBuilder(
-          animation: _animationController,
-          builder: (context, child) {
-            final phase = (_time * 2 + index * 0.5) % 1.5;
-            final scale = phase < 0.75 ? 0.5 + phase : 1.25 - (phase - 0.75);
-            return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              width: 6 * scale,
-              height: 6 * scale,
-              decoration: BoxDecoration(
-                color: t.emeraldPrimary.withValues(alpha: 0.6),
-                shape: BoxShape.circle,
-              ),
-            );
-          },
-        );
-      }),
     );
   }
 }

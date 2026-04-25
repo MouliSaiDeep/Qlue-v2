@@ -29,28 +29,30 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
         colors: t,
         child: Scaffold(
           backgroundColor: Colors.transparent,
-          body: Stack(
-            children: [
-              SingleChildScrollView(
-                padding: EdgeInsets.only(top: topPadding + 20, bottom: 60, left: 24, right: 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildHeader(context, t),
-                    const SizedBox(height: 24),
-                    _buildScoreCard(t),
-                    const SizedBox(height: 24),
-                    _buildSpiderChartCard(t),
-                    const SizedBox(height: 32),
-                    _buildNavigationTabs(t),
-                    const SizedBox(height: 20),
-                    _buildContentArea(t),
-                    const SizedBox(height: 40),
-                    _buildTranscriptSection(t),
-                  ],
+          body: RepaintBoundary(
+            child: Stack(
+              children: [
+                SingleChildScrollView(
+                  padding: EdgeInsets.only(top: topPadding + 20, bottom: 60, left: 24, right: 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildHeader(context, t),
+                      const SizedBox(height: 24),
+                      _buildScoreCard(t),
+                      const SizedBox(height: 24),
+                      _buildSpiderChartCard(t),
+                      const SizedBox(height: 32),
+                      _buildNavigationTabs(t),
+                      const SizedBox(height: 20),
+                      _buildContentArea(t),
+                      const SizedBox(height: 40),
+                      _buildTranscriptSection(t),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
