@@ -226,7 +226,7 @@ class InterviewProvider extends ChangeNotifier {
       isStreamingText = false;
       subtitleText = finalQuestionText.isNotEmpty ? finalQuestionText : questionText;
       notifyListeners();
-      await _startListening();
+      _startListening();
     }
   }
 

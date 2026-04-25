@@ -62,6 +62,9 @@ class AppThemeColors {
   final Color textTertiary;
   final Color textInverse;
   final Color primary;
+  final Color emeraldPrimary;
+  final Color emeraldAccent;
+  final Color emeraldLight;
   final Color primaryLight;
   final Color primaryMuted;
   final Color primaryDark;
@@ -129,6 +132,9 @@ class AppThemeColors {
     required this.shadow,
     required this.metallicBorder,
     required this.accentGreen,
+    required this.emeraldPrimary,
+    required this.emeraldAccent,
+    required this.emeraldLight,
   });
 
   List<Color> get primaryGradient => isDark
@@ -164,10 +170,10 @@ class AppThemeColors {
     textSecondary: Color(0xFF525252),
     textTertiary: Color(0xFFA1A1AA),
     textInverse: Color(0xFFFFFFFF),
-    primary: Color(0xFF059669),        // Bright emerald (was 0xFF305148)
-    primaryLight: Color(0x1F059669),   // Update alpha tint
-    primaryMuted: Color(0x19059669),   // Update alpha tint
-    primaryDark: Color(0xFF047857),    // Darker variant
+    primary: Color(0xFF305148),        // Forest green (was emerald 0xFF059669)
+    primaryLight: Color(0x1F305148),   // Restored
+    primaryMuted: Color(0x19305148),   // Restored
+    primaryDark: Color(0xFF294A41),    // Restored variant
     secondary: Color(0xFF34C759),
     secondaryMuted: Color(0x1934C759),
     success: Color(0xFF34C759),
@@ -191,6 +197,9 @@ class AppThemeColors {
     shadow: Color(0x1A000000),
     metallicBorder: Color(0xFFD1D5DB),
     accentGreen: Color(0xFF34D399),
+    emeraldPrimary: Color(0xFF059669),
+    emeraldAccent: Color(0xFF34D399),
+    emeraldLight: Color(0x1F059669),
   );
 
   static const AppThemeColors dark = AppThemeColors(
@@ -206,10 +215,10 @@ class AppThemeColors {
     textSecondary: Color(0xFFA3A3A3),
     textTertiary: Color(0xFF525252),
     textInverse: Color(0xFF000000),
-    primary: Color(0xFF34D399),        // Bright emerald (was 0xFF2F4C44)
-    primaryLight: Color(0x1F34D399),   // Update alpha tint
-    primaryMuted: Color(0x2634D399),   // Update alpha tint
-    primaryDark: Color(0xFF10B981),    // Darker variant for contrast
+    primary: Color(0xFF2F4C44),        // Deep Forest green (was emerald 0xFF34D399)
+    primaryLight: Color(0x1F2F4C44),   // Restored
+    primaryMuted: Color(0x262F4C44),   // Restored
+    primaryDark: Color(0xFF1B2E29),    // Restored darker variant for contrast
     secondary: Color(0xFF30D158),
     secondaryMuted: Color(0x1F30D158),
     success: Color(0xFF30D158),
@@ -233,6 +242,9 @@ class AppThemeColors {
     shadow: Color(0x66000000),
     metallicBorder: Color(0xFF4B5563),
     accentGreen: Color(0xFF34D399),
+    emeraldPrimary: Color(0xFF34D399),
+    emeraldAccent: Color(0xFF10B981),
+    emeraldLight: Color(0x1F34D399),
   );
 
   /// Get theme colors from the nearest ancestor context.

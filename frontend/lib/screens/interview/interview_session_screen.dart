@@ -146,7 +146,7 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
     bool isConnecting = provider.isConnecting;
 
     // STATE-SPECIFIC CHROMATICS
-    Color activeColor = t.primary; 
+    Color activeColor = t.emeraldPrimary; 
     if (isListening) activeColor = Colors.orangeAccent;
     if (isProcessing) activeColor = Colors.blueAccent;
     if (isConnecting) activeColor = Colors.white.withValues(alpha: 0.3);
@@ -220,13 +220,13 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: t.primary.withValues(alpha: 0.1),
+                              color: t.emeraldPrimary.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: t.primary.withValues(alpha: 0.3)),
+                              border: Border.all(color: t.emeraldPrimary.withValues(alpha: 0.3)),
                             ),
                             child: Text(
                               "INTERVIEW MODE",
-                              style: TextStyle(color: t.primary, fontSize: 11, fontWeight: FontWeight.bold),
+                              style: TextStyle(color: t.emeraldPrimary, fontSize: 11, fontWeight: FontWeight.bold),
                             ),
                           ),
                         const Spacer(),
@@ -268,10 +268,10 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         decoration: BoxDecoration(
-                          color: t.primary.withValues(alpha: 0.12), // subtle forest green bg
+                          color: t.emeraldLight.withValues(alpha: 0.6), // subtle emerald green bg
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: t.primary.withValues(alpha: 0.3),
+                            color: t.emeraldPrimary.withValues(alpha: 0.3),
                             width: 1,
                           ),
                         ),
@@ -290,7 +290,7 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
                                 fontFamily: 'monospace',
                                 fontWeight: FontWeight.w900,
                                 color: isAiSpeaking && provider.isStreamingText
-                                    ? t.primary.withValues(alpha: 0.6)
+                                    ? t.emeraldPrimary.withValues(alpha: 0.6)
                                     : Colors.white.withValues(alpha: 0.2),
                                 letterSpacing: 4,
                               ),
@@ -309,7 +309,7 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
                                   color: isTutor 
                                       ? Colors.tealAccent 
                                       : (isAiSpeaking && provider.isStreamingText
-                                          ? t.primary.withValues(alpha: 0.95)
+                                          ? t.emeraldPrimary.withValues(alpha: 0.95)
                                           : Colors.white),
                                   height: 1.3,
                                   letterSpacing: -0.8,
@@ -456,7 +456,7 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
               width: 6 * scale,
               height: 6 * scale,
               decoration: BoxDecoration(
-                color: t.primary.withValues(alpha: 0.6),
+                color: t.emeraldPrimary.withValues(alpha: 0.6),
                 shape: BoxShape.circle,
               ),
             );
