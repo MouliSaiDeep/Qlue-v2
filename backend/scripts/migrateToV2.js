@@ -15,6 +15,10 @@ function getSizeInBytes(obj) {
  * Generic backfill function
  */
 async function backfillTable(sourceTableName, destTableName, itemTransformer) {
+    if (!sourceTableName || !destTableName) {
+        console.warn(`Skipping backfill: source (${sourceTableName}) or dest (${destTableName}) table name missing`);
+        return;
+    }
     console.log(`Starting backfill from ${sourceTableName} to ${destTableName}`);
     let lastEvaluatedKey = undefined;
     let totalMigrated = 0;
@@ -90,7 +94,9 @@ async function writeBatch(tableName, requestItems) {
 async function migrate() {
     // 1. Users
     await backfillTable(process.env.USERS_TABLE, process.env.USERS_TABLE_V2, async (user) => {
-        return { ...user, profileKey: "PROFILE" };
+        const u = { ...user, profileKey: "PROFILE" };
+        if (u.provider) u.authProviderKey = `PROVIDER#${u.provider.toUpperCase()}`;
+        return u;
     });
 
     // 2. Resumes
@@ -101,28 +107,35 @@ async function migrate() {
     });
 
     // 3. Sessions (Needs to merge Concept States)
-    // Note: For a real large-scale migration, we'd pre-fetch or batch get concept states.
-    // For this script, we'll do individual queries for simplicity.
     await backfillTable(process.env.SESSIONS_TABLE, process.env.SESSIONS_TABLE_V2, async (session) => {
-        const s = { ...session, sessionKey: `SESSION#${session.sessionId}`, startedAt: session.startTime || new Date().toISOString() };
+        const s = { 
+            ...session, 
+            sessionKey: `SESSION#${session.sessionId}`, 
+            startedAt: session.startTime || new Date().toISOString() 
+        };
         if (s.activeMarker === "ACTIVE") s.statusKey = `active#${s.startedAt}`;
         
-        // Merge concept states
+        // Merge concept states if available
         try {
+            const conceptsTable = process.env.CONCEPT_STATES_TABLE || 'qlue-concept-states';
             const concepts = await docClient.send(new ScanCommand({
-                TableName: process.env.CONCEPTS_TABLE_NAME,
+                TableName: conceptsTable,
                 FilterExpression: "sessionId = :sid",
                 ExpressionAttributeValues: { ":sid": session.sessionId }
             }));
             
             if (concepts.Items && concepts.Items.length > 0) {
-                s.conceptStates = {};
+                s.conceptStates = s.conceptStates || {};
                 for (const c of concepts.Items) {
-                    s.conceptStates[c.conceptId] = { state: c.state, attempts: c.attempts || 1 };
+                    s.conceptStates[c.conceptId || c.concept] = { 
+                        state: c.state || c.status, 
+                        attempts: c.attempts || 1,
+                        lastSeen: c.updatedAt || c.timestamp
+                    };
                 }
             }
         } catch (e) {
-            console.error(`Failed to fetch concept states for session ${session.sessionId}`, e);
+            console.error(`Failed to fetch concept states for session ${session.sessionId}`, e.message);
         }
         
         return s;
@@ -130,13 +143,25 @@ async function migrate() {
 
     // 4. Transcripts
     await backfillTable(process.env.TRANSCRIPTS_TABLE, process.env.TRANSCRIPTS_TABLE_V2, async (transcript) => {
-        return { ...transcript, turnKey: `TURN#${String(transcript.turnIndex).padStart(4, '0')}` };
+        const t = { 
+            ...transcript, 
+            turnKey: `TURN#${String(transcript.turnIndex).padStart(4, '0')}`,
+            createdAt: transcript.timestamp || new Date().toISOString()
+        };
+        if (t.module && t.concept) {
+            t.moduleConcept = `${t.module}#${t.concept}`;
+            t.conceptKey = `${t.difficulty || 'MEDIUM'}#${t.createdAt}`;
+        }
+        return t;
     });
 
     // 5. Feedback
     await backfillTable(process.env.FEEDBACK_TABLE, process.env.FEEDBACK_TABLE_V2, async (feedback) => {
         const f = { ...feedback, feedbackKey: `FEEDBACK#v1` };
-        if (f.status === 'pending') f.feedbackStatusKey = `pending#${f.generatedAt}`;
+        if (f.overallScore) {
+            f.ratingKey = "SCORE#OVERALL";
+            f.ratingScore = f.overallScore;
+        }
         return f;
     });
 
@@ -146,9 +171,16 @@ async function migrate() {
         if (!n.isRead) n.unreadKey = `false#${n.sentAt}`;
         return n;
     });
+
+    // 7. WS Connections
+    await backfillTable(process.env.WS_CONNECTIONS_TABLE, process.env.WS_CONNECTIONS_TABLE_V2, async (conn) => {
+        const c = { ...conn, connectionKey: `CONN#${conn.connectedAt}#${conn.connectionId}` };
+        return c;
+    });
 }
 
 if (require.main === module) {
+    // Load env vars if running locally for testing, but typically run via Lambda/SAM
     migrate().catch(console.error);
 }
 
