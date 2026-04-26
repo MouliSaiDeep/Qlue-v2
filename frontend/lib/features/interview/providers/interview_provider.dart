@@ -50,7 +50,6 @@ class InterviewProvider extends ChangeNotifier {
   final SttService _sttService = SttService();
   final TtsService _ttsService = TtsService();
   final WebSocketClient _wsClient = WebSocketClient();
-  bool _isLastAudioChunkReceived = false;
   bool _isStartingListening = false;
   bool _isCleanedUp = false;
 
@@ -60,7 +59,6 @@ class InterviewProvider extends ChangeNotifier {
     isConnecting = true;
     _isCleanedUp = false;
     _isStartingListening = false;
-    _isLastAudioChunkReceived = false;
     sessionId = null;
     subtitleText = "";
     isStreamingText = false;
@@ -83,7 +81,6 @@ class InterviewProvider extends ChangeNotifier {
     _cleanup();
     _isCleanedUp = false;
     _isStartingListening = false;
-    _isLastAudioChunkReceived = false;
     
     isConnecting = true;
     isSessionEnded = false;
@@ -142,9 +139,12 @@ class InterviewProvider extends ChangeNotifier {
   Future<void> _connectWebSocket(String url, String token) async {
     await _wsClient.connect(url, token);
     _wsClient.onMessage.listen(_handleIncomingMessage);
-    // Wire up TTS completion: when all audio finishes playing, transition to listening
+    // Wire up TTS completion: when all audio finishes playing, transition to listening.
+    // This is the SINGLE source of truth for enabling the mic — prevents race condition
+    // where mic enables while AI audio is still playing through the speaker.
     _ttsService.onPlaybackComplete = () async => await onAudioPlaybackComplete();
-    _isLastAudioChunkReceived = false;
+    // Store sessionId on WebSocket client for reconnection
+    _wsClient.setSessionId(sessionId);
     startInterview();
   }
 
@@ -167,20 +167,15 @@ class InterviewProvider extends ChangeNotifier {
         final base64Data = payload['audioData'] ?? '';
         final isLast = payload['isLast'] == true;
 
-        if (isLast) {
-          _isLastAudioChunkReceived = true;
-        }
-
-        if (base64Data.isNotEmpty) {
-          _ttsService.playBase64Chunk(base64Data, isLast);
-        }
-
-        // Transitioning is now handled by ai_speaking_complete
+        // CRITICAL: Always pass to TTS service, even when base64Data is empty.
+        // The isLast flag with empty data signals "no more chunks coming" —
+        // TTS service needs this to fire onPlaybackComplete after draining its queue.
+        _ttsService.playBase64Chunk(base64Data, isLast);
         break;
 
       case 'ai_speaking_complete':
         // Only update subtitle text — do NOT start listening here.
-        // Listening is triggered by TTS onPlaybackComplete callback to avoid
+        // Listening is triggered SOLELY by TTS onPlaybackComplete callback to avoid
         // the race condition where mic enables while AI audio is still playing.
         if (!isSessionEnded && currentPhase == InterviewPhase.speaking) {
           subtitleText = finalQuestionText.isNotEmpty ? finalQuestionText : questionText;
@@ -257,11 +252,14 @@ class InterviewProvider extends ChangeNotifier {
     switch (state) {
       case 'AI_SPEAKING':
         currentPhase = InterviewPhase.speaking;
-        _stopListening(); // ✅ Force mic off immediately
+        _stopListening();
+        _ttsService.stop(); // FIX: Clear old audio to prevent overlap with new turn
         break;
       case 'USER_RESPONDING':
+        // FIX: Only set the phase — do NOT call _startListening() here.
+        // The mic is enabled exclusively by TTS onPlaybackComplete callback.
+        // This prevents double _startListening() and the mic-before-audio-finishes race.
         currentPhase = InterviewPhase.listening;
-        _startListening();
         break;
       case 'PROCESSING_RESPONSE':
         currentPhase = InterviewPhase.processing;
@@ -276,7 +274,10 @@ class InterviewProvider extends ChangeNotifier {
   }
 
   Future<void> onAudioPlaybackComplete() async {
-    if (!isSessionEnded && currentPhase == InterviewPhase.speaking) {
+    // This is the SINGLE entry point for enabling the mic after AI finishes speaking.
+    // It fires only after ALL TTS audio chunks have been played through the speaker.
+    // Phase may be 'speaking' (normal) or 'listening' (if session_state_update arrived early).
+    if (!isSessionEnded && (currentPhase == InterviewPhase.speaking || currentPhase == InterviewPhase.listening)) {
       currentPhase = InterviewPhase.listening;
       isStreamingText = false;
       subtitleText = finalQuestionText.isNotEmpty ? finalQuestionText : questionText;
@@ -386,16 +387,15 @@ class InterviewProvider extends ChangeNotifier {
 
   void _handleSilence() {
     _silenceStrikes++;
-    // Send silence event to backend so it can trigger retry/termination logic
+    // Send silence event to backend so it can trigger retry/termination logic.
+    // Backend owns the retry counting and session termination — frontend just reports.
     _wsClient.send('silence_detected', {
       'sessionId': sessionId,
       'silenceStrikes': _silenceStrikes,
     });
     _stopListening();
-    if (_silenceStrikes >= AppConstants.maxSilenceStrikes) {
-      isSessionEnded = true;
-      _cleanup();
-    }
+    // NOTE: Do NOT cleanup locally. Backend handles termination via handleSilenceDetected()
+    // and sends a 'termination' message back if max strikes exceeded.
     notifyListeners();
   }
 
@@ -403,8 +403,9 @@ class InterviewProvider extends ChangeNotifier {
     if (_isCleanedUp) return;
     _isCleanedUp = true;
     _stopListening();
+    _ttsService.stop();
     _stopSilenceTimer();
     _wsClient.disconnect();
-    sessionId = null; // ADD THIS
+    sessionId = null;
   }
 }

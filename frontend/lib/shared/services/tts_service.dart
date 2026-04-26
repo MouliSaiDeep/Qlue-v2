@@ -35,6 +35,13 @@ class TtsService {
 
     if (!_isPlaying && _queue.isNotEmpty) {
       _startPlayback();
+    } else if (_lastChunkReceived && !_isPlaying && _queue.isEmpty) {
+      // Edge case: All audio chunks already finished playing before the isLast
+      // signal arrived (e.g., short response with fast playback).
+      // Fire completion immediately since there's nothing left to play.
+      debugPrint('TTS: isLast received after queue drained — firing completion immediately');
+      _lastChunkReceived = false;
+      onPlaybackComplete?.call();
     }
   }
 
@@ -51,7 +58,7 @@ class TtsService {
           await _player.resume();
           
           await _player.onPlayerComplete.first
-              .timeout(const Duration(seconds: 10), onTimeout: () => null);
+              .timeout(const Duration(seconds: 30), onTimeout: () => null);
           
           await Future.delayed(const Duration(milliseconds: 50));
         } catch (e) {
@@ -61,10 +68,11 @@ class TtsService {
     } finally {
       _isPlaying = false;
       // If more chunks arrived while we were in finally, keep playing
-      if (!_isPlaying && _queue.isNotEmpty) {
+      if (_queue.isNotEmpty) {
         _startPlayback();
-      } else if (_lastChunkReceived && _queue.isEmpty) {
+      } else if (_lastChunkReceived) {
         // All chunks received AND queue drained — safe to signal completion
+        debugPrint('TTS: All chunks played, queue drained — firing onPlaybackComplete');
         _lastChunkReceived = false;
         onPlaybackComplete?.call();
       }

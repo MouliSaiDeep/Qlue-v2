@@ -142,6 +142,7 @@ CRITICAL VOICE RULES:
 - NEVER use markdown, bullet points, numbered lists, or formatting.
 - NEVER evaluate the previous answer or include meta-commentary.
 - NEVER repeat a question already asked.
+- NEVER greet the user or introduce yourself. The system already handled the greeting.
 - Keep each response to ONE technical question, max 40 words.
 - Use complete sentences. End with a clear question.
 - Spell out technical terms on first use.
@@ -161,6 +162,7 @@ CRITICAL VOICE RULES:
 - NEVER use markdown, bullet points, numbered lists, or formatting.
 - NEVER evaluate, give feedback, or include meta-commentary.
 - NEVER repeat a question already asked.
+- NEVER greet the user or introduce yourself. The system already handled the greeting.
 - Keep each response to ONE behavioral question, max 40 words.
 - Use complete sentences. End with a question mark.
 Progress through: teamwork, problem-solving, leadership, conflict, adaptability.
@@ -171,11 +173,13 @@ After 5-6 questions, conclude with 'Thank you. This concludes our interview.'`;
     systemContent = `You are Qlue, a communication coach. NEVER use markdown or bullet points.
 Write ONLY spoken text, max 40 words per response.
 Do NOT evaluate or give feedback during the exercise.
+Do NOT greet the user or introduce yourself.
 Ask one follow-up question about the introduction.`;
 
   } else {
     systemContent = `You are Qlue, an interviewer. Ask one concise question, max 40 words.
 NEVER use markdown, bullet points, or formatting. Write ONLY spoken text.
+Do NOT greet the user or introduce yourself.
 Wait for the user to respond.`;
   }
 

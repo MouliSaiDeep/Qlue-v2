@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:flutter/foundation.dart';
 import '../constants/app_constants.dart';
 
 enum WebSocketStatus { connecting, connected, disconnected }
@@ -22,6 +23,12 @@ class WebSocketClient {
   Timer? _heartbeatTimer;
   int _reconnectAttempts = 0;
   String? _lastUrl;
+  String? _sessionId;
+
+  /// Store the active session ID so reconnect can re-associate
+  void setSessionId(String? id) {
+    _sessionId = id;
+  }
 
   Future<void> connect(String url, String token) async {
     final uri = Uri.parse(url);
@@ -46,7 +53,7 @@ class WebSocketClient {
             final data = jsonDecode(message);
             _messageController.add(data);
           } catch (e) {
-            // Log parse error
+            debugPrint('WebSocket: Failed to parse message: $e');
           }
         },
         onDone: () => _handleDisconnect(),
@@ -72,9 +79,21 @@ class WebSocketClient {
     ).toInt();
     
     _reconnectAttempts++;
-    Timer(Duration(milliseconds: delay), () {
+    debugPrint('WebSocket: Reconnecting in ${delay}ms (attempt $_reconnectAttempts/5)');
+    Timer(Duration(milliseconds: delay), () async {
       if (_status == WebSocketStatus.disconnected && _lastUrl != null) {
-        connect(_lastUrl!, ''); // FIX: pass full URL directly, token is already in query string
+        try {
+          // FIX: Token is already embedded in _lastUrl query string
+          await connect(_lastUrl!, '');
+          
+          // After successful reconnect, re-associate with active session
+          if (_status == WebSocketStatus.connected && _sessionId != null) {
+            debugPrint('WebSocket: Reconnected — re-associating session $_sessionId');
+            send('session_reconnect', {'sessionId': _sessionId!});
+          }
+        } catch (e) {
+          debugPrint('WebSocket: Reconnect failed: $e');
+        }
       }
     });
   }
@@ -99,6 +118,7 @@ class WebSocketClient {
 
   void disconnect() {
     _lastUrl = null;
+    _sessionId = null;
     _stopHeartbeat();
     _channel?.sink.close();
     _status = WebSocketStatus.disconnected;

@@ -11,6 +11,8 @@ const { synthesizeToBase64Chunks } = require('../../lib/polly');
 const { invokeModelStream, buildInterviewPrompt, buildTutorPrompt } = require('../../lib/bedrock');
 const { getResumeById } = require('../../models/resume');
 const { getUserById } = require('../../models/user');
+const { transitionState } = require('../interview/controlTurnFlow');
+const { associateSession } = require('../../models/wsConnection');
 
 
 // Voice Mapping - Maps UI voice names to Polly VoiceIds
@@ -52,6 +54,8 @@ exports.handler = async (event) => {
                 return await handleTextTranscript(connectionId, body);
             case 'silence_detected':
                 return await handleSilenceDetected(connectionId, body);
+            case 'session_reconnect':
+                return await handleSessionReconnect(connectionId, body);
             case 'terminate_session':
                 return await handleTerminateSession(connectionId, body);
             case 'ping':
@@ -163,7 +167,7 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
                 'RESUME': `Hello! I'm ${voiceName}. I've analyzed your resume, and I'm ready to start your technical interview. Let's begin.`,
                 'WEBSITE': `Hi there! I'm ${voiceName}, your mentor. I've reviewed the website content you provided, and I'm excited to help you learn. Here's my first question.`,
                 'HR': `Hello! I'm ${voiceName} from the recruiting team. I'll be conducting your behavioral interview today. Let's get started.`,
-                'INTRO': `Hello! I'm ${voiceName}, your AI interviewer. Let's work on perfecting your self-introduction and elevator pitch. Ready when you are!`, // ADD
+                'INTRO': `Hello! I'm ${voiceName}, your AI interviewer. Let's work on perfecting your self-introduction and elevator pitch. Ready when you are!`,
             };
             
             const introText = intros[moduleType] || `Hello! I'm ${voiceName}, your AI interviewer. Let's begin our session.`;
@@ -222,7 +226,8 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
             }
         });
 
-        // FINAL SIGNAL: Send an empty chunk with isLast:true to signal completion
+        // FINAL SIGNAL: Send an empty chunk with isLast:true to signal completion.
+        // This MUST reach the TTS service so it fires onPlaybackComplete.
         await postToConnection(connectionId, {
             type: 'tts_audio_chunk',
             payload: {
@@ -275,6 +280,9 @@ async function handleSessionInit(connectionId, body) {
         throw new Error('MODULE_MISMATCH');
     }
 
+    // Associate this connection with the session for reconnect support
+    await associateSession(connectionId, sessionId);
+
     const userId = session.userId;
     const transcripts = await getTranscriptBySession(sessionId);
     const history = transcripts.map(t => ({
@@ -300,8 +308,8 @@ async function handleSessionInit(connectionId, body) {
         prompt = buildInterviewPrompt(context, history, 0, session.moduleType);
     }
 
-    // FIX: Transition state in DB before streaming
-    await updateSessionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, INTERVIEW_STATES.INITIALIZING, {
+    // FIX Bug 7+D: Use transitionState for validated transition (INITIALIZING → AI_SPEAKING)
+    await transitionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, {
         turnCount: session.turnCount || 0
     });
 
@@ -312,7 +320,7 @@ async function handleSessionInit(connectionId, body) {
     await streamAIResponse(connectionId, sessionId, session, session.moduleType, prompt);
 
     // Transition to USER_RESPONDING so the user can speak
-    await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.AI_SPEAKING);
+    await transitionState(sessionId, INTERVIEW_STATES.USER_RESPONDING);
     await pushStateUpdate(connectionId, sessionId, INTERVIEW_STATES.AI_SPEAKING, INTERVIEW_STATES.USER_RESPONDING, 0, "Your turn to respond.");
 
     return { statusCode: 200 };
@@ -331,10 +339,6 @@ async function handleTextTranscript(connectionId, body) {
     await postToConnection(connectionId, { type: 'termination', payload: { sessionId } });
     return { statusCode: 200 };
   }
-
-  // 1. Save user transcript (moved to processUserInput, but keeping here for legacy if needed, 
-  // actually processUserInput also saves it, so we can remove it from here to avoid double save)
-  // await saveTranscript(sessionId, session.turnCount || 0, SPEAKERS.USER, text);
 
   // 2. Call business logic (NO state transition here)
   const processRes = await processUserInput.handler({ 
@@ -368,7 +372,7 @@ async function handleTextTranscript(connectionId, body) {
   if (data.silenceRetries || data.message?.includes('Deadlock') || data.message?.includes('Silence')) {
     await streamPreGeneratedResponse(connectionId, sessionId, updatedSession, nextAIResponse);
     
-    await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.AI_SPEAKING);
+    await transitionState(sessionId, INTERVIEW_STATES.USER_RESPONDING);
     await pushStateUpdate(connectionId, sessionId, INTERVIEW_STATES.AI_SPEAKING, INTERVIEW_STATES.USER_RESPONDING, updatedSession.turnCount, "Your turn to respond.");
     
     return { statusCode: 200 };
@@ -405,12 +409,11 @@ async function handleTextTranscript(connectionId, body) {
   }
 
   // 6. Push state and stream response
-  // Note: processUserInput already advanced the state in DB to AI_SPEAKING or similar
   await pushStateUpdate(connectionId, sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.AI_SPEAKING, updatedSession.turnCount, "AI is generating next question.");
 
   await streamAIResponse(connectionId, sessionId, updatedSession, session.moduleType, prompt);
 
-  await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.AI_SPEAKING);
+  await transitionState(sessionId, INTERVIEW_STATES.USER_RESPONDING);
   await pushStateUpdate(connectionId, sessionId, INTERVIEW_STATES.AI_SPEAKING, INTERVIEW_STATES.USER_RESPONDING, updatedSession.turnCount, "Your turn to respond.");
 
   return { statusCode: 200 };
@@ -496,8 +499,46 @@ async function handleSilenceDetected(connectionId, body) {
 
     if (data.silenceRetries || data.message?.includes('Silence')) {
         await streamPreGeneratedResponse(connectionId, sessionId, updatedSession, data.nextAIResponse);
-        await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.AI_SPEAKING);
+        await transitionState(sessionId, INTERVIEW_STATES.USER_RESPONDING);
         await pushStateUpdate(connectionId, sessionId, INTERVIEW_STATES.AI_SPEAKING, INTERVIEW_STATES.USER_RESPONDING, updatedSession.turnCount, "Your turn.");
+    }
+
+    return { statusCode: 200 };
+}
+
+
+/**
+ * Handles session_reconnect after a WebSocket connection drops and re-establishes.
+ * Re-associates the new connection with the existing session and pushes current state.
+ */
+async function handleSessionReconnect(connectionId, body) {
+    const { sessionId } = body.payload || {};
+    if (!sessionId) throw new Error('Missing sessionId');
+
+    const session = await getSession(sessionId);
+    if (!session) {
+        await postToConnection(connectionId, {
+            type: 'error',
+            payload: { message: 'Session not found for reconnect', code: 'SESSION_NOT_FOUND' }
+        });
+        return { statusCode: 200 };
+    }
+
+    // Re-associate this new connection ID with the session
+    await associateSession(connectionId, sessionId);
+
+    console.info(`[Reconnect] Connection ${connectionId} re-associated with session ${sessionId} (state: ${session.currentState})`);
+
+    // Push current state so the frontend can sync
+    if (session.currentState === INTERVIEW_STATES.TERMINATED || session.currentState === INTERVIEW_STATES.GENERATING_FEEDBACK) {
+        await postToConnection(connectionId, { type: 'termination', payload: { sessionId } });
+    } else {
+        await pushStateUpdate(
+            connectionId, sessionId,
+            session.currentState, session.currentState,
+            session.turnCount,
+            session.questionText || "Reconnected."
+        );
     }
 
     return { statusCode: 200 };
