@@ -231,6 +231,16 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
         });
 
         await postToConnection(connectionId, {
+            type: 'question_text_update',
+            payload: {
+                sessionId,
+                turnIndex: session.turnCount,
+                questionText: fullText,
+                currentConceptId: session.currentConceptId
+            }
+        });
+
+        await postToConnection(connectionId, {
             type: 'ai_speaking_complete',
             payload: { sessionId, turnIndex: session.turnCount }
         });
@@ -401,6 +411,17 @@ async function handleTextTranscript(connectionId, body) {
     throw new Error('No AI response generated');
   }
 
+  // Bug 2: For WEBSITE and INTRO, if nextAIResponse was pre-generated, use it directly
+  if (nextAIResponse && (session.moduleType === 'WEBSITE' || session.moduleType === 'INTRO')) {
+    await pushStateUpdate(connectionId, sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.AI_SPEAKING, updatedSession.turnCount, "AI is speaking.");
+    await streamPreGeneratedResponse(connectionId, sessionId, updatedSession, nextAIResponse);
+    
+    await transitionState(sessionId, INTERVIEW_STATES.USER_RESPONDING);
+    await pushStateUpdate(connectionId, sessionId, INTERVIEW_STATES.AI_SPEAKING, INTERVIEW_STATES.USER_RESPONDING, updatedSession.turnCount, "Your turn to respond.");
+    
+    return { statusCode: 200 };
+  }
+
   // 5. Build prompt for streaming
   // We need to rebuild history AFTER processUserInput saved the new transcript
   const transcripts = await getTranscriptBySession(sessionId);
@@ -455,6 +476,9 @@ async function streamPreGeneratedResponse(connectionId, sessionId, session, text
     const pollyVoice = SUPPORTED_VOICES.includes(session.voiceId) ? session.voiceId : 'Tiffany';
     const engine = session.itemData?.engine || 'generative';
     
+    // Bug 4: Save AI response to transcripts for conversation history
+    await saveTranscript(sessionId, session.turnCount, SPEAKERS.AI, text);
+    
     // Stream text
     await postToConnection(connectionId, {
       type: 'session_text_stream',
@@ -488,6 +512,7 @@ async function streamPreGeneratedResponse(connectionId, sessionId, session, text
         sessionId,
         turnIndex: session.turnCount,
         questionText: text,
+        currentConceptId: session.currentConceptId,
         timestamp: Date.now()
       }
     });

@@ -152,7 +152,8 @@ exports.handler = async (event) => {
                     const targetConcept = currentConceptId || (concepts.length > 0 ? concepts[0].conceptId : "General Overview");
                     
                     // Bug 9: Save selected concept to session
-                    await updateSessionState(sessionId, session.currentState, session.currentState, { currentConceptId: targetConcept });
+                    // Bug 6: Use null for expectedCurrentState to avoid locking failures on non-critical metadata update
+                    await updateSessionState(sessionId, session.currentState, null, { currentConceptId: targetConcept });
 
                     const prompt = buildWebsiteTeachPrompt(targetConcept, content, history, false);
                     const bedrockResult = await invokeModel(undefined, prompt);

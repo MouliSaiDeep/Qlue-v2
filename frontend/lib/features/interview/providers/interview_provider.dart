@@ -23,6 +23,7 @@ class TranscriptEntry {
 class InterviewProvider extends ChangeNotifier {
   String? sessionId;
   String? moduleType;
+  String? currentConceptId; // Bug 5: Track current concept for WEBSITE mode
   InterviewPhase currentPhase = InterviewPhase.ready;
   int currentTurnIndex = 0;
   
@@ -59,6 +60,7 @@ class InterviewProvider extends ChangeNotifier {
     _isCleanedUp = false;
     _isStartingListening = false;
     sessionId = null;
+    currentConceptId = null;
     subtitleText = "";
     isStreamingText = false;
     finalTranscript = "";
@@ -96,6 +98,7 @@ class InterviewProvider extends ChangeNotifier {
     questionText = "";
     finalQuestionText = "";
     transcript.clear();
+    currentConceptId = null;
     currentPhase = InterviewPhase.ready;
     currentTurnIndex = 0;
 
@@ -206,6 +209,10 @@ class InterviewProvider extends ChangeNotifier {
         if (questionUpdate != null && questionUpdate != "...") {
           questionText = questionUpdate;
           finalQuestionText = questionUpdate;
+          // Bug 5: Store current concept ID for website tutoring
+          if (payload['currentConceptId'] != null) {
+            currentConceptId = payload['currentConceptId'];
+          }
           transcript.add(TranscriptEntry(
             role: 'ai',
             text: questionText,
@@ -255,6 +262,11 @@ class InterviewProvider extends ChangeNotifier {
         // The mic is enabled exclusively by TTS onPlaybackComplete callback.
         // This prevents double _startListening() and the mic-before-audio-finishes race.
         currentPhase = InterviewPhase.listening;
+        
+        // Bug 3: If we are reconnecting and no audio is pending, enable mic immediately
+        if (!_ttsService.isPlaying) {
+          _startListening();
+        }
         break;
       case 'PROCESSING_RESPONSE':
         currentPhase = InterviewPhase.processing;
@@ -297,6 +309,7 @@ class InterviewProvider extends ChangeNotifier {
     _wsClient.send('text_transcript', {
       'sessionId': sessionId,
       'text': text,
+      if (currentConceptId != null) 'currentConceptId': currentConceptId, // Bug 5: Pass current concept
     });
     notifyListeners();
   }
