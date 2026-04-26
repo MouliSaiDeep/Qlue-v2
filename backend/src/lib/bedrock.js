@@ -314,7 +314,9 @@ Instructions:
 
 function buildSelfIntroEvalPrompt(transcript) {
   return {
-    system: "You are an expert communication coach. Evaluate the self-introduction provided.",
+    system: `You are an expert communication coach. Evaluate the self-introduction provided.
+    Provide constructive feedback and a follow-up question to improve the pitch.
+    Return response as JSON: {"response": "your feedback and follow-up"}`,
     messages: [
       { role: 'user', content: [{ text: `Introduction to evaluate: ${transcript}` }] }
     ]

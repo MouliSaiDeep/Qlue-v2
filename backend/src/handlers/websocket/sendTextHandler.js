@@ -154,6 +154,14 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
         return lastProcessPromise;
     };
 
+    const voiceName = session.voiceId || 'Tiffany';
+    const intros = {
+        'RESUME': `Hello! I'm ${voiceName}. I've analyzed your resume, and I'm ready to start your technical interview. Let's begin.`,
+        'WEBSITE': `Hi there! I'm ${voiceName}, your mentor. I've reviewed the website content you provided, and I'm excited to help you learn. Here's my first question.`,
+        'HR': `Hello! I'm ${voiceName} from the recruiting team. I'll be conducting your behavioral interview today. Let's get started.`,
+        'INTRO': `Hello! I'm ${voiceName}, your AI interviewer. Let's work on perfecting your self-introduction and elevator pitch. Ready when you are!`,
+    };
+
     try {
         console.info(`[Stream] Starting Bedrock invocation for module: ${moduleType}`);
         
@@ -166,16 +174,6 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
         // LATENCY HIDING: If this is the start of the session, send an immediate intro
         // while Bedrock is generating the first question.
         if (session.turnCount === 0) {
-            // Get the voice name from the session (e.g., "Tiffany", "Matthew", "Joanna")
-            const voiceName = session.voiceId || 'Tiffany';
-            
-            const intros = {
-                'RESUME': `Hello! I'm ${voiceName}. I've analyzed your resume, and I'm ready to start your technical interview. Let's begin.`,
-                'WEBSITE': `Hi there! I'm ${voiceName}, your mentor. I've reviewed the website content you provided, and I'm excited to help you learn. Here's my first question.`,
-                'HR': `Hello! I'm ${voiceName} from the recruiting team. I'll be conducting your behavioral interview today. Let's get started.`,
-                'INTRO': `Hello! I'm ${voiceName}, your AI interviewer. Let's work on perfecting your self-introduction and elevator pitch. Ready when you are!`,
-            };
-            
             const introText = intros[moduleType] || `Hello! I'm ${voiceName}, your AI interviewer. Let's begin our session.`;
             
             // FIX 2: Add intro to fullText so frontend sees it, but NOT to sentenceBuffer
