@@ -72,8 +72,10 @@ class TtsService {
         _startPlayback();
       } else if (_lastChunkReceived) {
         // All chunks received AND queue drained — safe to signal completion
-        debugPrint('TTS: All chunks played, queue drained — firing onPlaybackComplete');
         _lastChunkReceived = false;
+        // FIX 4: Wait for speaker buffer to fully drain before enabling mic
+        await Future.delayed(const Duration(milliseconds: 500));
+        debugPrint('TTS: Buffer drained — firing onPlaybackComplete');
         onPlaybackComplete?.call();
       }
     }

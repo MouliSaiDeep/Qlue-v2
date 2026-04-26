@@ -110,6 +110,15 @@ class InterviewProvider extends ChangeNotifier {
       final voiceId = prefs.getString('selected_voice') ?? 'Tiffany';
       final engine = prefs.getString('selected_engine') ?? 'generative';
 
+      // FIX 1: Request microphone permission EARLY (before any audio)
+      final sttReady = await _sttService.init();
+      if (!sttReady) {
+        errorMessage = "Microphone permission is required. Please enable it in app settings.";
+        isConnecting = false;
+        notifyListeners();
+        return;
+      }
+
       final response = await DioClient().dio.post(
         ApiConstants.interviewInit,
         data: {
@@ -263,7 +272,8 @@ class InterviewProvider extends ChangeNotifier {
         // This prevents double _startListening() and the mic-before-audio-finishes race.
         currentPhase = InterviewPhase.listening;
         
-        // Bug 3: If we are reconnecting and no audio is pending, enable mic immediately
+        // FIX 5: Only start listening if TTS is physically finished.
+        // If TTS is still active, onPlaybackComplete will trigger it later.
         if (!_ttsService.isPlaying) {
           _startListening();
         }
@@ -294,9 +304,9 @@ class InterviewProvider extends ChangeNotifier {
   }
 
   void sendTextTranscript(String text) {
-    // ✅ Block if AI is speaking or session ended
-    if (currentPhase == InterviewPhase.speaking || isSessionEnded) {
-      debugPrint('Blocked transcript send: AI is speaking or session ended');
+    // FIX 2: Block if TTS is physically playing (race condition protection)
+    if (currentPhase == InterviewPhase.speaking || _ttsService.isPlaying || isSessionEnded) {
+      debugPrint('Blocked transcript send: AI is speaking, TTS is active, or session ended');
       return;
     }
     

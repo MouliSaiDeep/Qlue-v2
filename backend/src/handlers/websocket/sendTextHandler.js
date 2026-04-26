@@ -383,6 +383,18 @@ async function handleTextTranscript(connectionId, body) {
     return { statusCode: 200 };
   }
 
+  // FIX 3: Defense: Reject if AI is still speaking (race condition protection)
+  if (session.currentState === INTERVIEW_STATES.AI_SPEAKING) {
+    await postToConnection(connectionId, {
+      type: 'error',
+      payload: { 
+        message: 'Please wait for the AI to finish speaking.',
+        code: 'AI_STILL_SPEAKING'
+      }
+    });
+    return { statusCode: 200 };
+  }
+
   // 2. Call business logic (NO state transition here)
   const processRes = await processUserInput.handler({ 
     body: JSON.stringify({ 
