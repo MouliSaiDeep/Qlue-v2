@@ -151,7 +151,7 @@ exports.handler = async (event) => {
                     const targetConcept = currentConceptId || (concepts.length > 0 ? concepts[0] : "General Overview");
                     
                     const prompt = buildWebsiteTeachPrompt(targetConcept, content, history, false);
-                    const bedrockResult = await invokeModel(undefined, { messages: prompt });
+                    const bedrockResult = await invokeModel(undefined, prompt);
                     
                     if (bedrockResult.content?.[0]?.text) {
                         try {

@@ -157,7 +157,7 @@ exports.handler = async (event) => {
                 content: [{ text: t.text }]
             })), true);
             
-            const bedrockResult = await invokeModel(undefined, { messages: prompt });
+            const bedrockResult = await invokeModel(undefined, prompt);
             if (bedrockResult.content?.[0]?.text) {
                 try {
                     const parsed = JSON.parse(bedrockResult.content[0].text);
@@ -180,7 +180,7 @@ exports.handler = async (event) => {
             }
         } else if (session.moduleType === 'INTRO') {
             const prompt = buildSelfIntroEvalPrompt(textTranscript);
-            const bedrockResult = await invokeModel(undefined, { messages: prompt });
+            const bedrockResult = await invokeModel(undefined, prompt);
             
             if (bedrockResult.content?.[0]?.text) {
                 try {

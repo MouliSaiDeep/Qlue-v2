@@ -240,7 +240,7 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
         });
 
         // Persist the actual generated text to DynamoDB
-        await updateSessionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, INTERVIEW_STATES.PROCESSING_RESPONSE, {
+        await updateSessionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, null, {
             questionText: fullText,
         });
 
@@ -318,6 +318,10 @@ async function handleSessionInit(connectionId, body) {
     // Stream the response
     await streamAIResponse(connectionId, sessionId, session, session.moduleType, prompt);
 
+    // Transition to USER_RESPONDING so the user can speak
+    await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.AI_SPEAKING);
+    await pushStateUpdate(connectionId, sessionId, INTERVIEW_STATES.AI_SPEAKING, INTERVIEW_STATES.USER_RESPONDING, 0, "Your turn to respond.");
+
     return { statusCode: 200 };
 }
 
@@ -329,14 +333,7 @@ async function handleTextTranscript(connectionId, body) {
   const session = await getSession(sessionId);
   if (!session) throw new Error('Session not found');
 
-  // FIX: Reject input if AI is still speaking
-  if (session.currentState === INTERVIEW_STATES.AI_SPEAKING) {
-    await postToConnection(connectionId, {
-      type: 'error',
-      payload: { message: 'Please wait for the interviewer to finish speaking.', code: 'AI_STILL_SPEAKING' }
-    });
-    return { statusCode: 200 };
-  }
+
 
   // 1. Save user transcript (moved to processUserInput, but keeping here for legacy if needed, 
   // actually processUserInput also saves it, so we can remove it from here to avoid double save)
@@ -373,6 +370,10 @@ async function handleTextTranscript(connectionId, body) {
   // 4. Handle pre-generated responses (silence retry, deadlock recovery)
   if (data.silenceRetries || data.message?.includes('Deadlock') || data.message?.includes('Silence')) {
     await streamPreGeneratedResponse(connectionId, sessionId, updatedSession, nextAIResponse);
+    
+    await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.AI_SPEAKING);
+    await pushStateUpdate(connectionId, sessionId, INTERVIEW_STATES.AI_SPEAKING, INTERVIEW_STATES.USER_RESPONDING, updatedSession.turnCount, "Your turn to respond.");
+    
     return { statusCode: 200 };
   }
 
@@ -411,6 +412,9 @@ async function handleTextTranscript(connectionId, body) {
   await pushStateUpdate(connectionId, sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.AI_SPEAKING, updatedSession.turnCount, "AI is generating next question.");
 
   await streamAIResponse(connectionId, sessionId, updatedSession, session.moduleType, prompt);
+
+  await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.AI_SPEAKING);
+  await pushStateUpdate(connectionId, sessionId, INTERVIEW_STATES.AI_SPEAKING, INTERVIEW_STATES.USER_RESPONDING, updatedSession.turnCount, "Your turn to respond.");
 
   return { statusCode: 200 };
 }
@@ -461,7 +465,7 @@ async function streamPreGeneratedResponse(connectionId, sessionId, session, text
     });
 
     // Persist the pre-generated text to DynamoDB
-    await updateSessionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, INTERVIEW_STATES.PROCESSING_RESPONSE, {
+    await updateSessionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, null, {
         questionText: text,
     });
 }
