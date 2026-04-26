@@ -57,6 +57,23 @@ exports.handler = async (event) => {
         }
     } catch (error) {
         console.error('WebSocket message processing failed:', error);
+        
+        // FIX 4: RECOVER: Don't leave session stuck in PROCESSING_RESPONSE
+        try {
+            const { sessionId } = body.payload || {};
+            if (sessionId) {
+                const session = await getSession(sessionId);
+                if (session && session.currentState === INTERVIEW_STATES.PROCESSING_RESPONSE) {
+                    await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, null, {});
+                    await pushStateUpdate(connectionId, sessionId, 
+                        INTERVIEW_STATES.PROCESSING_RESPONSE, INTERVIEW_STATES.USER_RESPONDING,
+                        session.turnCount, "Please try again.");
+                }
+            }
+        } catch (recoveryError) {
+            console.error('State recovery failed:', recoveryError);
+        }
+
         await postToConnection(connectionId, {
             type: 'error',
             payload: { message: 'Failed to process message: ' + error.message }
@@ -161,12 +178,13 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
             
             const introText = intros[moduleType] || `Hello! I'm ${voiceName}, your AI interviewer. Let's begin our session.`;
             
-            // FIX: Add intro to the text buffer so frontend sees the complete message
+            // FIX 2: Add intro to fullText so frontend sees it, but NOT to sentenceBuffer
+            // to prevent processing it again during the Bedrock stream.
             fullText += introText + " ";
-            sentenceBuffer += introText + " ";
 
             console.debug(`[Stream] Sending instant intro to hide latency.`);
             await processSentence(introText);
+            sentenceBuffer = ""; // Ensure clean buffer for stream tokens
         }
 
         await invokeModelStream(undefined, prompt, async (token) => {
@@ -205,12 +223,22 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
         await lastProcessPromise;
 
         // Send the final question text (not a state update to avoid duplicate transitions)
+        // Bug 11: Save AI question to transcript for conversation history
+        // FIX 3: Only save the actual question, not the system-generated intro
+        const introText = intros[moduleType];
+        const transcriptText = (session.turnCount === 0 && introText)
+            ? fullText.replace(introText, "").trim() || fullText
+            : fullText;
+
+        await saveTranscript(sessionId, session.turnCount, SPEAKERS.AI, transcriptText);
+
         await postToConnection(connectionId, {
             type: 'question_text_update',
             payload: {
                 sessionId,
                 turnIndex: session.turnCount,
                 questionText: fullText,
+                currentConceptId: session.currentConceptId,
                 timestamp: Date.now()
             }
         });
@@ -231,28 +259,12 @@ async function streamAIResponse(connectionId, sessionId, session, moduleType, pr
         });
 
         await postToConnection(connectionId, {
-            type: 'question_text_update',
-            payload: {
-                sessionId,
-                turnIndex: session.turnCount,
-                questionText: fullText,
-                currentConceptId: session.currentConceptId
-            }
-        });
-
-        await postToConnection(connectionId, {
             type: 'ai_speaking_complete',
             payload: { sessionId, turnIndex: session.turnCount }
         });
 
 
         console.info(`[Stream] Sequential processing complete.`);
-
-        // Final UI text sync
-        await sendPartialText(fullText);
-
-        // Bug 11: Save AI question to transcript for conversation history
-        await saveTranscript(sessionId, session.turnCount, SPEAKERS.AI, fullText);
 
         return fullText;
     } catch (error) {
@@ -320,6 +332,12 @@ async function handleSessionInit(connectionId, body) {
         }
         const concepts = await getConceptsBySession(sessionId);
         const targetConcept = concepts.length > 0 ? concepts[0].conceptId : 'General Overview';
+        
+        // FIX 6: Save currentConceptId on WEBSITE init
+        await updateSessionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, null, { 
+            currentConceptId: targetConcept 
+        });
+
         prompt = buildWebsiteTeachPrompt(targetConcept, content, history, false);
     } else {
         let context = "Professional Background";
