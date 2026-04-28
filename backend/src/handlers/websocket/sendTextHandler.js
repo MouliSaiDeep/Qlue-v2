@@ -586,6 +586,9 @@ async function handleSilenceDetected(connectionId, body) {
     const updatedSession = await getSession(sessionId);
 
     if (data.silenceRetries || data.message?.includes('Silence')) {
+        // FIX: Transition DB to AI_SPEAKING before streaming to satisfy state machine
+        await transitionState(sessionId, INTERVIEW_STATES.AI_SPEAKING);
+        
         await streamPreGeneratedResponse(connectionId, sessionId, updatedSession, data.nextAIResponse);
         await transitionState(sessionId, INTERVIEW_STATES.USER_RESPONDING);
         await pushStateUpdate(connectionId, sessionId, INTERVIEW_STATES.AI_SPEAKING, INTERVIEW_STATES.USER_RESPONDING, updatedSession.turnCount, "Your turn.");
