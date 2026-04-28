@@ -422,6 +422,9 @@ async function handleTextTranscript(connectionId, body) {
 
   // 4. Handle pre-generated responses (silence retry, deadlock recovery)
   if (data.silenceRetries || data.message?.includes('Deadlock') || data.message?.includes('Silence')) {
+    // FIX: Transition DB to AI_SPEAKING before streaming to satisfy state machine
+    await transitionState(sessionId, INTERVIEW_STATES.AI_SPEAKING);
+    
     await streamPreGeneratedResponse(connectionId, sessionId, updatedSession, nextAIResponse);
     
     await transitionState(sessionId, INTERVIEW_STATES.USER_RESPONDING);
@@ -438,6 +441,10 @@ async function handleTextTranscript(connectionId, body) {
   // Bug 2: For WEBSITE and INTRO, if nextAIResponse was pre-generated, use it directly
   if (nextAIResponse && (session.moduleType === 'WEBSITE' || session.moduleType === 'INTRO')) {
     await pushStateUpdate(connectionId, sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.AI_SPEAKING, updatedSession.turnCount, "AI is speaking.");
+    
+    // FIX: Transition DB to AI_SPEAKING before streaming to satisfy state machine
+    await transitionState(sessionId, INTERVIEW_STATES.AI_SPEAKING);
+    
     await streamPreGeneratedResponse(connectionId, sessionId, updatedSession, nextAIResponse);
     
     await transitionState(sessionId, INTERVIEW_STATES.USER_RESPONDING);
@@ -484,6 +491,9 @@ async function handleTextTranscript(connectionId, body) {
 
   // 6. Push state and stream response
   await pushStateUpdate(connectionId, sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.AI_SPEAKING, updatedSession.turnCount, "AI is generating next question.");
+
+  // FIX: Lock DB into AI_SPEAKING to activate Barge-In guards during the 20-second stream
+  await transitionState(sessionId, INTERVIEW_STATES.AI_SPEAKING);
 
   await streamAIResponse(connectionId, sessionId, updatedSession, session.moduleType, prompt);
 
