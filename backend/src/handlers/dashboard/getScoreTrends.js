@@ -4,7 +4,7 @@ const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const docClient = DynamoDBDocumentClient.from(client);
 
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE_NAME || 'Sessions';
+const SESSIONS_TABLE = process.env.SESSIONS_TABLE;
 
 function getCutoffDate(periodStr) {
     const now = new Date();
@@ -36,13 +36,13 @@ exports.handler = async (event) => {
         const expVals = { ':uid': userId };
 
         if (cutoff) {
-            keyCond += ' AND startTime >= :cutoff';
+            keyCond += ' AND startedAt >= :cutoff';
             expVals[':cutoff'] = cutoff;
         }
 
         const sessionCmd = new QueryCommand({
             TableName: SESSIONS_TABLE,
-            IndexName: 'UserDateIndex',
+            IndexName: 'UserSessionTimeIndex',
             KeyConditionExpression: keyCond,
             ExpressionAttributeValues: expVals
         });
@@ -55,7 +55,7 @@ exports.handler = async (event) => {
             .filter(s => s.accumulatedScores && Object.keys(s.accumulatedScores).length > 0)
             .map(s => ({
                 sessionId: s.sessionId,
-                date: s.startTime,
+                date: s.startedAt,
                 moduleType: s.moduleType,
                 score: calculateAggregateScore(s.accumulatedScores)
             }));
