@@ -35,6 +35,7 @@ async function createSession(sessionId, userId, moduleType, itemData = {}) {
         updatedAt: now, // FIX: added
         silenceRetries: 0,
         accumulatedScores: {},
+        version: 1,
         activeMarker: "ACTIVE" // Used for Sparse GSI pattern
     };
 
@@ -83,15 +84,26 @@ async function getActiveSessionForUser(userId) {
  * Updates the current state of the interview session, enforcing optimistic locking.
  */
 async function updateSessionState(sessionId, newState, expectedCurrentState = null, updates = {}) {
-    let updateExpression = "SET currentState = :newState";
+    let updateExpression = "SET currentState = :newState, version = if_not_exists(version, :zero) + :one";
     const expressionAttributeValues = {
         ":newState": newState,
+        ":zero": 0,
+        ":one": 1
     };
     let conditionExpression = undefined;
 
     if (expectedCurrentState) {
         conditionExpression = "currentState = :expectedCurrentState";
         expressionAttributeValues[":expectedCurrentState"] = expectedCurrentState;
+    }
+
+    if (updates.expectedVersion !== undefined) {
+        if (conditionExpression) {
+            conditionExpression += " AND version = :expectedVersion";
+        } else {
+            conditionExpression = "version = :expectedVersion";
+        }
+        expressionAttributeValues[":expectedVersion"] = updates.expectedVersion;
     }
 
     if (updates.turnCount !== undefined) {

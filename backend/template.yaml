@@ -1102,6 +1102,9 @@ Resources:
   SendTextHandlerFunction:
     Type: AWS::Serverless::Function
     Properties:
+      AutoPublishAlias: live
+      ProvisionedConcurrencyConfig:
+        ProvisionedConcurrentExecutions: 1
       Handler: handlers/websocket/sendTextHandler.handler
       CodeUri: src/
       MemorySize: 512

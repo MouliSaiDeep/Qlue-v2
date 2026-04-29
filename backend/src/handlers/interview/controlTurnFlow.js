@@ -50,7 +50,10 @@ async function transitionState(sessionId, targetState, updates = {}) {
         throw new Error(`Invalid interview state transition: ${currentState} -> ${targetState}`);
     }
 
-    return await updateSessionState(sessionId, targetState, currentState, updates);
+    return await updateSessionState(sessionId, targetState, currentState, {
+        ...updates,
+        expectedVersion: session.version
+    });
 }
 
 module.exports = {

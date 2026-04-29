@@ -53,6 +53,7 @@ class InterviewProvider extends ChangeNotifier {
   bool _isStartingListening = false;
   bool _isCleanedUp = false;
   Timer? _watchdogTimer;
+  Timer? _heartbeatTimer;
 
 
   void resetForNewSession() {
@@ -167,6 +168,12 @@ class InterviewProvider extends ChangeNotifier {
       'moduleType': moduleType,
     });
     isConnecting = false;
+
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(minutes: 3), (timer) {
+      _wsClient.send('ping', {});
+    });
+
     notifyListeners();
   }
 
@@ -178,11 +185,12 @@ class InterviewProvider extends ChangeNotifier {
       case 'tts_audio_chunk':
         final base64Data = payload['audioData'] ?? '';
         final isLast = payload['isLast'] == true;
+        final chunkIndex = payload['chunkIndex'] as int?;
 
         // CRITICAL: Always pass to TTS service, even when base64Data is empty.
         // The isLast flag with empty data signals "no more chunks coming" —
         // TTS service needs this to fire onPlaybackComplete after draining its queue.
-        _ttsService.playBase64Chunk(base64Data, isLast);
+        _ttsService.playBase64Chunk(base64Data, isLast, chunkIndex: chunkIndex);
         break;
 
       case 'ai_speaking_complete':
@@ -444,6 +452,7 @@ class InterviewProvider extends ChangeNotifier {
     if (_isCleanedUp) return;
     _isCleanedUp = true;
     _watchdogTimer?.cancel();
+    _heartbeatTimer?.cancel();
     _stopListening();
     _ttsService.stop();
     _stopSilenceTimer();

@@ -13,27 +13,40 @@ class TtsService {
   bool _isPlaying = false;
   bool _lastChunkReceived = false;
   Function? onPlaybackComplete;
+  
+  int _nextExpectedChunkIndex = 0;
+  final Map<int, List<int>> _outOfOrderBuffer = {};
 
   bool get isPlaying => _isPlaying;
 
-  Future<void> playBase64Chunk(String base64Data, bool isLast) async {
+  Future<void> playBase64Chunk(String base64Data, bool isLast, {int? chunkIndex}) async {
     if (isLast) {
       _lastChunkReceived = true;
       if (_audioStreamController != null && !_audioStreamController!.isClosed) {
         _audioStreamController!.close();
       }
+      _outOfOrderBuffer.clear();
+      _nextExpectedChunkIndex = 0;
     }
 
     if (base64Data.isNotEmpty) {
       try {
         final bytes = base64Decode(base64Data);
         
-        if (_audioStreamController == null || _audioStreamController!.isClosed) {
-          _audioStreamController = StreamController<List<int>>();
-          _startPlayback();
+        if (chunkIndex == null) {
+          _addBytesToStream(bytes);
+        } else if (chunkIndex == _nextExpectedChunkIndex) {
+          _addBytesToStream(bytes);
+          _nextExpectedChunkIndex++;
+          
+          while (_outOfOrderBuffer.containsKey(_nextExpectedChunkIndex)) {
+            final bufferedBytes = _outOfOrderBuffer.remove(_nextExpectedChunkIndex)!;
+            _addBytesToStream(bufferedBytes);
+            _nextExpectedChunkIndex++;
+          }
+        } else if (chunkIndex > _nextExpectedChunkIndex) {
+          _outOfOrderBuffer[chunkIndex] = bytes;
         }
-        
-        _audioStreamController!.add(bytes);
       } catch (e) {
         debugPrint('TTS Decode Error: $e');
       }
@@ -45,6 +58,14 @@ class TtsService {
     }
   }
 
+  void _addBytesToStream(List<int> bytes) {
+    if (_audioStreamController == null || _audioStreamController!.isClosed) {
+      _audioStreamController = StreamController<List<int>>();
+      _startPlayback();
+    }
+    _audioStreamController!.add(bytes);
+  }
+
   Future<void> _startPlayback() async {
     if (_isPlaying || _audioStreamController == null) return;
     _isPlaying = true;
@@ -54,7 +75,6 @@ class TtsService {
       await _player.setAudioSource(source);
       await _player.play();
       
-      // Wait for completion
       await _player.processingStateStream
           .firstWhere((state) => state == ProcessingState.completed)
           .timeout(const Duration(seconds: 60), onTimeout: () => ProcessingState.completed);
@@ -65,7 +85,6 @@ class TtsService {
       _isPlaying = false;
       if (_lastChunkReceived) {
         _lastChunkReceived = false;
-        // Wait for speaker buffer to fully drain
         await Future.delayed(const Duration(milliseconds: 500));
         debugPrint('TTS: Buffer drained — firing onPlaybackComplete');
         onPlaybackComplete?.call();
@@ -81,6 +100,8 @@ class TtsService {
     _audioStreamController = null;
     _isPlaying = false;
     _lastChunkReceived = false;
+    _outOfOrderBuffer.clear();
+    _nextExpectedChunkIndex = 0;
   }
 
   void dispose() {
