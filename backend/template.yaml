@@ -399,7 +399,7 @@ Resources:
         ThrottlingBurstLimit: 20
         ThrottlingRateLimit: 10
       ApiId: !Ref WebSocketApi
-      DeploymentId: !Ref WebSocketDeployment
+
       AutoDeploy: true
 
   ConnectRoute:
