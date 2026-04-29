@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:feather_icons/feather_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../context/auth_provider.dart';
@@ -275,7 +275,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final file = result.files.single;
         
         if (kIsWeb && file.bytes != null) {
-          Notify.info(context, "Cloud profile sync is being prioritized. Using local preview.");
+          if (context.mounted) {
+            Notify.info(context, "Cloud profile sync is being prioritized. Using local preview.");
+          }
           auth.updateUserProfile(
             imageUrl: "https://ui-avatars.com/api/?name=${auth.displayName}&background=random",
           );
@@ -283,7 +285,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           await auth.updateUserProfile(
             imageUrl: file.path,
           );
-          if (mounted) Notify.success(context, "Profile picture updated!");
+          if (context.mounted) Notify.success(context, "Profile picture updated!");
         }
       }
     } catch (e) {
@@ -303,7 +305,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final fileName = '${modelName.toLowerCase()}.mp3';
       await _audioPlayer.stop();
-      await _audioPlayer.play(AssetSource('audios/$fileName'));
+      await _audioPlayer.setAsset('assets/audios/$fileName');
+      await _audioPlayer.play();
     } catch (e) {
       debugPrint("Error playing preview: $e");
     }
@@ -311,7 +314,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _showVoiceSelectionSheet() {
     final t = AppThemeColors.of(context);
-    final auth = Provider.of<AuthProvider>(context, listen: false);
     final voices = [
       {'name': 'Tiffany', 'desc': 'Warm & Professional', 'gender': 'Female'},
       {'name': 'Ruth', 'desc': 'Sophisticated & Clear', 'gender': 'Female'},
@@ -372,11 +374,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               try {
                                 final selectedVoice = v['name']!;
                                 await auth.updateUserProfile(voiceId: selectedVoice);
-                                if (mounted) {
+                                if (context.mounted) {
                                   Notify.success(context, "Voice model updated to $selectedVoice");
                                 }
                               } catch (e) {
-                                if (mounted) {
+                                if (context.mounted) {
                                   Notify.error(context, "Failed to update voice model");
                                 }
                               }
