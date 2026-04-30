@@ -88,15 +88,16 @@ async function invokeModelStream(modelId = DEFAULT_MODEL_ID, params, onToken) {
 
     try {
         const abortController = new AbortController();
+        // 45s initial timeout for large model TTFT
         let timeoutTimer = setTimeout(() => {
             abortController.abort();
-        }, 15000);
+        }, 45000);
 
         const response = await bedrockClient.send(command, { abortSignal: abortController.signal });
         let fullText = "";
 
         for await (const event of response.stream) {
-            // Reset timer on token received
+            // Reset to 15s strictly for the gap between individual tokens
             clearTimeout(timeoutTimer);
             timeoutTimer = setTimeout(() => {
                 abortController.abort();
@@ -214,16 +215,16 @@ NEVER lecture for more than two sentences.`,
 function buildScoringPrompt(moduleType, latestResponse, dimensions) {
   return {
     system: `You are an interview evaluator. Score ONLY the candidate's LATEST response.
-Response to evaluate: "${typeof latestResponse === 'string' ? latestResponse : JSON.stringify(latestResponse)}"
 Dimensions: ${dimensions.join(', ')}.
 Rules:
 - Score each dimension 1-100 based ONLY on the latest response.
 - 3+ sentences with examples = 70-100. 1-2 sentences = 30-60. Short or irrelevant = 1-30.
-- Return ONLY JSON with dimension names as keys and numeric scores as values. No markdown, no explanation.`,
+- Return ONLY a raw JSON object with dimension names as keys and numeric scores as values. 
+- Do NOT use markdown code blocks (\`\`\`json). Do NOT include any conversational text.`,
     messages: [
       {
         role: 'user',
-        content: [{ text: "Score ONLY the latest response above across the listed dimensions." }]
+        content: [{ text: `Score ONLY the latest response inside the XML tags across the listed dimensions: <user_input>${typeof latestResponse === 'string' ? latestResponse : JSON.stringify(latestResponse)}</user_input>` }]
       }
     ]
   };
@@ -235,15 +236,16 @@ Rules:
 function buildFeedbackPrompt(moduleType, transcript, scores) {
   return {
     system: `You are an AI Interview coach providing actionable feedback.
-Review the following ${moduleType} session.
-Scores: ${JSON.stringify(scores)}
-Transcript: ${JSON.stringify(transcript)}
-
-Provide 3 key strengths and 3 areas for improvement. Format as JSON: {"strengths": [], "improvements": []}`,
+Provide 3 key strengths and 3 areas for improvement. 
+Format ONLY as a raw JSON object: {"strengths": [], "improvements": []}
+Do NOT use markdown code blocks.`,
     messages: [
       {
         role: 'user',
-        content: [{ text: "Please provide constructive feedback based on the scores and transcript." }]
+        content: [{ text: `Review the following ${moduleType} session. 
+Scores: ${JSON.stringify(scores)}
+Transcript: <user_input>${JSON.stringify(transcript)}</user_input>
+Please provide constructive feedback.` }]
       }
     ]
   };
@@ -254,14 +256,13 @@ Provide 3 key strengths and 3 areas for improvement. Format as JSON: {"strengths
  */
 function buildConceptExtractionPrompt(content) {
   return {
-    system: `Act as a semantic parser. Extract the top 3-5 core concepts from this webpage text that a user should learn.
-Text: ${content.substring(0, 5000)}
-
-Format as JSON array of strings: {"concepts": ["concept1", "concept2"]}`,
+    system: `Act as a semantic parser. Extract the top 3-5 core concepts from the provided text that a user should learn.
+Format ONLY as a raw JSON array of strings: {"concepts": ["concept1", "concept2"]}
+Do NOT use markdown code blocks.`,
     messages: [
       {
         role: 'user',
-        content: [{ text: "Extract concepts from the provided text." }]
+        content: [{ text: `Extract concepts from the following text: <user_input>${content.substring(0, 5000)}</user_input>` }]
       }
     ]
   };
@@ -294,13 +295,13 @@ function buildHRQuestionPrompt(context, history) {
 }
 
 function buildWebsiteTeachPrompt(targetConcept, content, history, isEvaluation) {
-  const systemContent = `You are a tutor helping a student learn about ${targetConcept} from this content:
-${content.substring(0, 5000)}
-
+  const systemContent = `You are a tutor helping a student learn about ${targetConcept}.
 Instructions:
 - If isEvaluation is true, check the last answer and provide feedback.
 - Ask a follow-up question to test understanding.
-- Return response as JSON: {"response": "your feedback and next question", "isCorrect": true/false}`;
+- Return response ONLY as a raw JSON object: {"response": "your feedback and next question", "isCorrect": true/false}
+- Do NOT use markdown code blocks.
+- Source material: ${content.substring(0, 5000)}`;
 
   const messages = [
     ...history,
@@ -312,10 +313,11 @@ Instructions:
 function buildSelfIntroEvalPrompt(transcript) {
   return {
     system: `You are an expert communication coach. Evaluate the self-introduction provided.
-    Provide constructive feedback and a follow-up question to improve the pitch.
-    Return response as JSON: {"response": "your feedback and follow-up"}`,
+Provide constructive feedback and a follow-up question to improve the pitch.
+Return response ONLY as a raw JSON object: {"response": "your feedback and follow-up"}
+Do NOT use markdown code blocks.`,
     messages: [
-      { role: 'user', content: [{ text: `Introduction to evaluate: ${transcript}` }] }
+      { role: 'user', content: [{ text: `Introduction to evaluate: <user_input>${transcript}</user_input>` }] }
     ]
   };
 }

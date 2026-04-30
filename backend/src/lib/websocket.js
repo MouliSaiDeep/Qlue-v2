@@ -78,6 +78,17 @@ async function getActiveConnection(userId) {
 }
 
 /**
+ * Custom error for stale WebSocket connections to break generation loops.
+ */
+class StaleConnectionError extends Error {
+  constructor(connectionId) {
+    super(`Connection ${connectionId} is stale.`);
+    this.name = 'StaleConnectionError';
+    this.connectionId = connectionId;
+  }
+}
+
+/**
  * Posts direct message string or JSON to a connection ID.
  */
 async function postToConnection(connectionId, data) {
@@ -99,13 +110,14 @@ async function postToConnection(connectionId, data) {
     await client.send(command);
     return true;
   } catch (error) {
-    if (error.$metadata?.httpStatusCode === 410 || error.name === 'GoneException') {
+    if (error.$metadata?.httpStatusCode === 410 || error.name === 'GoneException' || error.name === 'StaleConnectionError') {
       console.warn(`Connection ${connectionId} is stale. Deregistering.`);
       await deregisterConnection(connectionId);
+      throw new StaleConnectionError(connectionId);
     } else {
       console.error(`Post to connection ${connectionId} failed`, error);
+      return false;
     }
-    return false;
   }
 }
 
@@ -127,5 +139,6 @@ module.exports = {
   deregisterConnection,
   getActiveConnection,
   postToConnection,
-  broadcastToUser
+  broadcastToUser,
+  StaleConnectionError
 };

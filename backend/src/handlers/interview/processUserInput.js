@@ -1,271 +1,35 @@
-const { getSession, updateSessionState } = require('../../models/session');
-const { SPEAKERS, saveTranscript, getTranscriptBySession } = require('../../models/transcript');
-const { transitionState, INTERVIEW_STATES } = require('./controlTurnFlow');
-const { invokeModel, buildScoringPrompt, buildWebsiteTeachPrompt, buildSelfIntroEvalPrompt } = require('../../lib/bedrock');
-const { CONCEPT_STATES, updateConceptState } = require('../../models/conceptState');
-const { success, internalError } = require('../../lib/response');
-const generateQuestion = require('./generateQuestion');
-const terminateSession = require('./terminateSession');
+const { processUserTurn } = require('../../services/interviewService');
 
-// Defined Module Scoring Dimensions
-// Enforcing the new Week 3 Advanced 1-10 scales
-const DIMENSIONS = {
-    RESUME: ['technical accuracy', 'communication clarity', 'fluency', 'depth of knowledge', 'use of examples'],
-    WEBSITE: ['concept understanding', 'learning agility', 'application ability', 'fluency', 'comprehension accuracy'],
-    HR: ['STAR format adherence', 'teamwork demonstration', 'ethical thinking', 'cultural alignment', 'vocabulary'],
-    INTRO: ['clarity of message', 'confidence', 'structure', 'relevance of content', 'brevity']
-};
-
-function validateDTO(body) {
-    if (!body.sessionId || typeof body.sessionId !== 'string') {
-        throw new Error('Invalid DTO: sessionId is required');
-    }
-}
-
+/**
+ * HTTP wrapper for turn processing.
+ * Most logic has been moved to interviewService.js and asyncWorker.js.
+ */
 exports.handler = async (event) => {
-    try {
-        const body = JSON.parse(event.body || '{}');
-        validateDTO(body);
+    const body = JSON.parse(event.body || '{}');
+    const { sessionId, text, isSilence, currentConceptId } = body;
 
-        const { sessionId, textTranscript, isSilence } = body;
-        
-        const session = await getSession(sessionId);
-        if (!session) throw new Error('Session not found');
-
-        const currentConceptId = body.currentConceptId || session.currentConceptId;
-
-        if (session.currentState === INTERVIEW_STATES.AI_SPEAKING || session.currentState === 'SYNTHESIZING_AUDIO') {
-            return {
-                statusCode: 200,
-                body: JSON.stringify({ success: true, message: 'Input ignored: AI is speaking' })
-            };
-        }
-
-        // [Mouli Week 4: Deadlock Recovery]
-        if (session.currentState === INTERVIEW_STATES.PROCESSING_RESPONSE) {
-            const deadlockTime = Date.now() - new Date(session.updatedAt || session.startTime).getTime();
-            if (deadlockTime > 60 * 1000) {
-                // Recover the session silently
-                await updateSessionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, INTERVIEW_STATES.PROCESSING_RESPONSE, { message: 'Recovered from Deadlock.' });
-                return {
-                    statusCode: 200,
-                    body: JSON.stringify({
-                        success: true,
-                        data: {
-                            sessionId,
-                            nextAIResponse: "Sorry, I lost my train of thought. Let's continue where we left off.",
-                            state: INTERVIEW_STATES.AI_SPEAKING,
-                            message: 'Recovered from Deadlock.'
-                        }
-                    })
-                };
-            }
-        }
-
-        if (session.currentState !== INTERVIEW_STATES.USER_RESPONDING && session.currentState !== INTERVIEW_STATES.PROCESSING_RESPONSE) {
-            throw new Error(`Cannot process input while in state: ${session.currentState}`);
-        }
-
-        // --- 0. INITIAL TRANSITION ---
-        if (session.currentState !== INTERVIEW_STATES.PROCESSING_RESPONSE) {
-            try {
-                await updateSessionState(sessionId, INTERVIEW_STATES.PROCESSING_RESPONSE, session.currentState, { expectedTurnCount: session.turnCount });
-            } catch (err) {
-                if (err.name === 'ConditionalCheckFailedException') {
-                    return { statusCode: 409, body: JSON.stringify({ success: false, message: 'Conflict: Turn already processing' }) };
-                }
-                throw err;
-            }
-        }
-
-        // --- 1. SILENCE NEGOTIATION W/ RETRIES ---
-        if (isSilence) {
-            await transitionState(sessionId, INTERVIEW_STATES.SILENCE_DETECTED);
-            const silRetries = (session.silenceRetries || 0) + 1;
-            
-            // Strike 3 = Timeout Terminal State
-            if (silRetries >= 3) {
-                const termRes = await terminateSession.handler({ body: JSON.stringify({ sessionId, reason: 'SILENCE_TIMEOUT' }) });
-                return termRes;
-            }
-
-            // Fallback / Active Checks
-            const retryMessage = silRetries === 1 
-                ? "Are you still there? I'm listening whenever you're ready." 
-                : "I haven't heard anything. Take your time, let me know if you need me to repeat the question or if you want to wrap up.";
-            
-            // Update session and return retry logic
-            await updateSessionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, INTERVIEW_STATES.SILENCE_DETECTED, { silenceRetries: silRetries });
-
-            return {
-                statusCode: 200,
-                body: JSON.stringify({
-                    success: true,
-                    data: {
-                        sessionId,
-                        nextAIResponse: retryMessage,
-                        state: INTERVIEW_STATES.AI_SPEAKING,
-                        silenceRetries: silRetries,
-                        message: 'Silence protocol engaged. Retrying.'
-                    }
-                })
-            };
-        }
-
-
-        // --- 2. STANDARD PROCESS PIPELINE ---
-
-        if (session.silenceRetries > 0) {
-            await updateSessionState(sessionId, INTERVIEW_STATES.PROCESSING_RESPONSE, INTERVIEW_STATES.PROCESSING_RESPONSE, { silenceRetries: 0 });
-        }
-
-        if (textTranscript) await saveTranscript(sessionId, session.turnCount, SPEAKERS.USER, textTranscript);
-
-        const dims = DIMENSIONS[session.moduleType] || DIMENSIONS.RESUME;
-        
-        let scores = {};
-        if (textTranscript && textTranscript.trim().length > 2) {
-            const promptParams = buildScoringPrompt(session.moduleType, textTranscript || '', dims);
-            let rawText = "";
-            try {
-              const bedrockResult = await invokeModel(undefined, promptParams);
-              if (bedrockResult?.content?.[0]?.text) {
-                rawText = bedrockResult.content[0].text.trim();
-                const jsonText = rawText.replace(/^```json\s*/, '').replace(/```$/, '').trim();
-                scores = JSON.parse(jsonText);
-              }
-            } catch (e) {
-              console.error('Bedrock evaluation JSON parse failed, trying regex fallback.', e);
-              scores = {};
-              if (rawText) {
-                for (const dim of dims) {
-                  const regex = new RegExp('"' + dim + '"\\s*:\\s*(\\d+)', 'i');
-                  const match = rawText.match(regex);
-                  if (match && match[1]) {
-                    scores[dim] = parseInt(match[1], 10);
-                  }
-                }
-              }
-            }
-        }
-
-        // --- 3. ADAPTIVE TUTORING ---
-        if (session.moduleType === 'WEBSITE' && currentConceptId) {
-            const masteryScore = parseInt(scores['concept understanding'] || 0, 10);
-            const newState = masteryScore >= 70 ? CONCEPT_STATES.MASTERED : CONCEPT_STATES.TUTORED;
-            await updateConceptState(sessionId, currentConceptId, newState, 1);
-        }
-
-        const newAccumulated = { ...session.accumulatedScores };
-        for (const [dim, val] of Object.entries(scores)) {
-            const numVal = parseInt(val, 10);
-            if (!isNaN(numVal)) newAccumulated[dim] = (newAccumulated[dim] || 0) + numVal;
-        }
-
-        // --- 4. TERMINATION CHECK (Time Limit) ---
-        const sessionAgeMs = Date.now() - new Date(session.startTime).getTime();
-        if (sessionAgeMs > 15 * 60 * 1000) {
-            await updateSessionState(sessionId, INTERVIEW_STATES.PROCESSING_RESPONSE, INTERVIEW_STATES.PROCESSING_RESPONSE, { accumulatedScores: newAccumulated });
-            const termRes = await terminateSession.handler({ body: JSON.stringify({ sessionId, reason: 'TIME_LIMIT' }) });
-            return termRes;
-        }
-
-        // --- 5. GENERATE NEXT RESPONSE (Specialized for Tutor Mode) ---
-        let nextAIResponse = "";
-        let onlyQuestion = "";
-        let targetConcept = null; // Bug 1: Declare at top scope
-        
-        if (session.moduleType === 'WEBSITE') {
-            const { fetchAndCleanContent } = require('../../lib/scraper');
-            const { getConceptsBySession } = require('../../models/conceptState');
-            
-            const websiteUrl = session.itemData?.websiteUrl || "";
-            const scraped = await fetchAndCleanContent(websiteUrl);
-            const content = scraped.content;
-            const concepts = await getConceptsBySession(sessionId);
-            targetConcept = currentConceptId || (concepts.length > 0 ? concepts[0].conceptId : "General Overview");
-
-            const prompt = buildWebsiteTeachPrompt(targetConcept, content, (await getTranscriptBySession(sessionId)).map(t => ({
-                role: t.speaker === 'USER' ? 'user' : 'assistant',
-                content: [{ text: t.text }]
-            })), true);
-            
-            const bedrockResult = await invokeModel(undefined, prompt);
-            if (bedrockResult.content?.[0]?.text) {
-                try {
-                    const parsed = JSON.parse(bedrockResult.content[0].text);
-                    nextAIResponse = parsed.response;
-                    onlyQuestion = nextAIResponse;
-                    
-                    // Update concept mastery if correct
-                    if (parsed.isCorrect) {
-                        await updateConceptState(sessionId, targetConcept, CONCEPT_STATES.MASTERED, 1);
-                    }
-                } catch (e) {
-                    nextAIResponse = bedrockResult.content[0].text;
-                    onlyQuestion = nextAIResponse;
-                }
-            }
-
-            if (!nextAIResponse) {
-                nextAIResponse = `Let's talk about ${targetConcept}. What do you know about it so far?`;
-                onlyQuestion = nextAIResponse;
-            }
-        } else if (session.moduleType === 'INTRO') {
-            const prompt = buildSelfIntroEvalPrompt(textTranscript);
-            const bedrockResult = await invokeModel(undefined, prompt);
-            
-            if (bedrockResult.content?.[0]?.text) {
-                try {
-                    const parsed = JSON.parse(bedrockResult.content[0].text);
-                    nextAIResponse = parsed.response;
-                    onlyQuestion = nextAIResponse;
-                } catch (e) {
-                    nextAIResponse = bedrockResult.content[0].text;
-                    onlyQuestion = nextAIResponse;
-                }
-            }
-
-            if (!nextAIResponse) {
-                nextAIResponse = "Thanks for that introduction! I've noted your background. Let's move on to the next part of our session.";
-                onlyQuestion = nextAIResponse;
-            }
-        } else {
-            // Standard Interview Flow — generation handled by sendTextHandler via streaming
-            nextAIResponse = null; // Will be generated by sendTextHandler
-            onlyQuestion = null;
-        }
-
-        const updates = { 
-            turnCount: session.turnCount + 1, 
-            accumulatedScores: newAccumulated 
+    if (!sessionId) {
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ message: 'Missing sessionId' }),
+            headers: { 'Access-Control-Allow-Origin': '*' }
         };
-        // Bug 7: Only include currentConceptId when truthy
-        if (targetConcept) {
-            updates.currentConceptId = targetConcept;
-        }
+    }
 
-        await transitionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, updates); 
-
+    try {
+        const result = await processUserTurn(sessionId, text, isSilence, currentConceptId);
+        
         return {
             statusCode: 200,
-            body: JSON.stringify({
-                success: true, // Ensuring standard success wrapper for sendTextHandler
-                data: {
-                    sessionId,
-                    scoresGenerated: scores,
-                    accumulatedScores: newAccumulated,
-                    nextAIResponse: nextAIResponse,
-                    onlyQuestion: onlyQuestion,
-                    currentConceptId: targetConcept,
-                    state: INTERVIEW_STATES.AI_SPEAKING,
-                    message: 'Turn completed.'
-                }
-            })
+            body: JSON.stringify(result),
+            headers: { 'Access-Control-Allow-Origin': '*' }
         };
-
-    } catch (err) {
-        console.error('ProcessUserInput Failed:', err);
-        return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
+    } catch (error) {
+        console.error('[ProcessUserInput] Error:', error);
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ message: error.message }),
+            headers: { 'Access-Control-Allow-Origin': '*' }
+        };
     }
-}
+};

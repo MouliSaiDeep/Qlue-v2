@@ -289,12 +289,6 @@ class InterviewProvider extends ChangeNotifier {
         // The mic is enabled exclusively by TTS onPlaybackComplete callback.
         // This prevents double _startListening() and the mic-before-audio-finishes race.
         currentPhase = InterviewPhase.listening;
-        
-        // FIX 5: Only start listening if TTS is physically finished.
-        // If TTS is still active, onPlaybackComplete will trigger it later.
-        if (!_ttsService.isPlaying) {
-          _startListening();
-        }
         break;
       case 'PROCESSING_RESPONSE':
         _watchdogTimer?.cancel();
@@ -353,9 +347,6 @@ class InterviewProvider extends ChangeNotifier {
     _wsClient.send('terminate_session', {
       'sessionId': sessionId,
     });
-    try {
-      await DioClient().dio.post(ApiConstants.interviewTerminate, data: {'sessionId': sessionId});
-    } catch (e) {}
     _cleanup();
     isSessionEnded = true;
     notifyListeners();

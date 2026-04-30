@@ -69,7 +69,6 @@ class SttService {
     if (_speech.isListening) {
       debugPrint('STT: Already listening, stopping first...');
       await _speech.stop();
-      await Future.delayed(const Duration(milliseconds: 100));
     }
     
     try {
@@ -84,7 +83,7 @@ class SttService {
           }
         },
         listenFor: const Duration(seconds: 60),
-        pauseFor: const Duration(seconds: 8),
+        pauseFor: const Duration(seconds: 3),
         partialResults: true,
         cancelOnError: true,
         listenMode: ListenMode.confirmation,
