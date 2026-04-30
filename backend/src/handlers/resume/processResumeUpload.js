@@ -181,7 +181,7 @@ async function invokeBedrockParser(text) {
     ${text.substring(0, 50000)}`;
 
     const body = {
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: [{ text: prompt }] }],
         max_tokens: 4000,
         temperature: 0.1
     };

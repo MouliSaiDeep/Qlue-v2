@@ -11,15 +11,18 @@ exports.handler = async (event) => {
     console.info(`Preparing notification for user ${userId}`);
 
     // 1. Fetch user record to get fcmToken
-    // [DEFERRED] Skip for now as user model is placeholder.
-    // In production, we'd fetch the user's latest fcmToken.
-    const mockFcmToken = 'MOCK_TOKEN_' + userId; // Fallback for testing
-    console.warn(`[MOCK] Using mock FCM token for user ${userId}`);
+    const { getUserById } = require('../../models/user');
+    const user = await getUserById(userId);
+    if (!user || !user.fcmToken) {
+      console.warn(`No FCM token found for user ${userId}. Skipping notification.`);
+      return { success: false, error: 'No FCM token' };
+    }
+    const fcmToken = user.fcmToken;
 
     // 2. Compose and send notification
     const notification = {
       title: 'Your Feedback is Ready!',
-      body: `You scored ${overallScore}/10 in your ${moduleType} session. Tap to view details.`
+      body: `You scored ${Math.round(overallScore)}/100 in your ${moduleType} session. Tap to view details.`
     };
 
     const data = {
@@ -30,7 +33,7 @@ exports.handler = async (event) => {
     };
 
     console.info(`Sending FCM to user ${userId}...`);
-    const fcmResult = await sendNotification(mockFcmToken, notification, data);
+    const fcmResult = await sendNotification(fcmToken, notification, data);
 
     if (fcmResult.success) {
       console.info(`Notification sent successfully to ${userId}`);

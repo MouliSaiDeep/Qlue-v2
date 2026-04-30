@@ -1,9 +1,6 @@
-const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, PutCommand, QueryCommand } = require("@aws-sdk/lib-dynamodb");
+const { docClient } = require('../lib/dynamodb');
+const { PutCommand, QueryCommand } = require("@aws-sdk/lib-dynamodb");
 const { randomUUID } = require('crypto');
-
-const client = new DynamoDBClient({});
-const docClient = DynamoDBDocumentClient.from(client);
 
 const TRANSCRIPTS_TABLE = process.env.TRANSCRIPTS_TABLE || 'qlue-transcripts';
 

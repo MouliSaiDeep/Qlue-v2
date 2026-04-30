@@ -82,7 +82,9 @@ async function* synthesizeToBase64Chunks(text, options = {}) {
     });
 
     try {
-      console.debug(`[Polly] Sending request for chunk: "${chunkText.substring(0, 50)}..."`);
+      if (process.env.LOG_LEVEL === 'debug') {
+        console.debug(`[Polly] Sending request for chunk ${t + 1}/${textChunks.length}: "${chunkText.substring(0, 50)}..."`);
+      }
       const response = await polly.send(command);
       const stream = response.AudioStream;
 
@@ -90,14 +92,18 @@ async function* synthesizeToBase64Chunks(text, options = {}) {
       let buffer = Buffer.alloc(0);
       let isFirstInChunk = true;
 
-      console.debug(`[Polly] Stream received, processing chunks...`);
+      if (process.env.LOG_LEVEL === 'debug') {
+        console.debug(`[Polly] Stream received, processing chunks...`);
+      }
       for await (const data of stream) {
         buffer = Buffer.concat([buffer, data]);
 
         // ULTRA-LOW LATENCY: Yield the very first packet immediately, regardless of size
         // Subsequent packets are grouped into 32KB to maintain efficiency.
         if (isFirstInChunk || buffer.length >= TARGET_CHUNK_SIZE) {
-          console.debug(`[Polly] Yielding chunk ${globalChunkIndex} (Size: ${buffer.length}, first: ${isFirstInChunk})`);
+          if (process.env.LOG_LEVEL === 'debug') {
+            console.debug(`[Polly] Yielding chunk ${globalChunkIndex} (Size: ${buffer.length}, first: ${isFirstInChunk})`);
+          }
           yield {
             chunkIndex: globalChunkIndex++,
             audioData: buffer.toString('base64')
@@ -110,7 +116,9 @@ async function* synthesizeToBase64Chunks(text, options = {}) {
       const isVeryLastInSequence = t === textChunks.length - 1;
       
       if (buffer.length > 0) {
-        console.debug(`[Polly] Yielding final buffer chunk ${globalChunkIndex}`);
+        if (process.env.LOG_LEVEL === 'debug') {
+          console.debug(`[Polly] Yielding final buffer chunk ${globalChunkIndex}`);
+        }
         yield {
           chunkIndex: globalChunkIndex++,
           audioData: buffer.toString('base64')

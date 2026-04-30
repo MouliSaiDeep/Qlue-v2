@@ -10,6 +10,7 @@ class SttService {
   final SpeechToText _speech = SpeechToText();
   bool _isInitialized = false;
   bool _isInitializing = false;
+  String _lastStatus = '';
   Function(String)? onStatusChange;
 
   Future<bool> init() async {
@@ -21,13 +22,12 @@ class SttService {
       _isInitialized = await _speech.initialize(
         onError: (error) {
           debugPrint('STT Error: $error');
-          if (error.permanent) {
-            debugPrint('STT Permanent Error: ${error.errorMsg}');
-          }
+          if (onStatusChange != null) onStatusChange!('error');
         },
         onStatus: (status) {
           debugPrint('STT Status: $status');
-          if (onStatusChange != null) {
+          if (_lastStatus != status && onStatusChange != null) {
+            _lastStatus = status;
             onStatusChange!(status);
           }
         },

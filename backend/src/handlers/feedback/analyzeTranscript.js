@@ -24,23 +24,14 @@ exports.handler = async (event) => {
     const dimensions = MODULE_DIMENSIONS[moduleType] || ['performance'];
     
     // 2. Build scoring prompt and invoke Bedrock
-    const prompt = buildScoringPrompt(moduleType, transcript, dimensions);
-    
-    // Nemotron-4-340b body format (assuming based on buildScoringPrompt output)
-    const body = {
-      prompt: prompt.prompt,
-      max_tokens: 500,
-      temperature: 0.2
-    };
-
-    const bedrockResponse = await invokeModel(undefined, body, { logTokens: true, retries: 3 });
+    const promptParams = buildScoringPrompt(moduleType, transcript, dimensions);
+    const bedrockResponse = await invokeModel(undefined, promptParams, { logTokens: true, retries: 3 });
     
     // 3. Parse and validate scores
-    // Parsing logic depends on Nemotron's JSON format. We assume it returns the JSON directly.
+    // invokeModel returns { content: [{ text }], usage }
     let dimensionScores = {};
     try {
-      // Find the JSON part in the response (if it's wrapped in text)
-      const text = bedrockResponse.generation || bedrockResponse.completion || '';
+      const text = bedrockResponse.content?.[0]?.text || '';
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       dimensionScores = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
     } catch (e) {

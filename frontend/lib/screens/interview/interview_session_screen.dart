@@ -210,179 +210,186 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
       sphereColor = Colors.white;
     }
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // Spectral Background
-          Positioned.fill(
-            child: CustomPaint(
-              painter: AiDotMatrixPainter(
-                time: _time,
-                intensity: _intensity,
-                baseColor: sphereColor,
-                isInwards: !isAiSpeaking,
-                tapOffset: null,
-                tapTime: 0,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _showEndInterviewDialog(context);
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
+            // Spectral Background
+            Positioned.fill(
+              child: CustomPaint(
+                painter: AiDotMatrixPainter(
+                  time: _time,
+                  intensity: _intensity,
+                  baseColor: sphereColor,
+                  isInwards: !isAiSpeaking,
+                  tapOffset: null,
+                  tapTime: 0,
+                ),
+                size: Size.infinite,
               ),
-              size: Size.infinite,
             ),
-          ),
-
-          // Safe area content
-          SafeArea(
-            child: Column(
-              children: [
-                // TOP BAR
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: t.emeraldPrimary.withValues(alpha: 0.3),
-                            width: 1,
-                          ),
-                        ),
-                        child: Text(
-                          "INTERVIEW MODE",
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontFamily: 'monospace',
-                            fontWeight: FontWeight.w900,
-                            color: t.emeraldPrimary.withValues(alpha: 0.6),
-                            letterSpacing: 4,
-                          ),
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () => _showEndInterviewDialog(context),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+ 
+            // Safe area content
+            SafeArea(
+              child: Column(
+                children: [
+                  // TOP BAR
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
-                            color: Colors.red.withValues(alpha: 0.1),
+                            color: Colors.black.withValues(alpha: 0.5),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: Colors.redAccent.withValues(alpha: 0.3),
+                              color: t.emeraldPrimary.withValues(alpha: 0.3),
                               width: 1,
                             ),
                           ),
                           child: Text(
-                            "END",
+                            "INTERVIEW MODE",
                             style: TextStyle(
-                              color: Colors.redAccent,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
+                              fontSize: 10,
                               fontFamily: 'monospace',
-                              letterSpacing: 2,
+                              fontWeight: FontWeight.w900,
+                              color: t.emeraldPrimary.withValues(alpha: 0.6),
+                              letterSpacing: 4,
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // AI QUESTION TEXT (TOP) - Plain white text like initial version
-                if (aiText.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 180),
-                      child: SingleChildScrollView(
-                        child: Text(
-                          aiText,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontFamily: 'monospace',
-                            fontWeight: FontWeight.w600,
-                            color: isTutor ? Colors.tealAccent : Colors.white.withValues(alpha: 0.9),
-                            height: 1.4,
-                            letterSpacing: -0.5,
+                        GestureDetector(
+                          onTap: () => _showEndInterviewDialog(context),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: Colors.redAccent.withValues(alpha: 0.3),
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              "END",
+                              style: TextStyle(
+                                color: Colors.redAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                                fontFamily: 'monospace',
+                                letterSpacing: 2,
+                              ),
+                            ),
                           ),
-                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+ 
+                  // AI QUESTION TEXT (TOP) - Plain white text like initial version
+                  if (aiText.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 180),
+                        child: SingleChildScrollView(
+                          child: Text(
+                            aiText,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w600,
+                              color: isTutor ? Colors.tealAccent : Colors.white.withValues(alpha: 0.9),
+                              height: 1.4,
+                              letterSpacing: -0.5,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-
-                // SPACER - pushes content to center/bottom
-                const Spacer(),
-
-                // CENTER SPHERE AREA (empty, sphere is in background)
-                const SizedBox(height: 200),
-
-                const Spacer(),
-
-                // USER TRANSCRIPTION (BOTTOM)
-                if (userText.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 100),
-                      child: SingleChildScrollView(
-                        child: Text(
-                          userText,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontFamily: 'monospace',
-                            fontWeight: FontWeight.w500,
-                            color: Colors.orangeAccent.withValues(alpha: 0.8),
-                            height: 1.4,
-                            letterSpacing: -0.3,
+ 
+                  // SPACER - pushes content to center/bottom
+                  const Spacer(),
+ 
+                  // CENTER SPHERE AREA (empty, sphere is in background)
+                  const SizedBox(height: 200),
+ 
+                  const Spacer(),
+ 
+                  // USER TRANSCRIPTION (BOTTOM)
+                  if (userText.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 100),
+                        child: SingleChildScrollView(
+                          child: Text(
+                            userText,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w500,
+                              color: Colors.orangeAccent.withValues(alpha: 0.8),
+                              height: 1.4,
+                              letterSpacing: -0.3,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
-                          textAlign: TextAlign.center,
                         ),
                       ),
                     ),
-                  ),
-
-                // STATUS TEXT (BOTTOM)
-                if (statusText.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 24, top: 8),
-                    child: Text(
-                      statusText,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontFamily: 'monospace',
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white.withValues(alpha: 0.4),
-                        letterSpacing: 2,
+ 
+                  // STATUS TEXT (BOTTOM)
+                  if (statusText.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 24, top: 8),
+                      child: Text(
+                        statusText,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white.withValues(alpha: 0.4),
+                          letterSpacing: 2,
+                        ),
                       ),
                     ),
-                  ),
-
-                // SILENCE STRIKES INDICATOR
-                if (provider.silenceStrikes > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(3, (index) {
-                        return Container(
-                          width: 6,
-                          height: 6,
-                          margin: const EdgeInsets.symmetric(horizontal: 3),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: index < provider.silenceStrikes
-                                ? Colors.redAccent.withValues(alpha: 0.8)
-                                : Colors.white.withValues(alpha: 0.1),
-                          ),
-                        );
-                      }),
+ 
+                  // SILENCE STRIKES INDICATOR
+                  if (provider.silenceStrikes > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(3, (index) {
+                          return Container(
+                            width: 6,
+                            height: 6,
+                            margin: const EdgeInsets.symmetric(horizontal: 3),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: index < provider.silenceStrikes
+                                  ? Colors.redAccent.withValues(alpha: 0.8)
+                                  : Colors.white.withValues(alpha: 0.1),
+                            ),
+                          );
+                        }),
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

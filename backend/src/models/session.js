@@ -1,8 +1,5 @@
-const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, PutCommand, UpdateCommand, GetCommand, QueryCommand } = require("@aws-sdk/lib-dynamodb");
-
-const client = new DynamoDBClient({});
-const docClient = DynamoDBDocumentClient.from(client);
+const { docClient } = require('../lib/dynamodb');
+const { PutCommand, UpdateCommand, GetCommand, QueryCommand } = require("@aws-sdk/lib-dynamodb");
 
 const SESSIONS_TABLE = process.env.SESSIONS_TABLE || "Sessions";
 
@@ -142,6 +139,11 @@ async function updateSessionState(sessionId, newState, expectedCurrentState = nu
         updateExpression += ", currentConceptId = :currentConceptId";
         expressionAttributeValues[":currentConceptId"] = updates.currentConceptId;
     }
+
+    if (updates.scrapedSummary !== undefined) {
+        updateExpression += ", scrapedSummary = :scrapedSummary";
+        expressionAttributeValues[":scrapedSummary"] = updates.scrapedSummary;
+    }
     
     // Cleanup active marker if terminated
     let removeExpression = "";
@@ -167,7 +169,6 @@ async function updateSessionState(sessionId, newState, expectedCurrentState = nu
 }
 
 module.exports = {
-    docClient,
     INTERVIEW_STATES,
     createSession,
     getSession,

@@ -20,11 +20,12 @@ const DEFAULT_MODEL_ID = process.env.BEDROCK_MODEL_ID || 'nvidia.nemotron-super-
 /**
  * Executes a Model Invocation using Converse API
  */
-async function invokeModel(modelId = DEFAULT_MODEL_ID, params, options = {}) {
+async function invokeModel(modelId, params, options = {}) {
+  const resolvedModelId = modelId || DEFAULT_MODEL_ID;
   const systemPrompt = "You are Qlue, an elite technical interviewer.";
   
   const command = new ConverseCommand({
-    modelId: modelId,
+    modelId: resolvedModelId,
     messages: params.messages || [],
     system: params.system ? [{ text: params.system }] : [{ text: systemPrompt }],
     inferenceConfig: {
@@ -72,11 +73,12 @@ async function invokeModel(modelId = DEFAULT_MODEL_ID, params, options = {}) {
  * @param {object} body 
  * @param {function} onToken Callback for each received token
  */
-async function invokeModelStream(modelId = DEFAULT_MODEL_ID, params, onToken) {
+async function invokeModelStream(modelId, params, onToken) {
+    const resolvedModelId = modelId || DEFAULT_MODEL_ID;
     const systemPrompt = "You are Qlue, an elite technical interviewer.";
 
     const command = new ConverseStreamCommand({
-        modelId,
+        modelId: resolvedModelId,
         messages: params.messages || [],
         system: params.system ? [{ text: params.system }] : [{ text: systemPrompt }],
         inferenceConfig: {

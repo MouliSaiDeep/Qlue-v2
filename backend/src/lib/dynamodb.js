@@ -215,6 +215,7 @@ async function transactWrite(items) {
 }
 
 module.exports = {
+  docClient,
   get,
   put,
   update,

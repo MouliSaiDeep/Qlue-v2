@@ -1,4 +1,4 @@
-const { docClient } = require('./session');
+const { docClient } = require('../lib/dynamodb');
 const { UpdateCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 
 const CONCEPTS_TABLE = process.env.CONCEPTS_TABLE_NAME || 'Concepts';

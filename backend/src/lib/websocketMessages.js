@@ -4,20 +4,15 @@
 
 const MESSAGE_TYPES = {
   SESSION_INIT: 'session_init',
-  TEXT_TRANSCRIPT: 'text_transcript',
-  HEARTBEAT: 'heartbeat',
-  SESSION_RESUME: 'session_resume',
-  SESSION_STATE_UPDATE: 'session_state_update',
-  ERROR: 'error',
-  TTS_AUDIO_CHUNK: 'tts_audio_chunk',
-  AI_SPEAKING_COMPLETE: 'ai_speaking_complete',
-  SESSION_TEXT_STREAM: 'session_text_stream',
-  QUESTION_TEXT_UPDATE: 'question_text_update',
-  TERMINATION: 'termination',
-  SILENCE_DETECTED: 'silence_detected',
+  TURN_SUBMIT: 'turn_submit',
   SESSION_RECONNECT: 'session_reconnect',
+  TERMINATE_SESSION: 'terminate_session',
   PING: 'ping',
-  PONG: 'pong'
+  PONG: 'pong',
+  TURN_COMPLETE: 'turn_complete',
+  TURN_ERROR: 'turn_error',
+  TERMINATION: 'termination',
+  ERROR: 'error'
 };
 
 /**
@@ -39,16 +34,18 @@ function validateMessage(message) {
     case MESSAGE_TYPES.SESSION_INIT:
       if (!payload?.sessionId) return { valid: false, error: 'session_init requires sessionId' };
       break;
-    case MESSAGE_TYPES.TEXT_TRANSCRIPT:
-      if (!payload?.sessionId || !payload?.text) {
-        return { valid: false, error: 'text_transcript requires sessionId and text' };
+    case MESSAGE_TYPES.TURN_SUBMIT:
+      if (!payload?.sessionId) return { valid: false, error: 'turn_submit requires sessionId' };
+      if ((payload?.text == null || payload.text === '') && payload?.isSilence !== true) {
+        return { valid: false, error: 'turn_submit requires text or isSilence true' };
       }
       break;
-    case MESSAGE_TYPES.SESSION_RESUME:
-      if (!payload?.sessionId) return { valid: false, error: 'session_resume requires sessionId' };
+    case MESSAGE_TYPES.SESSION_RECONNECT:
+    case MESSAGE_TYPES.TERMINATE_SESSION:
+      if (!payload?.sessionId) return { valid: false, error: `${type} requires sessionId` };
       break;
-    case MESSAGE_TYPES.HEARTBEAT:
-      // Heartbeat might not have a payload
+    case MESSAGE_TYPES.PING:
+    case MESSAGE_TYPES.PONG:
       break;
     default:
       break;

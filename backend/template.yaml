@@ -772,6 +772,8 @@ Resources:
               Action:
                 - textract:AnalyzeDocument
                 - textract:DetectDocumentText
+                - textract:StartDocumentAnalysis
+                - textract:GetDocumentAnalysis
               Resource: '*'
         - Statement:
             - Effect: Allow

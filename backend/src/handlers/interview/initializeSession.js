@@ -24,6 +24,14 @@ exports.handler = async (event) => {
         const activeSession = await getActiveSessionForUser(userId);
         if (activeSession) {
             if (body.force) {
+                // Verify the active session belongs to this user before terminating
+                if (activeSession.userId !== userId) {
+                    console.error(`User ${userId} attempted to terminate session owned by ${activeSession.userId}`);
+                    return {
+                        statusCode: 403,
+                        body: JSON.stringify({ error: 'Cannot terminate another user\'s session' })
+                    };
+                }
                 console.info(`Force terminating existing session ${activeSession.sessionId} for ${userId}`);
                 const terminateSession = require('./terminateSession');
                 await terminateSession.handler({

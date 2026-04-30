@@ -14,28 +14,27 @@ exports.handler = async (event) => {
         const { content } = await fetchAndCleanContent(websiteUrl);
 
         // 2. Use Bedrock to audit the nature of the content
-        const prompt = [
-            {
-                role: 'system',
-                content: `You are a content auditor. Analyze the following webpage text and determine if it contains educational or professional learning content (tutorial, documentation, academic info, technical blog). 
-                Reject sites that are primarily shopping, news, social media, adult content, or pure entertainment.
-                Format your output strictly as a JSON object: {"isEducational": boolean, "reason": "short explanation"}`
-            },
+        const systemPrompt = `You are a content auditor. Analyze the following webpage text and determine if it contains educational or professional learning content (tutorial, documentation, academic info, technical blog). 
+Reject sites that are primarily shopping, news, social media, adult content, or pure entertainment.
+Format your output strictly as a JSON object: {"isEducational": boolean, "reason": "short explanation"}`;
+
+        const messages = [
             {
                 role: 'user',
-                content: content.substring(0, 4000)
+                content: [{ text: content.substring(0, 4000) }]
             }
         ];
 
-        const bedrockResult = await invokeModel(undefined, { messages: prompt });
+        const bedrockResult = await invokeModel(undefined, { system: systemPrompt, messages });
         
         let analysis = { isEducational: false, reason: 'Failed to analyze' };
-        if (bedrockResult.content && bedrockResult.content[0]?.text) {
+        const responseText = bedrockResult.content?.[0]?.text || '';
+        if (responseText) {
             try {
-                analysis = JSON.parse(bedrockResult.content[0].text);
+                analysis = JSON.parse(responseText);
             } catch (e) {
                 // Handle non-JSON output if any
-                analysis = { isEducational: bedrockResult.content[0].text.toLowerCase().includes('true'), reason: 'Parsed from text' };
+                analysis = { isEducational: responseText.toLowerCase().includes('true'), reason: 'Parsed from text' };
             }
         }
 

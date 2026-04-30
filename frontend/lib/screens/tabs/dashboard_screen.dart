@@ -11,6 +11,7 @@ import '../../core/theme.dart';
 import '../../components/avatar.dart';
 import '../../context/auth_provider.dart';
 import '../../context/dashboard_provider.dart';
+import '../../features/interview/providers/interview_provider.dart';
 import '../../core/models/session_model.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -34,6 +35,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<DashboardProvider>().fetchDashboardData();
+      
+      // Fix #28: Ensure any hanging interview sessions are terminated on dashboard entry
+      final interviewProvider = context.read<InterviewProvider>();
+      if (interviewProvider.sessionId != null && !interviewProvider.isSessionEnded) {
+        debugPrint('Dashboard: Terminating active session ${interviewProvider.sessionId}');
+        interviewProvider.endSession();
+      }
     });
   }
 

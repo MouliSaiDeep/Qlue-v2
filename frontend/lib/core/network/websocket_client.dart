@@ -32,6 +32,8 @@ class WebSocketClient {
   }
 
   Future<void> connect(String url, String token) async {
+    if (_status == WebSocketStatus.connecting) return;
+    
     final uri = Uri.parse(url);
     final queryParams = Map<String, String>.from(uri.queryParameters);
     if (token.isNotEmpty && !queryParams.containsKey('token')) {
@@ -43,13 +45,16 @@ class WebSocketClient {
     
     try {
       _channel = WebSocketChannel.connect(Uri.parse(fullUrl));
-      _status = WebSocketStatus.connected;
-      _reconnectAttempts = 0;
       
-      _startHeartbeat();
-      
+      // Wait for stream to be ready before marking as connected
+      // and resetting attempts.
       _channel!.stream.listen(
         (message) {
+          if (_status != WebSocketStatus.connected) {
+            _status = WebSocketStatus.connected;
+            _reconnectAttempts = 0;
+            _startHeartbeat();
+          }
           try {
             final data = jsonDecode(message);
             _messageController.add(data);
@@ -59,6 +64,7 @@ class WebSocketClient {
         },
         onDone: () => _handleDisconnect(),
         onError: (e) => _handleDisconnect(),
+        cancelOnError: true,
       );
     } catch (e) {
       _handleDisconnect();

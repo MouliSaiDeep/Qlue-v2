@@ -144,8 +144,15 @@ exports.handler = async (event) => {
                     const { fetchAndCleanContent } = require('../../lib/scraper');
                     const { getConceptsBySession } = require('../../models/conceptState');
                     
-                    const scraped = await fetchAndCleanContent(websiteUrl);
-                    const content = scraped.content;
+                    // Use cached scraped content from session if available, otherwise scrape and warn
+                    let content = session.scrapedSummary || session.itemData?.scrapedSummary;
+                    if (!content) {
+                        console.warn(`[generateQuestion] No cached scraped content for session ${sessionId}. Scraping on-demand (expensive).`);
+                        const scraped = await fetchAndCleanContent(websiteUrl);
+                        content = scraped.content;
+                        // Cache at top level for easy access in future turns
+                        await updateSessionState(sessionId, session.currentState, null, { scrapedSummary: content });
+                    }
                     const concepts = await getConceptsBySession(sessionId);
                     
                     // Use first concept if not specified

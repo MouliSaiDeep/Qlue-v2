@@ -1,15 +1,19 @@
 import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:feather_icons/feather_icons.dart';
 import '../../core/theme.dart';
 import '../../core/models/session_model.dart';
+import '../../core/models/feedback_report_model.dart';
+import '../../core/network/dio_client.dart';
+import '../../core/constants/api_constants.dart';
 import '../../components/glass_card.dart';
 import '../../components/spectral_background.dart';
 
 class FeedbackReportScreen extends StatefulWidget {
   final SessionModel? session;
-  const FeedbackReportScreen({super.key, this.session});
+  final String? sessionId;
+
+  const FeedbackReportScreen({super.key, this.session, this.sessionId});
 
   @override
   State<FeedbackReportScreen> createState() => _FeedbackReportScreenState();
@@ -17,6 +21,48 @@ class FeedbackReportScreen extends StatefulWidget {
 
 class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
   int _activeTabIndex = 0;
+  bool _isLoading = true;
+  String? _errorMessage;
+  FeedbackReportModel? _report;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchReport();
+  }
+
+  Future<void> _fetchReport() async {
+    final sId = widget.session?.sessionId ?? widget.sessionId;
+    if (sId == null) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = "No session information found.";
+      });
+      return;
+    }
+
+    try {
+      final response = await DioClient().dio.get(
+        ApiConstants.feedbackReport,
+        queryParameters: {'sessionId': sId},
+      );
+      
+      if (response.statusCode == 200) {
+        setState(() {
+          _report = FeedbackReportModel.fromJson(response.data['data'] ?? response.data);
+          _isLoading = false;
+        });
+      } else {
+        throw Exception("Failed to load report: ${response.statusCode}");
+      }
+    } catch (e) {
+      debugPrint("Error fetching feedback report: $e");
+      setState(() {
+        _isLoading = false;
+        _errorMessage = "Unable to load feedback at this time. It may still be generating.";
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,30 +76,59 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
         child: Scaffold(
           backgroundColor: Colors.transparent,
           body: RepaintBoundary(
-            child: Stack(
-              children: [
-                SingleChildScrollView(
-                  padding: EdgeInsets.only(top: topPadding + 20, bottom: 60, left: 24, right: 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: _isLoading 
+              ? const Center(child: CircularProgressIndicator())
+              : _errorMessage != null
+                ? _buildErrorState(context, t)
+                : Stack(
                     children: [
-                      _buildHeader(context, t),
-                      const SizedBox(height: 24),
-                      _buildScoreCard(t),
-                      const SizedBox(height: 24),
-                      _buildSpiderChartCard(t),
-                      const SizedBox(height: 32),
-                      _buildNavigationTabs(t),
-                      const SizedBox(height: 20),
-                      _buildContentArea(t),
-                      const SizedBox(height: 40),
-                      _buildTranscriptSection(t),
+                      SingleChildScrollView(
+                        padding: EdgeInsets.only(top: topPadding + 20, bottom: 60, left: 24, right: 24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _buildHeader(context, t),
+                            const SizedBox(height: 24),
+                            _buildScoreCard(t),
+                            const SizedBox(height: 24),
+                            _buildSpiderChartCard(t),
+                            const SizedBox(height: 32),
+                            _buildNavigationTabs(t),
+                            const SizedBox(height: 20),
+                            _buildContentArea(t),
+                            const SizedBox(height: 40),
+                            _buildTranscriptSection(t),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
-                ),
-              ],
-            ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(BuildContext context, AppThemeColors t) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(FeatherIcons.alertTriangle, size: 48, color: t.warning),
+            const SizedBox(height: 16),
+            Text(
+              _errorMessage!,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: t.text, fontSize: 16),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Go Back"),
+            ),
+          ],
         ),
       ),
     );
@@ -106,7 +181,7 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
   }
 
   Widget _buildScoreCard(AppThemeColors t) {
-    final score = widget.session?.score ?? 84;
+    final score = _report?.overallScore.round() ?? widget.session?.score ?? 0;
     return GlassCard(
       padding: const EdgeInsets.symmetric(vertical: 40),
       borderRadius: 32,
@@ -187,8 +262,8 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
               child: CustomPaint(
                 painter: RadarChartPainter(
                   t: t,
-                  data: [0.85, 0.70, 0.92], // Clarity, Fluency, Vocabulary
-                  labels: ["Clarity", "Fluency", "Vocabulary"],
+                  data: _report?.dimensionScores.values.map((v) => v / 100).toList() ?? [0.8, 0.7, 0.9],
+                  labels: _report?.dimensionScores.keys.toList() ?? ["Clarity", "Fluency", "Vocabulary"],
                 ),
               ),
             ),
@@ -281,7 +356,7 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
             _buildSectionTitle(t, "Executive Summary", FeatherIcons.fileText),
             const SizedBox(height: 16),
             Text(
-              "Your performance was exceptionally strong in technical accuracy and vocabulary. You demonstrated a deep understanding of the core concepts, though your fluency could be improved by reducing filler words.",
+              _report?.executiveSummary ?? "Your performance report is being processed.",
               style: TextStyle(fontSize: 15, height: 1.6, color: t.textSecondary),
             ),
             const SizedBox(height: 20),
@@ -296,9 +371,10 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
           children: [
             _buildSectionTitle(t, "Your Strengths", FeatherIcons.zap),
             const SizedBox(height: 16),
-            _buildBulletPoint(t, "Precise use of industry terminology.", t.success),
-            _buildBulletPoint(t, "Excellent structural integrity in answers.", t.success),
-            _buildBulletPoint(t, "Strong logical flow when explaining complex topics.", t.success),
+            if (_report?.strengths.isEmpty ?? true)
+              _buildBulletPoint(t, "Great effort in completing the session.", t.success)
+            else
+              ...(_report?.strengths.map((s) => _buildBulletPoint(t, s, t.success)) ?? []),
           ],
         );
       case 2: // Weaknesses
@@ -308,9 +384,10 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
           children: [
             _buildSectionTitle(t, "Areas for Improvement", FeatherIcons.alertCircle),
             const SizedBox(height: 16),
-            _buildBulletPoint(t, "Moderate usage of filler words ('um', 'ah').", t.warning),
-            _buildBulletPoint(t, "Tendency to speed up during technical deep-dives.", t.warning),
-            _buildBulletPoint(t, "Eye contact (simulated) could be more consistent.", t.warning),
+            if (_report?.weaknesses.isEmpty ?? true)
+              _buildBulletPoint(t, "No major weaknesses identified.", t.warning)
+            else
+              ...(_report?.weaknesses.map((w) => _buildBulletPoint(t, w, t.warning)) ?? []),
           ],
         );
       default:

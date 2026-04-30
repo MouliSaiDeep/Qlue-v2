@@ -39,6 +39,6 @@ exports.handler = async (event) => {
   } catch (error) {
     console.error('[Disconnect Error]', error);
     // Standard practice for $disconnect: always return 200 to AWS
-    return { statusCode: 500 };
+    return { statusCode: 200 };
   }
 };

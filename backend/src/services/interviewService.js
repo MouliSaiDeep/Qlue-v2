@@ -47,7 +47,7 @@ async function processUserTurn(sessionId, textTranscript, isSilence, currentConc
             ? "Are you still there? I'm listening whenever you're ready." 
             : "I haven't heard anything. Take your time, let me know if you need me to repeat the question or if you want to wrap up.";
         
-        await updateSessionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, INTERVIEW_STATES.SILENCE_DETECTED, { silenceRetries: silRetries });
+        await transitionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, { silenceRetries: silRetries });
 
         return {
             nextAIResponse: retryMessage,
@@ -59,7 +59,11 @@ async function processUserTurn(sessionId, textTranscript, isSilence, currentConc
 
     // --- 2. STANDARD PROCESS PIPELINE ---
     if (session.silenceRetries > 0) {
-        await updateSessionState(sessionId, INTERVIEW_STATES.PROCESSING_RESPONSE, INTERVIEW_STATES.PROCESSING_RESPONSE, { silenceRetries: 0 });
+        // Transition from SILENCE_DETECTED -> PROCESSING_RESPONSE
+        await transitionState(sessionId, INTERVIEW_STATES.PROCESSING_RESPONSE, { silenceRetries: 0 });
+    } else {
+        // Normal flow: USER_RESPONDING -> PROCESSING_RESPONSE
+        await transitionState(sessionId, INTERVIEW_STATES.PROCESSING_RESPONSE);
     }
 
     if (textTranscript) await saveTranscript(sessionId, session.turnCount, SPEAKERS.USER, textTranscript);
@@ -82,16 +86,21 @@ async function processUserTurn(sessionId, textTranscript, isSilence, currentConc
         }
     }
 
-    // Update Scores
+    // Update Scores using Running Average
     const newAccumulated = { ...session.accumulatedScores };
+    const turnNumber = (session.turnCount || 0) + 1;
     for (const [dim, val] of Object.entries(scores)) {
-        const numVal = parseInt(val, 10);
-        if (!isNaN(numVal)) newAccumulated[dim] = (newAccumulated[dim] || 0) + numVal;
+        const numVal = parseFloat(val);
+        if (!isNaN(numVal)) {
+            const prevAvg = newAccumulated[dim] || 0;
+            // Running average: newAvg = prevAvg + (newVal - prevAvg) / n
+            newAccumulated[dim] = Math.round(prevAvg + (numVal - prevAvg) / turnNumber);
+        }
     }
 
     // Tutoring Logic
     if (session.moduleType === 'WEBSITE' && currentConceptId) {
-        const masteryScore = parseInt(scores['concept understanding'] || 0, 10);
+        const masteryScore = parseFloat(scores['concept understanding'] || 0);
         const newState = masteryScore >= 70 ? CONCEPT_STATES.MASTERED : CONCEPT_STATES.TUTORED;
         await updateConceptState(sessionId, currentConceptId, newState, 1);
     }
@@ -120,7 +129,7 @@ async function processUserTurn(sessionId, textTranscript, isSilence, currentConc
         const bedrockResult = await invokeModel(undefined, prompt);
         if (bedrockResult.content?.[0]?.text) {
             const parsed = parseBedrockJSON(bedrockResult.content[0].text);
-            nextAIResponse = parsed.response;
+            nextAIResponse = parsed.response || parsed.question || parsed.feedback || null;
             if (parsed.isCorrect) {
                 await updateConceptState(sessionId, targetConcept, CONCEPT_STATES.MASTERED, 1);
             }
@@ -131,7 +140,7 @@ async function processUserTurn(sessionId, textTranscript, isSilence, currentConc
         const bedrockResult = await invokeModel(undefined, prompt);
         if (bedrockResult.content?.[0]?.text) {
             const parsed = parseBedrockJSON(bedrockResult.content[0].text);
-            nextAIResponse = parsed.response;
+            nextAIResponse = parsed.response || parsed.feedback || null;
         }
         if (!nextAIResponse) nextAIResponse = "Thanks! Let's move on.";
     }

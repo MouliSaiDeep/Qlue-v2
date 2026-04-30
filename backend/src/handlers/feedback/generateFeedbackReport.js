@@ -14,20 +14,14 @@ exports.handler = async (event) => {
     console.info(`Generating qualitative feedback for session ${sessionId}`);
 
     // 1. Build feedback prompt and invoke Bedrock
-    const prompt = buildFeedbackPrompt(moduleType, transcript, dimensionScores);
-    
-    const body = {
-      prompt: prompt.prompt,
-      max_tokens: 1000,
-      temperature: 0.5
-    };
+    const promptParams = buildFeedbackPrompt(moduleType, transcript, dimensionScores);
 
-    const bedrockResponse = await invokeModel(undefined, body, { logTokens: true });
+    const bedrockResponse = await invokeModel(undefined, promptParams, { logTokens: true });
     
     // 2. Parse Bedrock response
     let feedbackData = {};
     try {
-      const text = bedrockResponse.generation || bedrockResponse.completion || '';
+      const text = bedrockResponse.content?.[0]?.text || '';
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       feedbackData = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
     } catch (e) {

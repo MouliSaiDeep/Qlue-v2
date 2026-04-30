@@ -13,10 +13,9 @@ exports.handler = async (event) => {
         const session = await getSession(sessionId);
         if (!session) throw new Error('Session not found');
 
-        // Transition to GENERATING_FEEDBACK for Interview Modules only
-        if (session.moduleType !== 'WEBSITE') {
-            await transitionState(sessionId, INTERVIEW_STATES.GENERATING_FEEDBACK);
-        }
+        // Single atomic transition directly to TERMINATED
+        // GENERATING_FEEDBACK is now handled asynchronously by the feedback pipeline
+        await transitionState(sessionId, INTERVIEW_STATES.TERMINATED);
 
         // Define Closing Statement based on Reason
         let closingStatement = "Thank you for your time. That concludes our interview.";
@@ -30,15 +29,20 @@ exports.handler = async (event) => {
             closingStatement = "Understood. We will wrap up the interview here. Thank you for your time.";
         }
 
-        // Ensure session is closed so UI completes
-        await transitionState(sessionId, INTERVIEW_STATES.TERMINATED);
 
         // Ideally, here we trigger Rishi's SNS generation trigger
         const { SNSClient, PublishCommand } = require("@aws-sdk/client-sns");
         const sns = new SNSClient({});
         if (process.env.FEEDBACK_TOPIC_ARN) {
             try {
-                await sns.send(new PublishCommand({ TopicArn: process.env.FEEDBACK_TOPIC_ARN, Message: JSON.stringify({sessionId}) }));
+                await sns.send(new PublishCommand({ 
+                    TopicArn: process.env.FEEDBACK_TOPIC_ARN, 
+                    Message: JSON.stringify({
+                        sessionId,
+                        userId: session.userId,
+                        moduleType: session.moduleType
+                    }) 
+                }));
             } catch (e) {
                 console.error("SNS Publish Failed:", e);
             }

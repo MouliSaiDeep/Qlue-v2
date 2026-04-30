@@ -35,8 +35,18 @@ class AuthProvider extends ChangeNotifier {
   }
   
   // Interface expected by screens
-  String get profileImageUrl => _photoUrl.isNotEmpty ? _photoUrl : (_currentUser?.photoURL ?? "");
-  String get displayName => _displayName.isNotEmpty ? _displayName : (_currentUser?.displayName ?? "User");
+  String get profileImageUrl {
+    if (_photoUrl.isNotEmpty) return _photoUrl;
+    if (_currentUser?.photoURL != null && _currentUser!.photoURL!.isNotEmpty) {
+       return _currentUser!.photoURL!;
+    }
+    return "";
+  }
+  
+  String get displayName {
+    if (_displayName.isNotEmpty) return _displayName;
+    return _currentUser?.displayName ?? "User";
+  }
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   // google_sign_in 7.x uses singleton instance

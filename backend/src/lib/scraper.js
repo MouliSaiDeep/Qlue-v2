@@ -29,24 +29,26 @@ function cleanHtmlToText(html) {
     text = bodyMatch[1];
   }
 
-  // 2. Remove script and style tags completely
-  text = text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ');
-  text = text.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ');
+  // 2. Remove script and style tags completely (multi-line aware)
+  text = text.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gi, ' ');
+  text = text.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, ' ');
   
-  // 3. Remove nav and footer elements which usually contain noise
-  text = text.replace(/<nav\b[^<]*(?:(?!<\/nav>)<[^<]*)*<\/nav>/gi, ' ');
-  text = text.replace(/<footer\b[^<]*(?:(?!<\/footer>)<[^<]*)*<\/footer>/gi, ' ');
-
+  // 3. Remove nav and footer elements (multi-line aware)
+  text = text.replace(/<nav\b[^>]*>([\s\S]*?)<\/nav>/gi, ' ');
+  text = text.replace(/<footer\b[^>]*>([\s\S]*?)<\/footer>/gi, ' ');
+ 
   // 4. Remove all remaining HTML tags
   text = text.replace(/<[^>]+>/g, ' ');
-
-  // 5. Decode basic HTML entities
+ 
+  // 5. Decode HTML entities (including numeric entities like &#8217;)
   text = text.replace(/&nbsp;/ig, ' ')
              .replace(/&amp;/ig, '&')
              .replace(/&lt;/ig, '<')
              .replace(/&gt;/ig, '>')
              .replace(/&quot;/ig, '"')
-             .replace(/&#39;/ig, "'");
+             .replace(/&#39;/ig, "'")
+             .replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
+             .replace(/&#x([0-9a-f]+);/gi, (match, hex) => String.fromCharCode(parseInt(hex, 16)));
 
   // 6. Normalize whitespace
   text = text.replace(/\s+/g, ' ').trim();

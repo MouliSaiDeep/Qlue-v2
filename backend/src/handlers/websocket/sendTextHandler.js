@@ -1,5 +1,5 @@
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
-const { getSession, INTERVIEW_STATES } = require('../../models/session');
+const { getSession, INTERVIEW_STATES, updateSessionState } = require('../../models/session');
 const { postToConnection } = require('../../lib/websocket');
 const { associateSession } = require('../../models/wsConnection');
 const terminateSession = require('../interview/terminateSession');
@@ -17,8 +17,7 @@ exports.handler = async (event) => {
     try {
         switch (type) {
             case 'session_init':
-            case 'text_transcript':
-            case 'silence_detected':
+            case 'turn_submit':
                 return await dispatchToSQS(connectionId, body);
             
             case 'session_reconnect':
@@ -38,8 +37,8 @@ exports.handler = async (event) => {
     } catch (error) {
         console.error('WebSocket dispatch failed:', error);
         await postToConnection(connectionId, {
-            type: 'error',
-            payload: { message: 'Failed to process message' }
+            type: 'turn_error',
+            payload: { message: 'Failed to process message', code: 'DISPATCH_ERROR' }
         }).catch(() => {});
         return { statusCode: 500 };
     }
@@ -56,7 +55,8 @@ async function dispatchToSQS(connectionId, body) {
             connectionId,
             sessionId,
             text: body.payload.text,
-            isSilence: body.type === 'silence_detected',
+            isSilence: body.payload.isSilence === true,
+            currentConceptId: body.payload.currentConceptId,
             moduleType: body.payload.moduleType
         })
     });
@@ -71,14 +71,75 @@ async function handleSessionReconnect(connectionId, body) {
 
     await associateSession(connectionId, sessionId);
     const session = await getSession(sessionId);
-    
-    if (session) {
+    if (!session) {
         await postToConnection(connectionId, {
-            type: 'session_state_update',
-            payload: { state: session.currentState, turnCount: session.turnCount, questionText: session.questionText }
+            type: 'turn_error',
+            payload: { sessionId, message: 'Session not found', code: 'SESSION_NOT_FOUND' }
         });
+        return { statusCode: 200 };
     }
-    
+
+    if (session.currentState === INTERVIEW_STATES.TERMINATED || session.currentState === INTERVIEW_STATES.GENERATING_FEEDBACK) {
+        await postToConnection(connectionId, { type: 'termination', payload: { sessionId } });
+        return { statusCode: 200 };
+    }
+
+    if (session.currentState === INTERVIEW_STATES.PROCESSING_RESPONSE || session.currentState === INTERVIEW_STATES.AI_SPEAKING) {
+        const now = Date.now();
+        const lastUpdate = session.updatedAt ? new Date(session.updatedAt).getTime() : now;
+        const diffSeconds = (now - lastUpdate) / 1000;
+
+        if (diffSeconds > 30 && session.questionText) {
+            await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, session.currentState);
+            await postToConnection(connectionId, {
+                type: 'turn_complete',
+                payload: {
+                    sessionId,
+                    turnIndex: session.turnCount,
+                    questionText: session.questionText,
+                    audioData: '',
+                    currentConceptId: session.currentConceptId,
+                    state: 'USER_RESPONDING',
+                    timestamp: Date.now()
+                }
+            });
+        } else {
+            await postToConnection(connectionId, {
+                type: 'turn_error',
+                payload: { sessionId, message: 'Still generating, please wait', code: 'STILL_PROCESSING', recoverable: true }
+            });
+        }
+        return { statusCode: 200 };
+    }
+
+    if (session.currentState === INTERVIEW_STATES.USER_RESPONDING && session.questionText) {
+        await postToConnection(connectionId, {
+            type: 'turn_complete',
+            payload: {
+                sessionId,
+                turnIndex: session.turnCount,
+                questionText: session.questionText,
+                audioData: '',
+                currentConceptId: session.currentConceptId,
+                state: 'USER_RESPONDING',
+                timestamp: Date.now()
+            }
+        });
+        return { statusCode: 200 };
+    }
+
+    await postToConnection(connectionId, {
+        type: 'turn_complete',
+        payload: {
+            sessionId,
+            turnIndex: session.turnCount,
+            questionText: session.questionText || 'Welcome back. Please respond when ready.',
+            audioData: '',
+            currentConceptId: session.currentConceptId,
+            state: 'USER_RESPONDING',
+            timestamp: Date.now()
+        }
+    });
     return { statusCode: 200 };
 }
 

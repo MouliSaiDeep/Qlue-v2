@@ -24,6 +24,7 @@ class _ExactLoginScreenState extends State<ExactLoginScreen> {
   String _error = '';
 
   Future<void> _handleLogin() async {
+    if (_loading || _googleLoading) return;
     if (_email.trim().isEmpty || _password.isEmpty) {
       setState(() => _error = "Please fill in all fields");
       return;
@@ -33,29 +34,45 @@ class _ExactLoginScreenState extends State<ExactLoginScreen> {
       _loading = true;
     });
     try {
-      await Provider.of<AuthProvider>(
-        context,
-        listen: false,
-      ).login(_email.trim(), _password);
-      if (mounted) context.go('/dashboard');
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      await authProvider.login(_email.trim(), _password);
+      
+      if (mounted) {
+        if (authProvider.currentUser != null && !authProvider.currentUser!.emailVerified) {
+           setState(() {
+             _error = "EMAIL_NOT_VERIFIED";
+             _loading = false;
+           });
+           return;
+        }
+        context.go('/dashboard');
+      }
     } catch (e) {
-      if (mounted) setState(() => _error = "Incorrect email or password.");
+      if (mounted) {
+        setState(() {
+          _error = e.toString().contains('user-not-found') || e.toString().contains('wrong-password')
+              ? "Incorrect email or password."
+              : "An error occurred. Please try again.";
+          _loading = false;
+        });
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      // Ensure loading is false if we didn't navigate
+      if (mounted && _error.isNotEmpty) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   Future<void> _handleGoogleSignIn() async {
+    if (_loading || _googleLoading) return;
     setState(() {
       _error = '';
       _googleLoading = true;
     });
     try {
       await Provider.of<AuthProvider>(context, listen: false).signInWithGoogle();
-      
-      if (mounted) {
-        context.go('/dashboard');
-      }
+      if (mounted) context.go('/dashboard');
     } catch (e) {
       if (mounted) setState(() => _error = "Google Sign-In failed.");
     } finally {

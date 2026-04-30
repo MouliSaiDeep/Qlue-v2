@@ -38,7 +38,7 @@ exports.handler = async (event) => {
 
       // 2. Build complete transcript text
       const fullTranscript = transcriptResult.data
-        .map(t => `${t.role.toUpperCase()}: ${t.text}`)
+        .map(t => `${(t.speaker || 'UNKNOWN').toUpperCase()}: ${t.text}`)
         .join('\n\n');
 
       // 3. Invoke analyzeTranscript asynchronously

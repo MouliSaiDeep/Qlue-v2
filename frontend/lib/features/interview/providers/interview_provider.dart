@@ -51,6 +51,7 @@ class InterviewProvider extends ChangeNotifier {
   final TtsService _ttsService = TtsService();
   final WebSocketClient _wsClient = WebSocketClient();
   bool _isStartingListening = false;
+  bool _isTurnLocked = false; // NEW: half-duplex lock
   bool _isCleanedUp = false;
   Timer? _watchdogTimer;
   Timer? _heartbeatTimer;
@@ -61,6 +62,7 @@ class InterviewProvider extends ChangeNotifier {
     isConnecting = true;
     _isCleanedUp = false;
     _isStartingListening = false;
+    _isTurnLocked = false; // NEW
     sessionId = null;
     currentConceptId = null;
     subtitleText = "";
@@ -121,16 +123,22 @@ class InterviewProvider extends ChangeNotifier {
         return;
       }
 
+      final initPayload = {
+        'moduleType': type,
+        'voiceId': voiceId,
+        'engine': engine,
+        'force': true,
+      };
+      if (resumeId != null) {
+        initPayload['resumeId'] = resumeId;
+      }
+      if (websiteUrl != null) {
+        initPayload['websiteUrl'] = websiteUrl;
+      }
+
       final response = await DioClient().dio.post(
         ApiConstants.interviewInit,
-        data: {
-          'moduleType': type,
-          if (resumeId != null) 'resumeId': resumeId,
-          if (websiteUrl != null) 'websiteUrl': websiteUrl,
-          'voiceId': voiceId,
-          'engine': engine,
-          'force': true,
-        },
+        data: initPayload,
       );
 
       sessionId = response.data['sessionId'];
@@ -149,9 +157,15 @@ class InterviewProvider extends ChangeNotifier {
     }
   }
 
+  StreamSubscription? _wsSubscription;
+ 
   Future<void> _connectWebSocket(String url, String token) async {
     await _wsClient.connect(url, token);
-    _wsClient.onMessage.listen(_handleIncomingMessage);
+    
+    // Cancel existing subscription to prevent duplicate processing
+    await _wsSubscription?.cancel();
+    _wsSubscription = _wsClient.onMessage.listen(_handleIncomingMessage);
+ 
     // Wire up TTS completion: when all audio finishes playing, transition to listening.
     // This is the SINGLE source of truth for enabling the mic — prevents race condition
     // where mic enables while AI audio is still playing through the speaker.
@@ -168,6 +182,7 @@ class InterviewProvider extends ChangeNotifier {
       'moduleType': moduleType,
     });
     isConnecting = false;
+    _isTurnLocked = true; // LOCK: wait for first turn_complete
 
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(const Duration(minutes: 3), (timer) {
@@ -182,85 +197,48 @@ class InterviewProvider extends ChangeNotifier {
     final payload = msg['payload'];
 
     switch (type) {
-      case 'tts_audio_chunk':
+      case 'turn_complete':
+        _isTurnLocked = false; // UNLOCK: server is ready for next turn
         _watchdogTimer?.cancel();
-        _watchdogTimer = Timer(const Duration(seconds: 25), () {
-          debugPrint('Watchdog timer triggered: reconnecting session');
-          _wsClient.send('session_reconnect', {'sessionId': sessionId});
-        });
 
-        final base64Data = payload['audioData'] ?? '';
-        final isLast = payload['isLast'] == true;
-        final chunkIndex = payload['chunkIndex'] as int?;
+        final questionText = payload['questionText'] ?? '';
+        final audioData = payload['audioData'] ?? '';
+        final audioUrl = payload['audioUrl'] ?? '';
 
-        // CRITICAL: Always pass to TTS service, even when base64Data is empty.
-        // The isLast flag with empty data signals "no more chunks coming" —
-        // TTS service needs this to fire onPlaybackComplete after draining its queue.
-        _ttsService.playBase64Chunk(base64Data, isLast, chunkIndex: chunkIndex);
-        break;
+        subtitleText = questionText;
+        finalQuestionText = questionText;
+        isStreamingText = false;
 
-      case 'ai_speaking_complete':
-        // Only update subtitle text — do NOT start listening here.
-        // Listening is triggered SOLELY by TTS onPlaybackComplete callback to avoid
-        // the race condition where mic enables while AI audio is still playing.
-        if (!isSessionEnded && currentPhase == InterviewPhase.speaking) {
-          subtitleText = finalQuestionText.isNotEmpty ? finalQuestionText : questionText;
-          isStreamingText = false;
-          notifyListeners();
-        }
-        break;
-
-      case 'session_text_stream':
-        _watchdogTimer?.cancel();
-        _watchdogTimer = Timer(const Duration(seconds: 25), () {
-          debugPrint('Watchdog timer triggered: reconnecting session');
-          _wsClient.send('session_reconnect', {'sessionId': sessionId});
-        });
-
-        final streamText = payload?['text'] ?? msg['text'] ?? '';
-        final status = payload?['status'] ?? '';
-        
-        if (status == 'thinking') {
-          if (subtitleText.isEmpty) {
-            subtitleText = "Thinking...";
-          }
-          isStreamingText = true;
-          notifyListeners();
-        } else if (streamText.isNotEmpty) {
-          subtitleText = streamText;
-          isStreamingText = true;
-          notifyListeners();
-        }
-        break;
-
-      case 'question_text_update':
-        // Handle finalized question text from backend (no state transition)
-        final questionUpdate = payload['questionText'];
-        if (questionUpdate != null && questionUpdate != "...") {
-          questionText = questionUpdate;
-          finalQuestionText = questionUpdate;
-          // Bug 5: Store current concept ID for website tutoring
-          if (payload['currentConceptId'] != null) {
-            currentConceptId = payload['currentConceptId'];
-          }
+        if (questionText.isNotEmpty && questionText != '...') {
           transcript.add(TranscriptEntry(
             role: 'ai',
             text: questionText,
             timestamp: DateTime.now(),
           ));
         }
-        notifyListeners();
-        break;
 
-      case 'session_state_update':
-        final newQuestion = payload['questionText'];
-        if (newQuestion != null && newQuestion != "...") {
-          questionText = newQuestion;
-          finalQuestionText = newQuestion; // Store finalized question
+        if (payload['currentConceptId'] != null) {
+          currentConceptId = payload['currentConceptId'];
         }
 
-        final state = payload?['state'];
-        _updatePhaseFromState(state);
+        currentPhase = InterviewPhase.speaking;
+        notifyListeners();
+
+        if (audioUrl.isNotEmpty) {
+          _ttsService.playUrl(audioUrl);
+        } else if (audioData.isNotEmpty) {
+          _ttsService.playBase64(audioData);
+        } else {
+          onAudioPlaybackComplete();
+        }
+        break;
+
+      case 'turn_error':
+        _isTurnLocked = false; // Unlock on error so user can retry
+        _watchdogTimer?.cancel();
+        errorMessage = payload['message'];
+        currentPhase = InterviewPhase.ready;
+        notifyListeners();
         break;
 
       case 'termination':
@@ -269,51 +247,7 @@ class InterviewProvider extends ChangeNotifier {
         _cleanup();
         notifyListeners();
         break;
-
-      case 'error':
-        errorMessage = payload['message'];
-        isStreamingText = false;
-        currentPhase = InterviewPhase.ready; // FIX: reset phase on error
-        _watchdogTimer?.cancel();
-        _ttsService.stop();
-        notifyListeners();
-        break;
     }
-  }
-
-  void _updatePhaseFromState(String? state) {
-    if (state == null) return;
-    switch (state) {
-      case 'AI_SPEAKING':
-        currentPhase = InterviewPhase.speaking;
-        _stopListening();
-        _ttsService.stop(); // FIX: Clear old audio to prevent overlap with new turn
-        
-        _watchdogTimer?.cancel();
-        _watchdogTimer = Timer(const Duration(seconds: 25), () {
-          debugPrint('Watchdog timer triggered: reconnecting session');
-          _wsClient.send('session_reconnect', {'sessionId': sessionId});
-        });
-        break;
-      case 'USER_RESPONDING':
-        _watchdogTimer?.cancel();
-        // FIX: Only set the phase — do NOT call _startListening() here.
-        // The mic is enabled exclusively by TTS onPlaybackComplete callback.
-        // This prevents double _startListening() and the mic-before-audio-finishes race.
-        currentPhase = InterviewPhase.listening;
-        break;
-      case 'PROCESSING_RESPONSE':
-        _watchdogTimer?.cancel();
-        currentPhase = InterviewPhase.processing;
-        _stopListening();
-        break;
-      case 'SILENCE_DETECTED':
-        _watchdogTimer?.cancel();
-        currentPhase = InterviewPhase.processing;
-        _stopListening();
-        break;
-    }
-    notifyListeners();
   }
 
   Future<void> onAudioPlaybackComplete() async {
@@ -331,26 +265,39 @@ class InterviewProvider extends ChangeNotifier {
   }
 
   void sendTextTranscript(String text) {
-    // FIX 2: Block if TTS is physically playing (race condition protection)
-    if (currentPhase == InterviewPhase.speaking || currentPhase == InterviewPhase.processing || _ttsService.isPlaying || isSessionEnded) {
-      debugPrint('Blocked transcript send: AI is speaking, processing, TTS is active, or session ended');
+    // HALF-DUPLEX GUARD: Cannot send if waiting for turn_complete
+    if (_isTurnLocked || isSessionEnded) {
+      debugPrint('Blocked: turn in progress or session ended');
       return;
     }
 
+    _isTurnLocked = true; // LOCK until turn_complete arrives
     currentPhase = InterviewPhase.processing;
     _stopListening();
-    
+
     transcript.add(TranscriptEntry(
       role: 'user',
       text: text,
       timestamp: DateTime.now(),
     ));
     finalTranscript = text;
-    _wsClient.send('text_transcript', {
+
+    _wsClient.send('turn_submit', {
       'sessionId': sessionId,
       'text': text,
-      if (currentConceptId != null) 'currentConceptId': currentConceptId, // Bug 5: Pass current concept
+      if (currentConceptId != null) 'currentConceptId': currentConceptId,
     });
+
+    _watchdogTimer?.cancel();
+    _watchdogTimer = Timer(const Duration(seconds: 60), () {
+      if (_isTurnLocked) {
+        _isTurnLocked = false;
+        errorMessage = 'Response timed out. Please try again.';
+        currentPhase = InterviewPhase.ready;
+        notifyListeners();
+      }
+    });
+
     notifyListeners();
   }
 
@@ -365,7 +312,10 @@ class InterviewProvider extends ChangeNotifier {
   }
 
   void _startListening() async {
-    if (_isStartingListening) return;
+    if (_isStartingListening || _isTurnLocked || isSessionEnded) {
+      _isStartingListening = false;
+      return;
+    }
     _isStartingListening = true;
     
     try {
@@ -439,15 +389,26 @@ class InterviewProvider extends ChangeNotifier {
 
   void _handleSilence() {
     _silenceStrikes++;
-    // Send silence event to backend so it can trigger retry/termination logic.
-    // Backend owns the retry counting and session termination — frontend just reports.
-    _wsClient.send('silence_detected', {
+    if (_isTurnLocked) return; // Don't send if already processing
+
+    _isTurnLocked = true;
+    _stopListening();
+
+    _wsClient.send('turn_submit', {
       'sessionId': sessionId,
+      'text': '',
+      'isSilence': true,
       'silenceStrikes': _silenceStrikes,
     });
-    _stopListening();
-    // NOTE: Do NOT cleanup locally. Backend handles termination via handleSilenceDetected()
-    // and sends a 'termination' message back if max strikes exceeded.
+
+    _watchdogTimer?.cancel();
+    _watchdogTimer = Timer(const Duration(seconds: 30), () {
+      if (_isTurnLocked) {
+        _isTurnLocked = false;
+        _startListening();
+      }
+    });
+
     notifyListeners();
   }
 
@@ -460,6 +421,7 @@ class InterviewProvider extends ChangeNotifier {
     _ttsService.stop();
     _stopSilenceTimer();
     _wsClient.disconnect();
+    _isTurnLocked = false;
     sessionId = null;
   }
 }
