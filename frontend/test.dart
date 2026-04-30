@@ -1,0 +1,1 @@
+import 'package:dio/dio.dart'; void main() { final dio = Dio(BaseOptions(baseUrl: 'https://host/prod/')); print(dio.options.baseUrl); print(Uri.parse(dio.options.baseUrl).resolve('/resume').toString()); }

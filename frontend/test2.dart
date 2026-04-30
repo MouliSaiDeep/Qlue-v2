@@ -1,0 +1,1 @@
+import 'package:dio/dio.dart'; void main() async { final dio = Dio(BaseOptions(baseUrl: 'https://host/prod/')); try { await dio.post('/resume'); } on DioException catch(e) { print(e.requestOptions.uri.toString()); } }
