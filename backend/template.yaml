@@ -2,6 +2,11 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Qlue AI-powered voice interview simulation mobile app.
 
+Parameters:
+  BuildTimestamp:
+    Type: String
+    Default: "initial"
+
 Globals:
   Function:
     Runtime: nodejs20.x
@@ -390,6 +395,7 @@ Resources:
       - DefaultRoute
     Properties:
       ApiId: !Ref WebSocketApi
+      Description: !Sub "Deployment-${BuildTimestamp}"
 
   WebSocketStage:
     Type: AWS::ApiGatewayV2::Stage
