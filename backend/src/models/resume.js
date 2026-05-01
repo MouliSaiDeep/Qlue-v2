@@ -1,29 +1,32 @@
 const { docClient } = require('../lib/dynamodb');
 const { PutCommand, UpdateCommand, GetCommand, QueryCommand, DeleteCommand } = require("@aws-sdk/lib-dynamodb");
 
-const RESUMES_TABLE = process.env.RESUMES_TABLE;
+const CORE_TABLE = process.env.CORE_TABLE;
 
 function getUserPk(userId) {
     return `USER#${userId}`;
 }
 
 /**
- * Creates a new resume record in V2.
+ * Creates a new resume record in the core table.
+ * 
+ * PK: USER#<userId>
+ * SK: RESUME#<resumeId>
  */
 async function createResume(resumeData) {
-    const uploadedAt = Date.now();
+    const now = new Date().toISOString();
     const item = {
         ...resumeData,
         PK: getUserPk(resumeData.userId),
-        SK: `RESUME#${uploadedAt}#${resumeData.resumeId}`,
+        SK: `RESUME#${resumeData.resumeId}`,
+        entityType: 'RESUME',
         status: resumeData.status || 'PENDING',
-        uploadedAt,
-        isActive: false,
-        resumeKey: `RESUME#${uploadedAt}#${resumeData.resumeId}`
+        createdAt: now,
+        updatedAt: now
     };
 
     await docClient.send(new PutCommand({
-        TableName: RESUMES_TABLE,
+        TableName: CORE_TABLE,
         Item: item
     }));
 
@@ -31,14 +34,15 @@ async function createResume(resumeData) {
 }
 
 /**
- * Retrieves a resume by ID from V2 using ResumeIdIndex GSI.
+ * Retrieves a resume by ID.
  */
 async function getResumeById(resumeId) {
+    // Query using GSI1 if available, or scan across users
     const command = new QueryCommand({
-        TableName: RESUMES_TABLE,
-        IndexName: 'ResumeIdIndex',
-        KeyConditionExpression: 'resumeId = :rid',
-        ExpressionAttributeValues: { ':rid': resumeId },
+        TableName: CORE_TABLE,
+        IndexName: 'GSI1',
+        KeyConditionExpression: 'GSI1PK = :pk',
+        ExpressionAttributeValues: { ':pk': `RESUME#${resumeId}` },
         Limit: 1
     });
     const res = await docClient.send(command);
@@ -48,21 +52,21 @@ async function getResumeById(resumeId) {
 /**
  * Retrieves a specific resume using the composite key.
  */
-async function getResumeByUserIdAndKey(userId, resumeKey) {
+async function getResumeByUserIdAndKey(userId, resumeId) {
     const command = new GetCommand({
-        TableName: RESUMES_TABLE,
-        Key: { PK: getUserPk(userId), SK: resumeKey }
+        TableName: CORE_TABLE,
+        Key: { PK: getUserPk(userId), SK: `RESUME#${resumeId}` }
     });
     const res = await docClient.send(command);
     return res.Item || null;
 }
 
 /**
- * Lists all resumes for a specific user from V2, newest first.
+ * Lists all resumes for a specific user, newest first.
  */
 async function getResumesByUserId(userId) {
     const command = new QueryCommand({
-        TableName: RESUMES_TABLE,
+        TableName: CORE_TABLE,
         KeyConditionExpression: 'PK = :pk AND begins_with(SK, :prefix)',
         ExpressionAttributeValues: { ':pk': getUserPk(userId), ':prefix': 'RESUME#' },
         ScanIndexForward: false
@@ -72,9 +76,9 @@ async function getResumesByUserId(userId) {
 }
 
 /**
- * Updates resume status and parsed data in V2.
+ * Updates resume status and parsed data.
  */
-async function updateResumeParsingResult(userId, resumeKey, status, parsedData = null, failReason = null) {
+async function updateResumeParsingResult(userId, resumeId, status, parsedData = null, failReason = null) {
     const now = new Date().toISOString();
     let updateExp = 'SET #st = :status, updatedAt = :ua';
     const values = { 
@@ -86,7 +90,7 @@ async function updateResumeParsingResult(userId, resumeKey, status, parsedData =
     if (parsedData) {
         updateExp += ', parsedData = :pd, parsedAt = :pa';
         values[':pd'] = parsedData;
-        values[':pa'] = Date.now();
+        values[':pa'] = now;
     }
     if (failReason) {
         updateExp += ', failReason = :fr';
@@ -94,8 +98,8 @@ async function updateResumeParsingResult(userId, resumeKey, status, parsedData =
     }
 
     const res = await docClient.send(new UpdateCommand({
-        TableName: RESUMES_TABLE,
-        Key: { PK: getUserPk(userId), SK: resumeKey },
+        TableName: CORE_TABLE,
+        Key: { PK: getUserPk(userId), SK: `RESUME#${resumeId}` },
         UpdateExpression: updateExp,
         ExpressionAttributeValues: values,
         ExpressionAttributeNames: names,
@@ -106,63 +110,46 @@ async function updateResumeParsingResult(userId, resumeKey, status, parsedData =
 }
 
 /**
- * Deletes a resume record from V2.
+ * Deletes a resume record.
  */
-async function deleteResumeRecord(userId, resumeKey) {
+async function deleteResumeRecord(userId, resumeId) {
     await docClient.send(new DeleteCommand({
-        TableName: RESUMES_TABLE,
-        Key: { PK: getUserPk(userId), SK: resumeKey }
+        TableName: CORE_TABLE,
+        Key: { PK: getUserPk(userId), SK: `RESUME#${resumeId}` }
     }));
     return { success: true };
 }
 
 /**
- * Toggles the active status for a user's resumes in V2.
+ * Toggles the active status for a user's resumes.
  */
 async function toggleActiveStatus(userId, activeResumeId) {
     const resumes = await getResumesByUserId(userId);
     
     const updatePromises = resumes.map(r => {
         const shouldBeActive = r.resumeId === activeResumeId;
-        const currentActiveKey = r.activeResumeKey;
-        const targetActiveKey = shouldBeActive ? `ACTIVE#${activeResumeId}` : undefined;
+        const resumeId = r.resumeId || r.SK.split('#')[1]; // Extract from SK if needed
         
-        if (currentActiveKey !== targetActiveKey) {
-            let updateExp = "SET isActive = :ia";
-            let expVals = { ":ia": shouldBeActive };
-            let removeExp = "";
-            
-            if (shouldBeActive) {
-                updateExp += ", activeResumeKey = :ark";
-                expVals[":ark"] = targetActiveKey;
-            } else {
-                removeExp = " REMOVE activeResumeKey";
+        return docClient.send(new UpdateCommand({
+            TableName: CORE_TABLE,
+            Key: { PK: getUserPk(userId), SK: `RESUME#${resumeId}` },
+            UpdateExpression: 'SET isActive = :ia, updatedAt = :ua',
+            ExpressionAttributeValues: { 
+                ':ia': shouldBeActive,
+                ':ua': new Date().toISOString()
             }
-            
-            return docClient.send(new UpdateCommand({
-                TableName: RESUMES_TABLE,
-                Key: { PK: getUserPk(r.userId), SK: r.resumeKey },
-                UpdateExpression: updateExp + removeExp,
-                ExpressionAttributeValues: expVals
-            }));
-        }
-    }).filter(Boolean);
-
+        }));
+    });
+    
     await Promise.all(updatePromises);
 }
 
 /**
- * Retrieves the active resume for a user using V2 GSI.
+ * Retrieves the active resume for a user.
  */
 async function getActiveResume(userId) {
-    const command = new QueryCommand({
-        TableName: RESUMES_TABLE,
-        IndexName: 'ActiveResumeIndex',
-        KeyConditionExpression: 'userId = :uid AND begins_with(activeResumeKey, :prefix)',
-        ExpressionAttributeValues: { ':uid': userId, ':prefix': 'ACTIVE#' }
-    });
-    const res = await docClient.send(command);
-    return (res.Items && res.Items.length > 0) ? res.Items[0] : null;
+    const resumes = await getResumesByUserId(userId);
+    return resumes.find(r => r.isActive === true) || null;
 }
 
 module.exports = {
