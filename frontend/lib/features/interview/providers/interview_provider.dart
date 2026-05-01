@@ -55,6 +55,8 @@ class InterviewProvider extends ChangeNotifier {
   bool _isCleanedUp = false;
   Timer? _watchdogTimer;
   Timer? _heartbeatTimer;
+  String _voiceId = 'Tiffany';
+  String _engine = 'generative';
 
   /// Safe wrapper for notifyListeners that handles disposal errors
   void _safeNotify() {
@@ -120,8 +122,8 @@ class InterviewProvider extends ChangeNotifier {
     try {
       // Get voice from settings
       final prefs = await SharedPreferences.getInstance();
-      final voiceId = prefs.getString('selected_voice') ?? 'Tiffany';
-      final engine = prefs.getString('selected_engine') ?? 'generative';
+      _voiceId = prefs.getString('selected_voice') ?? 'Tiffany';
+      _engine = prefs.getString('selected_engine') ?? 'generative';
 
       // FIX 1: Request microphone permission EARLY (before any audio)
       final sttReady = await _sttService.init();
@@ -134,8 +136,8 @@ class InterviewProvider extends ChangeNotifier {
 
       final initPayload = {
         'moduleType': type,
-        'voiceId': voiceId,
-        'engine': engine,
+        'voiceId': _voiceId,
+        'engine': _engine,
         'force': true,
       };
       if (resumeId != null) {
@@ -189,6 +191,8 @@ class InterviewProvider extends ChangeNotifier {
     _wsClient.send('session_init', {
       'sessionId': sessionId,
       'moduleType': moduleType,
+      'voiceId': _voiceId,
+      'engine': _engine,
     });
     isConnecting = false;
     _isTurnLocked = true; // LOCK: wait for first turn_complete
@@ -294,6 +298,8 @@ class InterviewProvider extends ChangeNotifier {
     _wsClient.send('turn_submit', {
       'sessionId': sessionId,
       'text': text,
+      'voiceId': _voiceId,
+      'engine': _engine,
       if (currentConceptId != null) 'currentConceptId': currentConceptId,
     });
 
@@ -416,6 +422,8 @@ class InterviewProvider extends ChangeNotifier {
       'text': '',
       'isSilence': true,
       'silenceStrikes': _silenceStrikes,
+      'voiceId': _voiceId,
+      'engine': _engine,
     });
 
     _watchdogTimer?.cancel();

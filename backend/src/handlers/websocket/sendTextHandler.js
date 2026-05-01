@@ -61,7 +61,9 @@ async function dispatchToSQS(connectionId, body) {
             text: body.payload.text,
             isSilence: body.payload.isSilence === true,
             currentConceptId: body.payload.currentConceptId,
-            moduleType: body.payload.moduleType
+            moduleType: body.payload.moduleType,
+            voiceId: body.payload.voiceId,
+            engine: body.payload.engine
         })
     });
 

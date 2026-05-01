@@ -11,20 +11,23 @@ const { getConceptsBySession } = require('../../models/conceptState');
 const { processUserTurn, parseBedrockJSON } = require('../../services/interviewService');
 const terminateSession = require('./terminateSession');
 
-const SUPPORTED_VOICES = ['Tiffany', 'Matthew', 'Gregory', 'Ivy', 'Joanna', 'Kendra', 'Kimberly', 'Salli', 'Joey', 'Justin', 'Kevin', 'Patrick', 'Stephen', 'Ruth'];
+const SUPPORTED_VOICES = (() => {
+    const voices = process.env.ALLOWED_VOICES?.split(',').map(v => v.trim()).filter(Boolean);
+    return voices && voices.length ? voices : ['Tiffany', 'Ruth', 'Joanna', 'Matthew', 'Stephen'];
+})();
 
 exports.handler = async (event) => {
     for (const record of event.Records) {
         const body = JSON.parse(record.body);
-        const { connectionId, sessionId, text, isSilence, moduleType, type, currentConceptId, expectedVersion } = body;
+        const { connectionId, sessionId, text, isSilence, moduleType, type, currentConceptId, expectedVersion, voiceId, engine } = body;
         
         console.info(`[AsyncWorker] Processing ${type} for session ${sessionId}`);
 
         try {
             if (type === 'session_init') {
-                await handleAsyncSessionInit(connectionId, sessionId);
+                await handleAsyncSessionInit(connectionId, sessionId, voiceId, engine);
             } else if (type === 'turn_submit') {
-                await handleAsyncUserTurn(connectionId, sessionId, text, isSilence, currentConceptId, expectedVersion);
+                await handleAsyncUserTurn(connectionId, sessionId, text, isSilence, currentConceptId, expectedVersion, voiceId, engine);
             }
         } catch (error) {
             if (error instanceof StaleConnectionError) {
@@ -40,7 +43,7 @@ exports.handler = async (event) => {
     }
 };
 
-async function handleAsyncSessionInit(connectionId, sessionId) {
+async function handleAsyncSessionInit(connectionId, sessionId, voiceId, engine) {
     const session = await getSession(sessionId);
     if (!session) return;
 
@@ -48,13 +51,13 @@ async function handleAsyncSessionInit(connectionId, sessionId) {
     const prompt = await buildInitialPrompt(session);
 
     try {
-        await generateAtomicTurn(connectionId, sessionId, prompt, null);
+        await generateAtomicTurn(connectionId, sessionId, prompt, null, voiceId, engine);
     } catch (error) {
         await handleTurnError(connectionId, sessionId, error);
     }
 }
 
-async function handleAsyncUserTurn(connectionId, sessionId, text, isSilence, currentConceptId, expectedVersion) {
+async function handleAsyncUserTurn(connectionId, sessionId, text, isSilence, currentConceptId, expectedVersion, voiceId, engine) {
     const session = await getSession(sessionId);
     if (!session) return;
 
@@ -103,18 +106,20 @@ async function handleAsyncUserTurn(connectionId, sessionId, text, isSilence, cur
     }
 
     try {
-        await generateAtomicTurn(connectionId, sessionId, prompt, nextText);
+        await generateAtomicTurn(connectionId, sessionId, prompt, nextText, voiceId, engine);
     } catch (error) {
         await handleTurnError(connectionId, sessionId, error);
     }
 }
 
-async function generateAtomicTurn(connectionId, sessionId, prompt, preGeneratedText) {
+async function generateAtomicTurn(connectionId, sessionId, prompt, preGeneratedText, voiceId, engine) {
     const session = await getSession(sessionId);
     if (!session) throw new Error('Session not found');
 
-    const pollyVoice = SUPPORTED_VOICES.includes(session.voiceId) ? session.voiceId : 'Tiffany';
-    const engine = session.itemData?.engine || 'generative';
+    const pollyVoice = SUPPORTED_VOICES.includes(voiceId)
+        ? voiceId
+        : (SUPPORTED_VOICES.includes(session.voiceId) ? session.voiceId : 'Tiffany');
+    const pollyEngine = engine || session.itemData?.engine || 'generative';
 
     let fullText = preGeneratedText ? String(preGeneratedText) : '';
 
@@ -137,8 +142,18 @@ async function generateAtomicTurn(connectionId, sessionId, prompt, preGeneratedT
         fullText = "I apologize, I didn't generate a response. Let's continue.";
     }
 
+    // Parse acknowledgment || question format for better conversational output
+    let acknowledgment = '';
+    let question = fullText;
+    if (fullText.includes('||')) {
+        const parts = fullText.split('||', 2);
+        acknowledgment = parts[0].trim();
+        question = parts[1].trim();
+        fullText = `${acknowledgment} ${question}`.trim();
+    }
+
     const audioBuffers = [];
-    for await (const chunk of synthesizeToBase64Chunks(fullText, { VoiceId: pollyVoice, Engine: engine })) {
+    for await (const chunk of synthesizeToBase64Chunks(fullText, { VoiceId: pollyVoice, Engine: pollyEngine })) {
         audioBuffers.push(Buffer.from(chunk.audioData, 'base64'));
     }
     const fullAudioBase64 = Buffer.concat(audioBuffers).toString('base64');
@@ -162,7 +177,7 @@ async function generateAtomicTurn(connectionId, sessionId, prompt, preGeneratedT
         console.warn(`[AsyncWorker] Audio payload size is large (${Buffer.byteLength(fullAudioBase64, 'utf8')} bytes). Configure AUDIO_BUCKET to avoid API Gateway limits.`);
     }
 
-    await saveTranscript(sessionId, session.turnCount, SPEAKERS.AI, fullText);
+    await saveTranscript(sessionId, session.turnCount, SPEAKERS.AI, question);
 
     await postToConnection(connectionId, {
         type: 'turn_complete',

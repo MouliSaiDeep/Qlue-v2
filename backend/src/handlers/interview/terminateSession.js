@@ -1,5 +1,6 @@
 const { getSession } = require('../../models/session');
 const { transitionState, INTERVIEW_STATES } = require('./controlTurnFlow');
+const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 
 /**
  * Handle concluding the interview session.
@@ -30,21 +31,21 @@ exports.handler = async (event) => {
         }
 
 
-        // Ideally, here we trigger Rishi's SNS generation trigger
-        const { SNSClient, PublishCommand } = require("@aws-sdk/client-sns");
-        const sns = new SNSClient({});
-        if (process.env.FEEDBACK_TOPIC_ARN) {
+        // Trigger feedback generation directly via Lambda instead of SNS.
+        const lambda = new LambdaClient({});
+        if (process.env.TRIGGER_FEEDBACK_FUNCTION_NAME) {
             try {
-                await sns.send(new PublishCommand({ 
-                    TopicArn: process.env.FEEDBACK_TOPIC_ARN, 
-                    Message: JSON.stringify({
+                await lambda.send(new InvokeCommand({
+                    FunctionName: process.env.TRIGGER_FEEDBACK_FUNCTION_NAME,
+                    InvocationType: 'Event',
+                    Payload: JSON.stringify({
                         sessionId,
                         userId: session.userId,
                         moduleType: session.moduleType
-                    }) 
+                    })
                 }));
             } catch (e) {
-                console.error("SNS Publish Failed:", e);
+                console.error('Feedback trigger failed:', e);
             }
         }
 
