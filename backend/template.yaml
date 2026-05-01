@@ -25,7 +25,6 @@ Globals:
         WEBSOCKET_ENDPOINT: !Sub "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
         BEDROCK_MODEL_ID: 'nvidia.nemotron-super-3-120b'
         ALLOWED_VOICES: "Tiffany,Ruth,Joanna,Matthew,Stephen"
-        TRIGGER_FEEDBACK_FUNCTION_NAME: !Ref TriggerFeedbackGenerationFunction
 
 Resources:
   # ==============================================================================
@@ -1047,6 +1046,9 @@ Resources:
       CodeUri: src/
       MemorySize: 256
       Timeout: 15
+      Environment:
+        Variables:
+          TRIGGER_FEEDBACK_FUNCTION_NAME: !Ref TriggerFeedbackGenerationFunction
       Events:
         Api:
           Type: Api
@@ -1063,6 +1065,7 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'], Resource: '*' }]
+        - Statement: [{ Effect: Allow, Action: ['lambda:InvokeFunction'], Resource: !GetAtt TriggerFeedbackGenerationFunction.Arn }]
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
         - SNSPublishMessagePolicy: { TopicName: !GetAtt FeedbackTriggerTopic.TopicName }
