@@ -55,15 +55,19 @@ class WebSocketClient {
     try {
       _channel = WebSocketChannel.connect(Uri.parse(fullUrl));
 
+      // CRITICAL: Wait for handshake to complete, NOT first message
+      // (API Gateway WebSocket does NOT send a welcome message)
+      await _channel!.ready;
+      
+      debugPrint('🟢 WebSocket handshake complete');
+      _status = WebSocketStatus.connected;
+      _reconnectAttempts = 0;
+      _startHeartbeat();
+      _connectCompleter?.complete(); // SIGNAL: Connection ready!
+
+      // Now set up stream listener for incoming messages
       _channel!.stream.listen(
         (message) {
-          if (_status != WebSocketStatus.connected) {
-            debugPrint('🟢 WebSocket connected - first message received');
-            _status = WebSocketStatus.connected;
-            _reconnectAttempts = 0;
-            _startHeartbeat();
-            _connectCompleter?.complete(); // SIGNAL: Connection ready!
-          }
           try {
             final data = jsonDecode(message);
             _messageController.add(data);
@@ -73,16 +77,10 @@ class WebSocketClient {
         },
         onDone: () {
           debugPrint('🔴 WebSocket onDone');
-          if (!_connectCompleter!.isCompleted) {
-            _connectCompleter?.completeError('Connection closed before handshake');
-          }
           _handleDisconnect();
         },
         onError: (e) {
           debugPrint('🔴 WebSocket onError: $e');
-          if (!_connectCompleter!.isCompleted) {
-            _connectCompleter?.completeError(e);
-          }
           _handleDisconnect();
         },
         cancelOnError: true,
