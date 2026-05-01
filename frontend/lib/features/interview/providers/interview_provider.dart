@@ -56,6 +56,15 @@ class InterviewProvider extends ChangeNotifier {
   Timer? _watchdogTimer;
   Timer? _heartbeatTimer;
 
+  /// Safe wrapper for notifyListeners that handles disposal errors
+  void _safeNotify() {
+    try {
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Provider notifyListeners failed (likely disposed): $e');
+    }
+  }
+
 
   void resetForNewSession() {
     isSessionEnded = false;
@@ -77,7 +86,7 @@ class InterviewProvider extends ChangeNotifier {
     _silenceStrikes = 0;
     errorMessage = null;
     _wsClient.disconnect();
-    notifyListeners();
+    _safeNotify();
   }
 
 
@@ -106,7 +115,7 @@ class InterviewProvider extends ChangeNotifier {
     currentPhase = InterviewPhase.ready;
     currentTurnIndex = 0;
 
-    notifyListeners();
+    _safeNotify();
 
     try {
       // Get voice from settings
@@ -119,7 +128,7 @@ class InterviewProvider extends ChangeNotifier {
       if (!sttReady) {
         errorMessage = "Microphone permission is required. Please enable it in app settings.";
         isConnecting = false;
-        notifyListeners();
+        _safeNotify();
         return;
       }
 
@@ -153,7 +162,7 @@ class InterviewProvider extends ChangeNotifier {
     } catch (e) {
       errorMessage = "Failed to initialize session: ${e.toString()}";
       isConnecting = false;
-      notifyListeners();
+      _safeNotify();
     }
   }
 
@@ -189,7 +198,7 @@ class InterviewProvider extends ChangeNotifier {
       _wsClient.send('ping', {});
     });
 
-    notifyListeners();
+    _safeNotify();
   }
 
   void _handleIncomingMessage(Map<String, dynamic> msg) {
@@ -222,7 +231,7 @@ class InterviewProvider extends ChangeNotifier {
         }
 
         currentPhase = InterviewPhase.speaking;
-        notifyListeners();
+        _safeNotify();
 
         if (audioUrl.isNotEmpty) {
           _ttsService.playUrl(audioUrl);
@@ -238,14 +247,14 @@ class InterviewProvider extends ChangeNotifier {
         _watchdogTimer?.cancel();
         errorMessage = payload['message'];
         currentPhase = InterviewPhase.ready;
-        notifyListeners();
+        _safeNotify();
         break;
 
       case 'termination':
         isSessionEnded = true;
         currentPhase = InterviewPhase.ready;
         _cleanup();
-        notifyListeners();
+        _safeNotify();
         break;
     }
   }
@@ -259,7 +268,7 @@ class InterviewProvider extends ChangeNotifier {
       currentPhase = InterviewPhase.listening;
       isStreamingText = false;
       subtitleText = finalQuestionText.isNotEmpty ? finalQuestionText : questionText;
-      notifyListeners();
+      _safeNotify();
       _startListening();
     }
   }
@@ -294,21 +303,29 @@ class InterviewProvider extends ChangeNotifier {
         _isTurnLocked = false;
         errorMessage = 'Response timed out. Please try again.';
         currentPhase = InterviewPhase.ready;
-        notifyListeners();
+        _safeNotify();
       }
     });
 
-    notifyListeners();
+    _safeNotify();
   }
 
 
   Future<void> endSession() async {
+    if (isSessionEnded) return;
+    
     _wsClient.send('terminate_session', {
       'sessionId': sessionId,
     });
-    _cleanup();
+    
     isSessionEnded = true;
-    notifyListeners();
+    _cleanup();
+    
+    try {
+      notifyListeners();
+    } catch (e) {
+      debugPrint('endSession notifyListeners failed (likely disposed): $e');
+    }
   }
 
   void _startListening() async {
@@ -330,7 +347,7 @@ class InterviewProvider extends ChangeNotifier {
           if (isListening) {
              debugPrint('STT native stop detected. Syncing state...');
              isListening = false;
-             notifyListeners();
+             _safeNotify();
           }
         }
       };
@@ -340,7 +357,7 @@ class InterviewProvider extends ChangeNotifier {
       if (!ready) {
         errorMessage = "Microphone not available";
         isListening = false;
-        notifyListeners();
+        _safeNotify();
         return;
       }
       
@@ -349,7 +366,7 @@ class InterviewProvider extends ChangeNotifier {
           if (currentPhase != InterviewPhase.listening) return;
           partialTranscript = text;
           _resetSilenceTimer();
-          notifyListeners();
+          _safeNotify();
         },
         onFinal: (text) {
           // REMOVED: Phase guard to prevent dropping transcripts if state changed quickly
@@ -357,10 +374,10 @@ class InterviewProvider extends ChangeNotifier {
           isListening = false;
           _stopSilenceTimer();
           sendTextTranscript(text);
-          notifyListeners();
+          _safeNotify();
         },
       );
-      notifyListeners();
+      _safeNotify();
     } finally {
       _isStartingListening = false;
     }
@@ -370,7 +387,7 @@ class InterviewProvider extends ChangeNotifier {
     isListening = false;
     _sttService.stop();
     _stopSilenceTimer();
-    notifyListeners();
+    _safeNotify();
   }
 
   void _resetSilenceTimer() {
@@ -409,7 +426,7 @@ class InterviewProvider extends ChangeNotifier {
       }
     });
 
-    notifyListeners();
+    _safeNotify();
   }
 
   void _cleanup() {

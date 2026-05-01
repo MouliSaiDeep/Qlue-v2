@@ -25,6 +25,7 @@ class WebSocketClient {
   int _reconnectAttempts = 0;
   String? _lastUrl;
   String? _sessionId;
+  Completer<void>? _connectCompleter;
 
   /// Store the active session ID so reconnect can re-associate
   void setSessionId(String? id) {
@@ -32,7 +33,14 @@ class WebSocketClient {
   }
 
   Future<void> connect(String url, String token) async {
-    if (_status == WebSocketStatus.connecting) return;
+    // If already attempting to connect, wait for that attempt
+    if (_status == WebSocketStatus.connecting) {
+      return _connectCompleter?.future;
+    }
+    // If already connected, return immediately
+    if (_status == WebSocketStatus.connected) {
+      return;
+    }
     
     final uri = Uri.parse(url);
     final queryParams = Map<String, String>.from(uri.queryParameters);
@@ -42,18 +50,19 @@ class WebSocketClient {
     final fullUrl = uri.replace(queryParameters: queryParams).toString();
     _lastUrl = fullUrl;
     _status = WebSocketStatus.connecting;
-    
+    _connectCompleter = Completer<void>();
+
     try {
       _channel = WebSocketChannel.connect(Uri.parse(fullUrl));
-      
-      // Wait for stream to be ready before marking as connected
-      // and resetting attempts.
+
       _channel!.stream.listen(
         (message) {
           if (_status != WebSocketStatus.connected) {
+            debugPrint('🟢 WebSocket connected - first message received');
             _status = WebSocketStatus.connected;
             _reconnectAttempts = 0;
             _startHeartbeat();
+            _connectCompleter?.complete(); // SIGNAL: Connection ready!
           }
           try {
             final data = jsonDecode(message);
@@ -62,13 +71,29 @@ class WebSocketClient {
             debugPrint('WebSocket: Failed to parse message: $e');
           }
         },
-        onDone: () => _handleDisconnect(),
-        onError: (e) => _handleDisconnect(),
+        onDone: () {
+          debugPrint('🔴 WebSocket onDone');
+          if (!_connectCompleter!.isCompleted) {
+            _connectCompleter?.completeError('Connection closed before handshake');
+          }
+          _handleDisconnect();
+        },
+        onError: (e) {
+          debugPrint('🔴 WebSocket onError: $e');
+          if (!_connectCompleter!.isCompleted) {
+            _connectCompleter?.completeError(e);
+          }
+          _handleDisconnect();
+        },
         cancelOnError: true,
       );
     } catch (e) {
+      debugPrint('🔴 WebSocket connect() exception: $e');
+      _connectCompleter?.completeError(e);
       _handleDisconnect();
     }
+
+    return _connectCompleter!.future;
   }
 
   void _handleDisconnect() {
@@ -115,13 +140,17 @@ class WebSocketClient {
   }
 
   void send(String type, Map<String, dynamic> payload) {
+    debugPrint('🔴 WS SEND attempt: type=$type, status=$_status, hasChannel=${_channel != null}');
     if (_status == WebSocketStatus.connected && _channel != null) {
       try {
         _channel!.sink.add(jsonEncode({'type': type, 'payload': payload}));
+        debugPrint('🟢 WS SEND success: type=$type');
       } catch (e) {
         debugPrint('WebSocket: Send error: $e');
         _handleDisconnect();
       }
+    } else {
+      debugPrint('🔴 WS SEND FAILED: status=$_status, channel=$_channel');
     }
   }
 
