@@ -19,11 +19,11 @@ exports.handler = async (event) => {
     }
 
     // Allow termination from any state except already terminated
-    if (session.state === INTERVIEW_STATES.TERMINATED) {
+    if (session.currentState === INTERVIEW_STATES.TERMINATED) {
       return { statusCode: 200, body: JSON.stringify({ message: 'Already terminated' }) };
     }
 
-    await updateSessionState(sessionId, INTERVIEW_STATES.GENERATING_FEEDBACK, {
+    await updateSessionState(sessionId, INTERVIEW_STATES.GENERATING_FEEDBACK, null, {
       terminatedAt: Date.now(),
       terminationReason: reason
     });

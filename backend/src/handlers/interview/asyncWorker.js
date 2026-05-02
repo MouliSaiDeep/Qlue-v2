@@ -1,11 +1,12 @@
 const { generateQuestion, cleanAIResponse } = require('./generateQuestion');
 const { synthesizeSpeech } = require('../../lib/polly');
-const { getSessionById, updateSessionState, INTERVIEW_STATES } = require('../../models/session');
-const { createTranscript, getTranscriptsBySession } = require('../../models/transcript');
+const { getSession, getSessionById, updateSessionState, INTERVIEW_STATES } = require('../../models/session');
+const { saveTranscript, getTranscriptBySession } = require('../../models/transcript');
 const { getResumeById } = require('../../models/resume');
 const { getUserById } = require('../../models/user');
 const { postToConnection } = require('../../lib/websocket');
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const crypto = require('crypto');
 
 const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
@@ -13,7 +14,7 @@ const AUDIO_BUCKET = process.env.AUDIO_BUCKET;
 
 async function uploadAudioToS3(sessionId, turnIndex, audioBuffer) {
   if (!AUDIO_BUCKET) return null;
-  
+
   const key = `audio/${sessionId}/${turnIndex}.mp3`;
   try {
     await s3Client.send(new PutObjectCommand({
@@ -22,7 +23,13 @@ async function uploadAudioToS3(sessionId, turnIndex, audioBuffer) {
       Body: audioBuffer,
       ContentType: 'audio/mpeg'
     }));
-    return `https://${AUDIO_BUCKET}.s3.amazonaws.com/${key}`;
+
+    const getObjectCommand = new GetObjectCommand({
+      Bucket: AUDIO_BUCKET,
+      Key: key
+    });
+
+    return await getSignedUrl(s3Client, getObjectCommand, { expiresIn: 3600 });
   } catch (err) {
     console.error('S3 upload failed:', err);
     return null;
@@ -61,8 +68,8 @@ async function generateAtomicTurn({
       let websiteContent = null;
       let targetConcept = null;
 
-      if (moduleType === 'RESUME' && session.resumeId) {
-        const resume = await getResumeById(session.resumeId);
+      if (moduleType === 'RESUME' && session.itemData?.resumeId) {
+        const resume = await getResumeById(session.itemData.resumeId);
         resumeData = resume?.parsedData || resume;
       }
       
@@ -119,14 +126,7 @@ async function generateAtomicTurn({
       audioData = audioBase64;
     }
 
-    await createTranscript({
-      transcriptId: crypto.randomUUID(),
-      sessionId,
-      turnIndex: session.turnCount || 0,
-      speaker: 'AI',
-      text: aiText,
-      timestamp: Date.now()
-    });
+    await saveTranscript(sessionId, session.turnCount || 0, 'AI', aiText);
 
     const responsePayload = {
       type: 'turn_complete',
@@ -145,7 +145,7 @@ async function generateAtomicTurn({
     await postToConnection(connectionId, responsePayload);
     console.log(`[AtomicTurn] Sent turn_complete in ${Date.now() - startTime}ms`);
 
-    await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, {
+    await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, null, {
       questionText: aiText,
       turnCount: (session.turnCount || 0) + 1,
       lastVoiceId: voiceId,
@@ -203,13 +203,13 @@ exports.handler = async (event) => {
         continue;
       }
 
-      if (action === 'turn_submit' && session.state === INTERVIEW_STATES.USER_RESPONDING) {
-        console.warn(`[AsyncWorker] Session ${sessionId} already in USER_RESPONDING, skipping duplicate`);
-        continue;
-      }
+if (action === 'turn_submit' && session.currentState === INTERVIEW_STATES.USER_RESPONDING) {
+          console.warn(`[AsyncWorker] Session ${sessionId} already in USER_RESPONDING, skipping duplicate`);
+          continue;
+        }
 
-      if (action === 'session_init' && session.state !== INTERVIEW_STATES.INITIALIZING) {
-        console.warn(`[AsyncWorker] Session ${sessionId} not in INITIALIZING state (${session.state}), skipping`);
+        if (action === 'session_init' && session.currentState !== INTERVIEW_STATES.INITIALIZING) {
+          console.warn(`[AsyncWorker] Session ${sessionId} not in INITIALIZING state (${session.currentState}), skipping`);
         continue;
       }
 

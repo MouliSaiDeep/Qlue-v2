@@ -42,7 +42,7 @@ class WebSocketClient {
   Stream<void> get disconnects => _disconnectController.stream;
   bool get isConnected => _isConnected;
 
-  Future<void> connect() async {
+  Future<void> connect({String? authToken}) async {
     if (_status == WebSocketStatus.connected || _status == WebSocketStatus.connecting) {
       return;
     }
@@ -51,8 +51,12 @@ class WebSocketClient {
     _connectCompleter = Completer<void>();
 
     try {
-      final uri = Uri.parse(url);
-      _channel = WebSocketChannel.connect(uri);
+      // Append Firebase auth token as query param
+      final wsUrl = authToken != null && authToken.isNotEmpty
+          ? Uri.parse(url).replace(queryParameters: {'token': authToken}).toString()
+          : url;
+
+      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
       await _channel!.ready;
       _isConnected = true;

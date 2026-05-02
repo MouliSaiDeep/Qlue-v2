@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/constants/api_constants.dart';
+import '../../../core/network/dio_client.dart';
 import '../../../core/network/websocket_client.dart';
 import '../../../shared/services/stt_service.dart';
 import '../../../shared/services/tts_service.dart';
@@ -49,27 +52,22 @@ class InterviewProvider extends ChangeNotifier {
   int _silenceStrikes = 0;
   int get silenceStrikes => _silenceStrikes;
 
-  final WebSocketClient _wsClient = WebSocketClient(
-    url: 'wss://your-websocket-endpoint',
-    userId: 'user123',
-    sessionId: 'session123',
-  );
+  WebSocketClient? _wsClient;
   final SttService _sttService = SttService();
   final TtsService _ttsService = TtsService();
 
   StreamSubscription? _wsSubscription;
 
-  InterviewProvider() {
-    _initWebSocket();
-  }
+  InterviewProvider();
 
   void _initWebSocket() {
-    _wsSubscription = _wsClient.messages.listen(_handleWebSocketMessage);
-    _wsClient.errors.listen((error) {
+    if (_wsClient == null) return;
+    _wsSubscription = _wsClient!.messages.listen(_handleWebSocketMessage);
+    _wsClient!.errors.listen((error) {
       errorMessage = error;
       _safeNotify();
     });
-    _wsClient.disconnects.listen((_) {
+    _wsClient!.disconnects.listen((_) {
       isSessionEnded = true;
       _currentPhase = InterviewPhase.ready;
       _safeNotify();
@@ -155,11 +153,12 @@ class InterviewProvider extends ChangeNotifier {
     _currentPhase = InterviewPhase.processing;
     _safeNotify();
 
-    _wsClient.sendMessage({
+    _wsClient?.sendMessage({
       'type': 'turn_submit',
       'payload': {
         'sessionId': sessionId,
-        'text': text,
+        'textTranscript': text,
+        'isSilence': false,
         'voiceId': _selectedVoiceId,
         'engine': _selectedEngine,
       },
@@ -167,7 +166,7 @@ class InterviewProvider extends ChangeNotifier {
   }
 
   void terminateSession() {
-    _wsClient.sendMessage({
+    _wsClient?.sendMessage({
       'type': 'terminate_session',
       'payload': {
         'sessionId': sessionId,
@@ -198,10 +197,48 @@ class InterviewProvider extends ChangeNotifier {
     isConnecting = true;
     _safeNotify();
 
-    // Connect to WebSocket
+    // Get the current user's Firebase ID token
+    final user = FirebaseAuth.instance.currentUser;
+    final idToken = await user?.getIdToken();
+
+    if (user == null || idToken == null) {
+      errorMessage = 'Authentication required. Please log in again.';
+      isConnecting = false;
+      _safeNotify();
+      return;
+    }
+
+    // Create a backend session before opening the websocket.
     try {
-      await _wsClient.connect();
-      await _wsClient.waitForConnection();
+      final response = await DioClient().dio.post(ApiConstants.interviewInit, data: {
+        'moduleType': moduleType,
+        'voiceId': _selectedVoiceId,
+        'engine': _selectedEngine,
+        'resumeId': resumeId,
+        'websiteUrl': websiteUrl,
+      });
+
+      sessionId = response.data['sessionId']?.toString();
+      if (sessionId == null || sessionId!.isEmpty) {
+        throw Exception('Invalid sessionId returned from interview init');
+      }
+    } catch (e) {
+      errorMessage = 'Failed to initialize interview session: $e';
+      isConnecting = false;
+      _safeNotify();
+      return;
+    }
+
+    _wsClient = WebSocketClient(
+      url: 'wss://yofjsacuvf.execute-api.us-east-1.amazonaws.com/prod/',
+      userId: user.uid,
+      sessionId: sessionId!,
+    );
+    _initWebSocket();
+
+    try {
+      await _wsClient!.connect(authToken: idToken);
+      await _wsClient!.waitForConnection();
     } catch (e) {
       errorMessage = 'Failed to connect: $e';
       isConnecting = false;
@@ -209,10 +246,7 @@ class InterviewProvider extends ChangeNotifier {
       return;
     }
 
-    // Simulate session initialization
-    await Future.delayed(const Duration(seconds: 1));
-    sessionId = 'session_${DateTime.now().millisecondsSinceEpoch}';
-    _wsClient.sendMessage({
+    _wsClient!.sendMessage({
       'type': 'session_init',
       'payload': {
         'sessionId': sessionId,
@@ -240,9 +274,11 @@ class InterviewProvider extends ChangeNotifier {
 
   void _cleanup() {
     _wsSubscription?.cancel();
+    _wsSubscription = null;
     _sttService.stop();
     _ttsService.stop();
-    _wsClient.disconnect();
+    _wsClient?.disconnect();
+    _wsClient = null;
   }
 
   @override

@@ -1218,6 +1218,9 @@ Resources:
       CodeUri: src/
       MemorySize: 256
       Timeout: 15
+      Environment:
+        Variables:
+          ANALYZE_TRANSCRIPT_LAMBDA: !Ref AnalyzeTranscriptFunction
       Events:
         SNSTrigger:
           Type: SNS

@@ -26,15 +26,19 @@ exports.handler = async (event) => {
       console.info(`User ${userId} already has an active connection ${oldConnection.connectionId}. Deactivating old and notifying.`);
       
       // Notify old connection about the new one (reconnection)
-      await postToConnection(oldConnection.connectionId, {
-        type: 'error',
-        payload: {
-          errorCode: 'RECONNECTED_ELSEWHERE',
-          message: 'You have been disconnected because a new connection was established on another device.',
-          recoverable: false,
-          suggestedAction: 'RECONNECT'
-        }
-      });
+      try {
+        await postToConnection(oldConnection.connectionId, {
+          type: 'error',
+          payload: {
+            errorCode: 'RECONNECTED_ELSEWHERE',
+            message: 'You have been disconnected because a new connection was established on another device.',
+            recoverable: false,
+            suggestedAction: 'RECONNECT'
+          }
+        });
+      } catch (notifyError) {
+        console.warn('Failed to notify old connection:', notifyError);
+      }
 
       // Deactivate old connection
       await deactivateConnection(oldConnection.connectionId);

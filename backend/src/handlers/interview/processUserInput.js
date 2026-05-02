@@ -1,5 +1,5 @@
 const { getSessionById, updateSessionState, INTERVIEW_STATES } = require('../../models/session');
-const { createTranscript } = require('../../models/transcript');
+const { saveTranscript } = require('../../models/transcript');
 const crypto = require('crypto');
 
 const SILENCE_THRESHOLD = 3;
@@ -29,9 +29,9 @@ exports.handler = async (event) => {
 
     // Handle silence
     if (isSilence) {
-      const silenceCount = (session.silenceCount || 0) + 1;
+      const silenceRetries = (session.silenceRetries || 0) + 1;
       
-      if (silenceCount >= SILENCE_THRESHOLD) {
+      if (silenceRetries >= SILENCE_THRESHOLD) {
         return {
           statusCode: 200,
           body: JSON.stringify({
@@ -41,27 +41,20 @@ exports.handler = async (event) => {
         };
       }
 
-      await updateSessionState(sessionId, session.state, { silenceCount });
+      await updateSessionState(sessionId, session.currentState, null, { silenceRetries });
 
       return {
         statusCode: 200,
         body: JSON.stringify({
           shouldTerminate: false,
           nextAIResponse: "I didn't catch that. Could you please repeat?",
-          silenceCount
+          silenceRetries
         })
       };
     }
 
     // Save user transcript
-    await createTranscript({
-      transcriptId: crypto.randomUUID(),
-      sessionId,
-      turnIndex,
-      speaker: 'USER',
-      text: textTranscript,
-      timestamp: Date.now()
-    });
+    await saveTranscript(sessionId, turnIndex, 'USER', textTranscript);
 
     // Check exit intent
     if (detectExitIntent(textTranscript)) {
@@ -86,9 +79,9 @@ exports.handler = async (event) => {
     }
 
     // Update session state
-    await updateSessionState(sessionId, INTERVIEW_STATES.PROCESSING_RESPONSE, {
+    await updateSessionState(sessionId, INTERVIEW_STATES.PROCESSING_RESPONSE, null, {
       currentConceptId: currentConceptId || session.currentConceptId,
-      silenceCount: 0
+      silenceRetries: 0
     });
 
     return {

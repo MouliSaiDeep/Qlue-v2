@@ -26,6 +26,7 @@ async function createSession(sessionId, userId, moduleType, itemData = {}) {
         moduleType,
         itemData, // [Mouli Week 4: Context Injection] Store resumeId/websiteUrl context
         voiceId: itemData.voiceId || 'Tiffany',
+        engine: itemData.engine || 'neural',
         currentState: INTERVIEW_STATES.INITIALIZING,
         turnCount: 0,
         startTime: now,
@@ -140,6 +141,21 @@ async function updateSessionState(sessionId, newState, expectedCurrentState = nu
         expressionAttributeValues[":currentConceptId"] = updates.currentConceptId;
     }
 
+    if (updates.voiceId !== undefined) {
+        updateExpression += ", voiceId = :voiceId";
+        expressionAttributeValues[":voiceId"] = updates.voiceId;
+    }
+
+    if (updates.engine !== undefined) {
+        updateExpression += ", engine = :engine";
+        expressionAttributeValues[":engine"] = updates.engine;
+    }
+
+    if (updates.connectionId !== undefined) {
+        updateExpression += ", connectionId = :connectionId";
+        expressionAttributeValues[":connectionId"] = updates.connectionId;
+    }
+
     if (updates.scrapedSummary !== undefined) {
         updateExpression += ", scrapedSummary = :scrapedSummary";
         expressionAttributeValues[":scrapedSummary"] = updates.scrapedSummary;
@@ -172,6 +188,7 @@ module.exports = {
     INTERVIEW_STATES,
     createSession,
     getSession,
+    getSessionById: getSession,
     updateSessionState,
     getActiveSessionForUser
 };

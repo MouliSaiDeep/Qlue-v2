@@ -50,14 +50,14 @@ exports.handler = async (event) => {
       };
     }
 
-    const validatedState = transitionState(session.state, newState);
-    await updateSessionState(sessionId, validatedState, metadata);
+    const validatedState = transitionState(session.currentState, newState);
+    await updateSessionState(sessionId, validatedState, null, metadata);
 
     return {
       statusCode: 200,
       body: JSON.stringify({
         sessionId,
-        previousState: session.state,
+        previousState: session.currentState,
         newState: validatedState
       })
     };

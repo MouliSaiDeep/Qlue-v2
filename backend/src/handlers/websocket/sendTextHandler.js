@@ -1,6 +1,6 @@
 const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
-const { getSessionById, updateSessionState, INTERVIEW_STATES } = require('../../models/session');
+const { getSession, getSessionById, updateSessionState, INTERVIEW_STATES } = require('../../models/session');
 const { deregisterConnection } = require('../../lib/websocket');
 
 const sqsClient = new SQSClient({ region: process.env.AWS_REGION || 'us-east-1' });
@@ -56,14 +56,14 @@ async function handleSessionInit(connectionId, body, userId) {
     const finalVoiceId = allowedVoices.includes(voiceId) ? voiceId : (session.voiceId || 'Tiffany');
     const finalEngine = ['neural', 'standard', 'long-form', 'generative'].includes(engine) ? engine : 'neural';
 
-    await updateSessionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, {
+    await updateSessionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, null, {
       connectionId,
       voiceId: finalVoiceId,
       engine: finalEngine
     });
 
-    const { ddb } = require('../../lib/dynamodb');
-    await ddb.put(WS_CONNECTIONS_TABLE, {
+    const dynamodb = require('../../lib/dynamodb');
+    await dynamodb.put(WS_CONNECTIONS_TABLE, {
       connectionId,
       sessionId,
       userId,
@@ -101,17 +101,17 @@ async function handleTurnSubmit(connectionId, body, userId) {
   try {
     const session = await getSessionById(sessionId);
 
-    if (!session || session.state === INTERVIEW_STATES.TERMINATED) {
+    if (!session || session.currentState === INTERVIEW_STATES.TERMINATED) {
       return await sendError(connectionId, 'Session is terminated');
     }
-    if (session.state === INTERVIEW_STATES.GENERATING_FEEDBACK) {
+    if (session.currentState === INTERVIEW_STATES.GENERATING_FEEDBACK) {
       await postToConnection(connectionId, { 
         type: 'termination', 
         payload: { sessionId, reason: 'GENERATING_FEEDBACK' }
       });
       return;
     }
-    if (session.state === INTERVIEW_STATES.PROCESSING_RESPONSE || session.state === INTERVIEW_STATES.AI_SPEAKING) {
+    if (session.currentState === INTERVIEW_STATES.PROCESSING_RESPONSE || session.currentState === INTERVIEW_STATES.AI_SPEAKING) {
       return await sendError(connectionId, 'TURN_IN_PROGRESS', 409);
     }
 
@@ -155,8 +155,8 @@ async function handleSessionReconnect(connectionId, body, userId) {
     }
 
     // Update connection mapping
-    const { ddb } = require('../../lib/dynamodb');
-    await ddb.put(WS_CONNECTIONS_TABLE, {
+    const dynamodb = require('../../lib/dynamodb');
+    await dynamodb.put(WS_CONNECTIONS_TABLE, {
       connectionId,
       sessionId,
       userId,
@@ -165,10 +165,10 @@ async function handleSessionReconnect(connectionId, body, userId) {
       ttl: Math.floor(Date.now() / 1000) + (2 * 60 * 60)
     });
 
-    if (session.state === INTERVIEW_STATES.TERMINATED || session.state === INTERVIEW_STATES.GENERATING_FEEDBACK) {
+    if (session.currentState === INTERVIEW_STATES.TERMINATED || session.currentState === INTERVIEW_STATES.GENERATING_FEEDBACK) {
       await postToConnection(connectionId, {
         type: 'termination',
-        payload: { sessionId, reason: session.state }
+        payload: { sessionId, reason: session.currentState }
       });
       return;
     }
@@ -177,7 +177,7 @@ async function handleSessionReconnect(connectionId, body, userId) {
     const staleThreshold = 30000;
     const isStale = session.updatedAt && (Date.now() - session.updatedAt > staleThreshold);
     
-    if (isStale && (session.state === INTERVIEW_STATES.AI_SPEAKING || session.state === INTERVIEW_STATES.PROCESSING_RESPONSE)) {
+    if (isStale && (session.currentState === INTERVIEW_STATES.AI_SPEAKING || session.currentState === INTERVIEW_STATES.PROCESSING_RESPONSE)) {
       await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING);
       await postToConnection(connectionId, {
         type: 'turn_complete',
@@ -195,7 +195,7 @@ async function handleSessionReconnect(connectionId, body, userId) {
     }
 
     // Normal reconnect: send current state
-    if (session.state === INTERVIEW_STATES.USER_RESPONDING && session.questionText) {
+    if (session.currentState === INTERVIEW_STATES.USER_RESPONDING && session.questionText) {
       await postToConnection(connectionId, {
         type: 'turn_complete',
         payload: {

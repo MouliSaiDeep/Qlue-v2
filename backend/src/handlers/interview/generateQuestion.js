@@ -268,7 +268,10 @@ exports.handler = async (event) => {
         break;
     }
 
-    const rawResponse = await invokeModel(prompt);
+    const result = await invokeModel(null, {
+      messages: [{ role: 'user', content: [{ text: prompt }] }]
+    });
+    const rawResponse = result.content?.[0]?.text || '';
     const cleanedResponse = cleanAIResponse(rawResponse);
 
     return {
@@ -287,6 +290,7 @@ exports.handler = async (event) => {
 };
 
 module.exports = {
+  handler: exports.handler,
   buildInterviewPrompt,
   buildWebsiteTeachPrompt,
   buildHrPrompt,
