@@ -1,6 +1,6 @@
 const { update } = require('../../lib/dynamodb');
 
-const USERS_TABLE = process.env.USERS_TABLE;
+const CORE_TABLE = process.env.CORE_TABLE;
 
 /**
  * AWS Lambda Handler: POST /auth/fcm-token
@@ -36,7 +36,7 @@ exports.handler = async (event) => {
         };
 
         const result = await update(
-            USERS_TABLE,
+            CORE_TABLE,
             { userId },
             updateExpression,
             expressionAttributeValues

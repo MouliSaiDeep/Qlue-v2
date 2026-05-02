@@ -2,7 +2,7 @@ const firebase = require('../../lib/firebase');
 const { delete: remove, query } = require('../../lib/dynamodb');
 const { deleteResumeRecord, getResumesByUserId } = require('../../models/resume');
 
-const USERS_TABLE = process.env.USERS_TABLE;
+const CORE_TABLE = process.env.CORE_TABLE;
 
 /**
  * AWS Lambda Handler: DELETE /auth/account
@@ -47,7 +47,7 @@ exports.handler = async (event) => {
         }
 
         // 3. Delete user record from DynamoDB
-        const result = await remove(USERS_TABLE, { userId: uid });
+        const result = await remove(CORE_TABLE, { userId: uid });
 
         if (!result.success) {
             return {
