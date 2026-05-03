@@ -1,7 +1,7 @@
 /**
  * Lambda handler for storing feedback reports and triggering user notifications.
  */
-const { createFeedbackReport } = require('../../models/feedback');
+const { storeFeedbackReport } = require('../../models/session');
 const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 
 const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'ap-south-1' });
@@ -14,7 +14,7 @@ exports.handler = async (event) => {
     console.info(`Storing feedback report for user ${userId}, session ${sessionId}`);
 
     // 1. Store the feedback report directly on the session item in DynamoDB
-    const result = await createFeedbackReport(event);
+    const result = await storeFeedbackReport(sessionId, event);
     
     if (!result.success) {
       throw new Error(`Failed to store feedback in DynamoDB: ${result.error?.message}`);

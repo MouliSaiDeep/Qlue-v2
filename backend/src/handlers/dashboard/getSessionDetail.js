@@ -4,7 +4,7 @@ const { DynamoDBDocumentClient, GetCommand, QueryCommand } = require("@aws-sdk/l
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
 
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-core-v2';
+const CORE_TABLE = process.env.CORE_TABLE;
 
 /**
  * AWS Lambda Handler: GET /dashboard/session/{sessionId}
@@ -29,7 +29,7 @@ exports.handler = async (event) => {
 
         // 1. Get Session
         const sessionCmd = new QueryCommand({
-            TableName: SESSIONS_TABLE,
+            TableName: CORE_TABLE,
             IndexName: 'SessionIdIndex',
             KeyConditionExpression: 'sessionId = :sid',
             ExpressionAttributeValues: { ':sid': sessionId },

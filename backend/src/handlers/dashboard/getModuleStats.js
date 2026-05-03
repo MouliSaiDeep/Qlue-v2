@@ -4,7 +4,7 @@ const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const docClient = DynamoDBDocumentClient.from(client);
 
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE;
+const CORE_TABLE = process.env.CORE_TABLE;
 
 function getCutoffDate(periodStr) {
     const now = new Date();
@@ -33,7 +33,7 @@ exports.handler = async (event) => {
         }
 
         const sessionCmd = new QueryCommand({
-            TableName: SESSIONS_TABLE,
+            TableName: CORE_TABLE,
             IndexName: 'UserSessionTimeIndex',
             KeyConditionExpression: keyCond,
             ExpressionAttributeValues: expVals
