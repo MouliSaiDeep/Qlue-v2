@@ -1,4 +1,5 @@
 const { invokeModel } = require('../../lib/bedrock');
+const DEFAULT_BEDROCK_MODEL_ID = process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-sonnet-20240229-v1:0';
 
 // =============================================================================
 // RESUME SUMMARY EXTRACTION
@@ -270,7 +271,7 @@ exports.handler = async (event) => {
         break;
     }
 
-    const result = await invokeModel(null, {
+    const result = await invokeModel(DEFAULT_BEDROCK_MODEL_ID, {
       messages: [{ role: 'user', content: [{ text: prompt }] }]
     });
     const rawResponse = result.content?.[0]?.text || '';

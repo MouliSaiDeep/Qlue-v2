@@ -204,13 +204,18 @@ exports.handler = async (event) => {
         continue;
       }
 
-if (action === 'turn_submit' && session.turnCount > (body.expectedTurnCount || 0)) {
-          console.warn(`[AsyncWorker] Turn ${body.expectedTurnCount} already processed (current: ${session.turnCount}), skipping`);
-          continue;
-        }
+      if ([INTERVIEW_STATES.TERMINATED, INTERVIEW_STATES.GENERATING_FEEDBACK, INTERVIEW_STATES.ERROR].includes(session.currentState)) {
+        console.warn(`[AsyncWorker] Session ${sessionId} is in terminal state ${session.currentState}; skipping ${action}`);
+        continue;
+      }
 
-        if (action === 'session_init' && session.currentState !== INTERVIEW_STATES.INITIALIZING) {
-          console.warn(`[AsyncWorker] Session ${sessionId} not in INITIALIZING state (${session.currentState}), skipping`);
+      if (action === 'turn_submit' && session.turnCount > (body.expectedTurnCount || 0)) {
+        console.warn(`[AsyncWorker] Turn ${body.expectedTurnCount} already processed (current: ${session.turnCount}), skipping`);
+        continue;
+      }
+
+      if (action === 'session_init' && session.currentState !== INTERVIEW_STATES.INITIALIZING) {
+        console.warn(`[AsyncWorker] Session ${sessionId} not in INITIALIZING state (${session.currentState}), skipping`);
         continue;
       }
 

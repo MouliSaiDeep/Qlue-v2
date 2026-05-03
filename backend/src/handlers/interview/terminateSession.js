@@ -40,7 +40,15 @@ exports.handler = async (event) => {
       }));
     }
 
-    await updateSessionState(sessionId, INTERVIEW_STATES.TERMINATED);
+    try {
+      await updateSessionState(sessionId, INTERVIEW_STATES.TERMINATED, INTERVIEW_STATES.GENERATING_FEEDBACK);
+    } catch (stateErr) {
+      if (stateErr.name === 'ConditionalCheckFailedException') {
+        console.warn(`[TerminateSession] Session ${sessionId} changed state before terminate: ${stateErr.message}`);
+      } else {
+        throw stateErr;
+      }
+    }
 
     return {
       statusCode: 200,
