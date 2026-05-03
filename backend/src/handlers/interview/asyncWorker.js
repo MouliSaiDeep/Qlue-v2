@@ -281,6 +281,7 @@ if (action === 'turn_submit' && session.turnCount > (body.expectedTurnCount || 0
       } catch (wsErr) {
         console.error('[AsyncWorker] Failed to send turn_error:', wsErr);
       }
+      throw error;
     }
   }
 };

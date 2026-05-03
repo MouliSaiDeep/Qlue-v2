@@ -1,13 +1,18 @@
+const { synthesizeSpeech: pollySynthesizeSpeech } = require('../../lib/polly');
+
 /**
- * Stub for legacy speech synthesis.
- * Note: Real-time synthesis is currently handled in sendTextHandler.js via lib/polly.js.
+ * Legacy speech synthesis wrapper for non-WebSocket flows.
  */
 module.exports = {
   synthesizeSpeech: async (text, options = {}) => {
-    // TODO: Implement standalone synthesis if needed for non-WebSocket flows
+    const voiceId = options.voiceId || 'Tiffany';
+    const engine = options.engine || null;
+    const result = await pollySynthesizeSpeech(text, voiceId, engine);
     return {
-      audioUrl: null,
-      message: "Synthesis stub called. Use WebSocket for real-time audio."
+      audioBase64: result.audioBase64,
+      voiceId: result.voiceId,
+      engine: result.engine,
+      audioUrl: null
     };
   }
 };

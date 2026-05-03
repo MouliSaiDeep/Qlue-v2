@@ -41,6 +41,26 @@ async function sendError(connectionId, message, code = 400) {
   }
 }
 
+async function updateConnectionHeartbeat(connectionId) {
+  if (!connectionId) return;
+  try {
+    const { docClient } = require('../../lib/dynamodb');
+    const { UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+    await docClient.send(new UpdateCommand({
+      TableName: WS_CONNECTIONS_TABLE,
+      Key: { connectionId },
+      UpdateExpression: 'SET lastHeartbeat = :heartbeat, #ttl = :ttl',
+      ExpressionAttributeNames: { '#ttl': 'ttl' },
+      ExpressionAttributeValues: {
+        ':heartbeat': Date.now(),
+        ':ttl': Math.floor(Date.now() / 1000) + (2 * 60 * 60)
+      }
+    }));
+  } catch (err) {
+    console.warn(`Failed to refresh heartbeat for ${connectionId}:`, err);
+  }
+}
+
 async function getLastAiTurnIndex(sessionId, sessionTurnCount = 0) {
   try {
     const transcripts = await getTranscriptBySession(sessionId);
@@ -78,11 +98,7 @@ async function handleSessionInit(connectionId, body, userId) {
     const finalVoiceId = allowedVoices.includes(voiceId) ? voiceId : (session.voiceId || 'Tiffany');
     const finalEngine = ['neural', 'standard', 'long-form', 'generative'].includes(engine) ? engine : 'neural';
 
-    await updateSessionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, null, {
-      connectionId,
-      voiceId: finalVoiceId,
-      engine: finalEngine
-    });
+    // Do not advance session state here; asyncWorker owns session initialization state transitions.
 
     // BUG-4 FIX: Use UpdateCommand with attribute_not_exists to prevent overwrite race
     const dynamodb = require('../../lib/dynamodb');
@@ -354,6 +370,7 @@ exports.handler = async (event) => {
         await handleTerminateSession(connectionId, body.payload || body, userId);
         break;
       case 'ping':
+        await updateConnectionHeartbeat(connectionId);
         await postToConnection(connectionId, { type: 'pong', timestamp: Date.now() });
         break;
       default:

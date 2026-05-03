@@ -967,14 +967,8 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref ConceptStatesTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
-        - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
-        - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
 
 
   GenerateQuestionFunction:
@@ -1097,7 +1091,7 @@ Resources:
   AsyncInterviewQueue:
     Type: AWS::SQS::Queue
     Properties:
-      VisibilityTimeout: 5400 # 6 * Lambda timeout
+      VisibilityTimeout: 180 # 3 minutes for real-time interview retry
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt AsyncInterviewDLQ.Arn
         maxReceiveCount: 3
