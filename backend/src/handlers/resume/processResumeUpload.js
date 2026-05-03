@@ -11,7 +11,7 @@ const { setActiveResumeId } = require('../../models/user');
 const { success, badRequest, notFound, internalError, unauthorized } = require('../../lib/response');
 
 const lambdaClient = new LambdaClient({});
-const RESUMES_TABLE = process.env.RESUMES_TABLE;
+const CORE_TABLE = process.env.CORE_TABLE;
 const BUCKET_NAME = process.env.RESUMES_BUCKET || 'qlue-resumes';
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -152,7 +152,7 @@ async function processAsync(resumeId, userId, s3Key) {
         const allResumes = await getResumesByUserId(userId);
         if (allResumes.length === 1) {
             await setActiveResumeId(userId, resumeId);
-            await update(RESUMES_TABLE, { resumeId }, 'SET isActive = :ia', { ':ia': true });
+            await update(CORE_TABLE, { resumeId }, 'SET isActive = :ia', { ':ia': true });
             console.info(`Auto-set resume ${resumeId} as active for user ${userId}`);
         }
 
