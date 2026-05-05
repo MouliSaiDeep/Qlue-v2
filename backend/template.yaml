@@ -4,7 +4,7 @@ Description: Qlue AI-powered voice interview simulation mobile app.
 
 Globals:
   Function:
-    Runtime: nodejs20.x
+    Runtime: nodejs24.x
     Layers:
       - !Ref QlueSharedLayer
       - !Ref AppDependenciesLayer
@@ -92,8 +92,6 @@ Resources:
           AttributeType: S
         - AttributeName: startedAt
           AttributeType: N
-        - AttributeName: status
-          AttributeType: S
         - AttributeName: activeMarker
           AttributeType: S
       KeySchema:
@@ -479,17 +477,17 @@ Resources:
     Properties:
       ContentUri: src/lib/
       CompatibleRuntimes:
-        - nodejs20.x
+        - nodejs24.x
       RetentionPolicy: Retain
 
   AppDependenciesLayer:
     Type: AWS::Serverless::LayerVersion
     Metadata:
-      BuildMethod: nodejs20.x
+      BuildMethod: nodejs24.x
     Properties:
       ContentUri: layers/dependencies/
       CompatibleRuntimes:
-        - nodejs20.x
+        - nodejs24.x
       RetentionPolicy: Retain
 
 
