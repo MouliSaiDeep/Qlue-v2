@@ -74,7 +74,10 @@ async function generateAtomicTurn({
         const resume = await getResumeById(session.itemData.resumeId);
         resumeData = resume?.parsedData || resume;
       }
-      
+      if(moduleType==='WEBSITE'){
+        websiteContent=session.itemData?.scrapedSummary|| "no website content"
+        targetConcept = session.itemData?.targetConcept|| "the main topic";
+      }
       if (session.userId) {
         userData = await getUserById(session.userId);
       }
@@ -252,12 +255,12 @@ exports.handler = async (event) => {
         if (processBody.shouldTerminate) {
           const terminateSession = require('./terminateSession');
           await terminateSession.handler({
-            body: JSON.stringify({ sessionId, reason: 'SILENCE_TIMEOUT' })
+            body: JSON.stringify({ sessionId, reason: processBody.reason || 'SILENCE_TIMEOUT' })
           });
-          
+          const actualreason=processBody.reason || 'SILENCE_TIMEOUT'
           await postToConnection(connectionId, {
             type: 'termination',
-            payload: { sessionId, reason: 'SILENCE_TIMEOUT', timestamp: Date.now() }
+            payload: { sessionId, reason: actualreason, timestamp: Date.now() }
           });
           continue;
         }

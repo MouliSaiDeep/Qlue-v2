@@ -110,7 +110,7 @@ class InterviewProvider extends ChangeNotifier {
     }
   }
 
-  void _handleTurnComplete(Map<String, dynamic> payload) {
+void _handleTurnComplete(Map<String, dynamic> payload) {
     isStreamingText = false;
     transcript.add(TranscriptEntry(role: 'AI', text: payload['questionText'], timestamp: DateTime.now()));
     currentQuestion = payload['questionText'];
@@ -124,7 +124,8 @@ class InterviewProvider extends ChangeNotifier {
 
     if (audioUrl?.isNotEmpty == true) {
       _ttsService.playUrl(audioUrl!)
-          .timeout(Duration(seconds: 10), onTimeout: () {
+          // 🔴 FIX: Increase timeout to 60 seconds so the AI doesn't crash the app
+          .timeout(const Duration(seconds: 60), onTimeout: () {
         throw TimeoutException('Audio playback timed out');
       })
           .then((_) {
@@ -140,7 +141,8 @@ class InterviewProvider extends ChangeNotifier {
       });
     } else if (audioData != null && audioData.isNotEmpty) {
       _ttsService.playBase64(audioData)
-          .timeout(Duration(seconds: 10), onTimeout: () {
+          // 🔴 FIX: Increase fallback timeout to 60 seconds
+          .timeout(const Duration(seconds: 60), onTimeout: () {
         throw TimeoutException('Audio playback timed out');
       })
           .then((_) {
@@ -248,6 +250,7 @@ class InterviewProvider extends ChangeNotifier {
     isConnecting = true;
     _safeNotify();
 
+    await _sttService.init();
     // Get the current user's Firebase ID token
     final user = FirebaseAuth.instance.currentUser;
     final idToken = await user?.getIdToken();

@@ -58,7 +58,12 @@ function formatConversationHistory(transcripts, aiName = 'AI') {
   if (!Array.isArray(transcripts) || transcripts.length === 0) return '';
 
   return transcripts
-    .sort((a, b) => (a.turnIndex || 0) - (b.turnIndex || 0))
+    // 🔴 FIX: Sort by turnIndex AND timestamp to keep history in chronological order
+    .sort((a, b) => {
+      const turnDiff = (a.turnIndex || 0) - (b.turnIndex || 0);
+      if (turnDiff !== 0) return turnDiff;
+      return new Date(a.timestamp) - new Date(b.timestamp);
+    })
     .map(t => {
       const speaker = t.speaker === 'AI' ? `${aiName} (Interviewer)` : 'Candidate';
       const safeText = (t.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -198,7 +203,12 @@ ${historyText ? `CONVERSATION SO FAR:
 ${historyText}` : ''}
 
 INSTRUCTIONS:
-${isFirstTurn ? '- Ask them to give a 1-minute self-introduction' : '- Give brief feedback on their introduction, then ask one follow-up about something they mentioned'}
+${isFirstTurn 
+  // 🔴 FIX: Prevent the infinite feedback loop by giving the AI progressive instructions
+  ? '- Ask them to give a 1-minute self-introduction' 
+  : (turnIndex === 1 
+      ? '- Give brief feedback on their introduction, then ask ONE follow-up about something they mentioned' 
+      : '- Acknowledge their previous answer naturally, then ask one final follow-up question')}
 - Keep under 25 words
 - Be encouraging
 
