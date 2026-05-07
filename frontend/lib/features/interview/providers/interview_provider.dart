@@ -29,12 +29,12 @@ class InterviewProvider extends ChangeNotifier {
   List<TranscriptEntry> transcript = [];
   String? errorMessage;
   String _selectedVoiceId = 'Tiffany';
-  String _selectedEngine = 'neural';
+  String _selectedEngine = 'generative';
 
   String get selectedVoiceId => _selectedVoiceId;
   String get selectedEngine => _selectedEngine;
 
-  void setVoice(String voiceId, {String engine = 'neural'}) {
+  void setVoice(String voiceId, {String engine = 'generative'}) {
     _selectedVoiceId = voiceId;
     _selectedEngine = engine;
     _safeNotify();

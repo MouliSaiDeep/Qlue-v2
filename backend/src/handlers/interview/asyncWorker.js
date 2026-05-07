@@ -258,6 +258,12 @@ exports.handler = async (event) => {
         if (processBody.shouldTerminate) {
           const terminateSession = require('./terminateSession');
           await terminateSession.handler({
+            // ADD requestContext HERE so the termination is authorized
+            requestContext: {
+              authorizer: {
+                uid: message.userId
+              }
+            },
             body: JSON.stringify({ sessionId, reason: processBody.reason || 'SILENCE_TIMEOUT' })
           });
           const actualreason=processBody.reason || 'SILENCE_TIMEOUT'

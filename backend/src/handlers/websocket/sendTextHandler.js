@@ -322,6 +322,11 @@ async function handleTerminateSession(connectionId, body, userId) {
   try {
     const terminateSession = require('../interview/terminateSession');
     await terminateSession.handler({
+      requestContext: {
+        authorizer: {
+          uid: userId
+        }
+      },
       body: JSON.stringify({ sessionId, reason })
     });
 
