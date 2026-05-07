@@ -59,9 +59,14 @@ async function synthesizeSpeech(text, voiceId = 'Tiffany', requestedEngine = nul
     console.error('Polly synthesis error:', error);
     
     // Fallback to standard engine if neural fails
-    if (finalEngine === 'neural') {
-      console.log('[Polly] Falling back to standard engine');
-      return synthesizeSpeech(text, finalVoiceId, 'standard');
+    if (finalEngine === 'neural'|| finalEngine === 'generative') {
+      console.log(`[Polly] ${finalEngine} failed. Falling back to neural/standard engine`);
+      try{
+        return synthesizeSpeech(text, finalVoiceId, 'neural');
+      }catch(fallbackError){
+        console.error('Polly synthesis error:', fallbackError);
+        return synthesizeSpeech(text, finalVoiceId, 'standard');
+      }
     }
     
     throw error;

@@ -155,8 +155,8 @@ async function generateAtomicTurn({
     await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, null, {
       questionText: aiText,
       incrementTurnCount: true, // BUG-10 FIX: Use atomic increment to prevent duplicate race conditions
-      lastVoiceId: voiceId,
-      lastEngine: engine
+      voiceId: voiceId,
+      engine: engine
     });
 
     return { success: true };
@@ -300,7 +300,6 @@ exports.handler = async (event) => {
       } catch (wsErr) {
         console.error('[AsyncWorker] Failed to send turn_error:', wsErr);
       }
-      throw error;
     }
   }
 };

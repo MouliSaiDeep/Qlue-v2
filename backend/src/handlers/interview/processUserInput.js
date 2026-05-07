@@ -6,7 +6,7 @@ const MAX_TURNS = 20;
 
 function detectExitIntent(text) {
   if (!text) return false;
-  const exitPhrases = ['thank you', 'i\'m done', 'that\'s all', 'no more', 'goodbye', 'bye', 'end interview', 'stop'];
+  const exitPhrases = ['i\'m done', 'that\'s all', 'no more', 'goodbye', 'bye', 'end interview', 'stop'];
   return exitPhrases.some(p => text.toLowerCase().includes(p));
 }
 
