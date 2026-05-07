@@ -35,6 +35,7 @@ exports.handler = async (event) => {
         Message: JSON.stringify({
           sessionId,
           userId: session.userId,
+          moduleType: session.moduleType,  // 🔴 FIX Bug #8: Add moduleType for feedback generation
           reason
         })
       }));

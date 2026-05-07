@@ -18,15 +18,26 @@ class SessionModel {
   });
 
   factory SessionModel.fromJson(Map<String, dynamic> json) {
+    // 🔴 FIX Bug #6: Handle both 'startedAt' (millis) and 'startTime' (ISO string)
+    DateTime parseStartedAt() {
+      if (json['startedAt'] != null) {
+        return DateTime.fromMillisecondsSinceEpoch(json['startedAt'] as int);
+      }
+      if (json['startTime'] != null) {
+        return DateTime.parse(json['startTime'] as String);
+      }
+      return DateTime.fromMillisecondsSinceEpoch(0);
+    }
+
     return SessionModel(
       sessionId: json['sessionId'] ?? '',
       userId: json['userId'] ?? '',
       moduleType: json['moduleType'] ?? 'HR',
-      startedAt: DateTime.fromMillisecondsSinceEpoch(json['startedAt'] ?? 0),
+      startedAt: parseStartedAt(),
       accumulatedScores: json['accumulatedScores'] != null 
           ? Map<String, dynamic>.from(json['accumulatedScores']) 
           : null,
-      status: json['status'],
+      status: json['status'] ?? json['currentState'],
     );
   }
 

@@ -196,6 +196,17 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
         _safeNotify();
       },
     );
+
+    // 🔴 FIX Bug #1: Safety timeout - force submit if onFinal never fires
+    Future.delayed(const Duration(seconds: 35), () {
+      if (isListening && !_sttService.isListening) {
+        // STT stopped without calling onFinal — force submit
+        debugPrint('STT timeout: forcing submit after silence');
+        isListening = false;
+        _submitResponse('');
+        _safeNotify();
+      }
+    });
   }
 
   void _submitResponse(String text) {

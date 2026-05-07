@@ -158,7 +158,10 @@ GoRouter buildAppRouter(AuthProvider authProvider) {
         builder: (context, state) {
           final sessionId = state.pathParameters['sessionId']!;
           final session = state.extra as SessionModel?;
-          return FeedbackReportScreen(session: session);
+          return FeedbackReportScreen(
+            session: session,
+            sessionId: sessionId,  // 🔴 FIX Bug #5: Always pass sessionId from path
+          );
         },
       ),
     ],

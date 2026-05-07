@@ -16,13 +16,33 @@ class TtsService {
       await _player.setAudioSource(AudioSource.uri(Uri.parse(url)));
       await _player.play();
 
-      // Wait for playback to complete
-      await _player.processingStateStream
-          .firstWhere((state) => state == ProcessingState.completed);
+      // 🔴 FIX Bug #4: Handle web platform where completed state may not fire
+      // Use duration-based completion OR processing state, whichever comes first
+      final duration = _player.duration;
+      if (duration != null) {
+        // Wait for duration + small buffer for playback to complete
+        await Future.any([
+          _player.processingStateStream
+              .firstWhere((state) => 
+                  state == ProcessingState.completed || state == ProcessingState.idle)
+              .timeout(const Duration(seconds: 30), onTimeout: () => ProcessingState.idle),
+          Future.delayed(duration + const Duration(milliseconds: 500)),
+        ]);
+      } else {
+        // Fallback: wait for completed state with timeout
+        await _player.processingStateStream
+            .firstWhere((state) => 
+                state == ProcessingState.completed || state == ProcessingState.idle)
+            .timeout(const Duration(seconds: 30), onTimeout: () => ProcessingState.idle);
+      }
 
-      _playbackCompleter!.complete();
+      if (!_playbackCompleter!.isCompleted) {
+        _playbackCompleter!.complete();
+      }
     } catch (e) {
-      _playbackCompleter!.completeError(e);
+      if (!_playbackCompleter!.isCompleted) {
+        _playbackCompleter!.completeError(e);
+      }
     }
   }
 
