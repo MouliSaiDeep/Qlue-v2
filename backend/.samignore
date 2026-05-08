@@ -1,0 +1,12 @@
+.git
+.github
+*.md
+.samignore
+tests/
+__tests__/
+docs/
+scratch/
+.env
+.env.*
+node_modules/
+package-lock.json

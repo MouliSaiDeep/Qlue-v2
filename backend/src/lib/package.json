@@ -1,0 +1,6 @@
+{
+  "name": "qlue-shared-lib",
+  "version": "1.0.0",
+  "description": "Shared libraries for Qlue backend",
+  "dependencies": {}
+}
