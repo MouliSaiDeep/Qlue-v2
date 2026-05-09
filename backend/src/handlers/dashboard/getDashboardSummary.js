@@ -38,7 +38,7 @@ exports.handler = async (event) => {
         // Query TBL-003 (Sessions) via GSI for all user sessions
         const sessionCmd = new QueryCommand({
             TableName: SESSIONS_TABLE,
-            IndexName: 'UserIdIndex', // GSI configured by Nithin
+            IndexName: 'GSI_UserIdStartedAt',
             KeyConditionExpression: 'userId = :uid',
             ExpressionAttributeValues: {
                 ':uid': userId

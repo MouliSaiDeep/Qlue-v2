@@ -26,18 +26,30 @@ class Avatar extends StatelessWidget {
     
     if (imageUrl != null && imageUrl!.isNotEmpty) {
       if (imageUrl!.startsWith('http') || imageUrl!.startsWith('https')) {
-        imageWidget = Image.network(imageUrl!, fit: BoxFit.cover, width: size, height: size);
+        imageWidget = Image.network(
+          imageUrl!,
+          fit: BoxFit.cover,
+          width: size,
+          height: size,
+          errorBuilder: (context, error, stackTrace) => Icon(Icons.person, size: size * 0.6, color: Colors.white),
+        );
       } else if (!kIsWeb && (imageUrl!.startsWith('/') || (imageUrl!.length > 1 && imageUrl![1] == ':'))) {
         imageWidget = Image.file(File(imageUrl!), fit: BoxFit.cover, width: size, height: size);
       } else if (!kIsWeb) {
         imageWidget = Image.file(File(imageUrl!), fit: BoxFit.cover, width: size, height: size);
       } else {
         // Web fallback
-        imageWidget = Image.network("https://ui-avatars.com/api/?name=${name ?? 'User'}&background=random&color=fff&size=256", fit: BoxFit.cover, width: size, height: size);
+        imageWidget = Container(
+          color: const Color(0xFF7C3AED),
+          child: Icon(Icons.person, size: size * 0.6, color: Colors.white),
+        );
       }
     } else {
-      // Default: Dynamic Letter Avatar
-      imageWidget = Image.network("https://ui-avatars.com/api/?name=${name ?? 'User'}&background=7C3AED&color=fff&size=256", fit: BoxFit.cover, width: size, height: size);
+      // Default Generic Avatar (Local to avoid network issues or X marks)
+      imageWidget = Container(
+        color: const Color(0xFF7C3AED),
+        child: Icon(Icons.person, size: size * 0.6, color: Colors.white),
+      );
     }
 
     return Container(
