@@ -36,6 +36,7 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
   
   bool _isEnding = false;
   bool _hasNavigated = false;
+  bool _isDisposed = false; // FE-BUG #17 FIX: guard for doWhile after dispose
 
   late InterviewProvider _provider;
   late VoidCallback _providerListener;
@@ -93,7 +94,10 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
   void _handleEnd(InterviewProvider provider) async {
     if (_isEnding) return;
     setState(() => _isEnding = true);
-    await provider.endSession();
+    // FE-BUG #18 FIX: catch errors from endSession so they don't swallow silently
+    await provider.endSession().catchError((e) {
+      debugPrint('[InterviewSession] endSession error: $e');
+    });
   }
 
 
@@ -125,17 +129,18 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
   bool _isSimulating = false;
 
   void _simulateIntensity(InterviewPhase phase) {
-    if (_isSimulating || !mounted) return;
+    // FE-BUG #17 FIX: Check _isDisposed to stop doWhile after widget is disposed
+    if (_isSimulating || !mounted || _isDisposed) return;
     _isSimulating = true;
     
     Future.doWhile(() async {
       final currentPhase = context.read<InterviewProvider>().currentPhase;
-      if (!mounted || (currentPhase != InterviewPhase.speaking && currentPhase != InterviewPhase.listening)) {
+      if (!mounted || _isDisposed || (currentPhase != InterviewPhase.speaking && currentPhase != InterviewPhase.listening)) {
         _isSimulating = false;
         return false;
       }
       final target = 0.1 + math.Random().nextDouble() * (currentPhase == InterviewPhase.speaking ? 0.4 : 0.8);
-      if (mounted) {
+      if (mounted && !_isDisposed) {
         _intensityController.animateTo(target, duration: const Duration(milliseconds: 500), curve: Curves.easeInOut);
       }
       await Future.delayed(const Duration(milliseconds: 600));
@@ -145,6 +150,7 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
 
   @override
   void dispose() {
+    _isDisposed = true; // FE-BUG #17 FIX: flag before cancelling controllers
     _provider.removeListener(_providerListener);
     _animationController.dispose();
     _intensityController.dispose();
@@ -222,6 +228,20 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
       sphereColor = Colors.white;
     }
 
+    // Determine dot matrix mode from current phase
+    DotMatrixMode dotMode;
+    if (isConnecting) {
+      dotMode = DotMatrixMode.glow;
+    } else if (isAiSpeaking) {
+      dotMode = DotMatrixMode.radiation;
+    } else if (isListening) {
+      dotMode = DotMatrixMode.accretion;
+    } else if (isProcessing) {
+      dotMode = DotMatrixMode.random;
+    } else {
+      dotMode = DotMatrixMode.glow;
+    }
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -239,7 +259,7 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
                   time: _time,
                   intensity: _intensity,
                   baseColor: sphereColor,
-                  isInwards: !isAiSpeaking,
+                  mode: dotMode,
                   tapOffset: null,
                   tapTime: 0,
                 ),

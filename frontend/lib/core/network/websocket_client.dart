@@ -212,7 +212,9 @@ class WebSocketClient {
     _channel = null;
     _isConnected = false;
     _status = WebSocketStatus.disconnected;
-    _disconnectController.add(null);
+    // FE-BUG #6 FIX: Do NOT fire _disconnectController on intentional disconnect.
+    // Unexpected disconnects (network loss) fire the disconnect event; intentional
+    // ones (endSession) must not, to avoid triggering the feedback nav race condition.
   }
 
   void dispose() {
@@ -220,5 +222,6 @@ class WebSocketClient {
     _messageController.close();
     _errorController.close();
     _disconnectController.close();
+    _reconnectController.close(); // FE-BUG #5 FIX: was missing, causing stream memory leak
   }
 }

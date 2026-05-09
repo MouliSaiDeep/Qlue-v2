@@ -1,34 +1,13 @@
-const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 const { UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const { getSession, getSessionById, updateSessionState, INTERVIEW_STATES } = require('../../models/session');
 const { getTranscriptBySession } = require('../../models/transcript');
-const { deregisterConnection } = require('../../lib/websocket');
+// BE-BUG #15 FIX: Import postToConnection from shared lib instead of duplicating it here
+const { deregisterConnection, postToConnection } = require('../../lib/websocket');
 
 const sqsClient = new SQSClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const ASYNC_QUEUE_URL = process.env.ASYNC_QUEUE_URL;
 const WS_CONNECTIONS_TABLE = process.env.WS_CONNECTIONS_TABLE;
-
-const apigwClient = new ApiGatewayManagementApiClient({
-  endpoint: process.env.WEBSOCKET_ENDPOINT?.replace('wss://', 'https://') || ''
-});
-
-async function postToConnection(connectionId, data) {
-  try {
-    await apigwClient.send(new PostToConnectionCommand({
-      ConnectionId: connectionId,
-      Data: Buffer.from(JSON.stringify(data))
-    }));
-    return true;
-  } catch (error) {
-    if (error.$metadata?.httpStatusCode === 410 || error.name === 'GoneException') {
-      console.warn(`Connection ${connectionId} is stale`);
-      await deregisterConnection(connectionId);
-      throw new Error('StaleConnectionError');
-    }
-    throw error;
-  }
-}
 
 async function sendError(connectionId, message, code = 400) {
   try {
@@ -132,6 +111,7 @@ async function handleSessionInit(connectionId, body, userId) {
       MessageBody: JSON.stringify({
         connectionId,
         sessionId,
+        userId,   // BE-BUG #17 FIX: pass userId so asyncWorker can call handlers with ownership context
         action: 'session_init',
         voiceId: finalVoiceId,
         engine: finalEngine
@@ -230,7 +210,11 @@ async function handleSessionReconnect(connectionId, body, userId) {
       return await sendError(connectionId, 'Session not found');
     }
 
-    // Update connection mapping
+    // BE-BUG #16 FIX: Verify session ownership before allowing reconnect
+    if (session.userId !== userId) {
+      console.warn(`[Reconnect] Ownership violation: user ${userId} attempted to reconnect to session owned by ${session.userId}`);
+      return await sendError(connectionId, 'Forbidden: Session does not belong to this user', 403);
+    }
     const dynamodb = require('../../lib/dynamodb');
     await dynamodb.docClient.send(new UpdateCommand({
       TableName: WS_CONNECTIONS_TABLE,

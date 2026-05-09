@@ -2,12 +2,13 @@ const { PollyClient, SynthesizeSpeechCommand } = require('@aws-sdk/client-polly'
 
 const pollyClient = new PollyClient({ region: process.env.AWS_REGION || 'us-east-1' });
 
+// BE-BUG #7 FIX: Primary voices support 'generative' engine (was incorrectly 'neural')
 const VOICE_ENGINE_MAP = {
-  'Tiffany': 'neural',
-  'Ruth': 'neural',
-  'Joanna': 'neural',
-  'Matthew': 'neural',
-  'Stephen': 'neural',
+  'Tiffany': 'generative',
+  'Ruth': 'generative',
+  'Joanna': 'generative',
+  'Matthew': 'generative',
+  'Stephen': 'generative',
   'Amy': 'standard',
   'Brian': 'standard',
   'Emma': 'neural',

@@ -60,6 +60,17 @@ exports.handler = async (event) => {
         }
 
         if (voiceId !== undefined) {
+            // BE-BUG #9 FIX: Validate voiceId against allowed list before writing
+            const allowedVoices = (process.env.ALLOWED_VOICES || 'Tiffany,Ruth,Joanna,Matthew,Stephen').split(',');
+            if (!allowedVoices.includes(voiceId)) {
+                return {
+                    statusCode: 400,
+                    body: JSON.stringify({
+                        error: 'INVALID_VOICE',
+                        message: `voiceId '${voiceId}' is not allowed. Allowed values: ${allowedVoices.join(', ')}`
+                    })
+                };
+            }
             updateExpression += ', voiceId = :voiceId';
             expressionAttributeValues[':voiceId'] = voiceId;
         }

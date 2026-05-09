@@ -4,7 +4,7 @@ const { DynamoDBDocumentClient, GetCommand, QueryCommand } = require("@aws-sdk/l
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
 
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE_NAME || 'qlue-sessions';
+const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions'; // BE-BUG #11 FIX: was SESSIONS_TABLE_NAME
 const FEEDBACK_TABLE = process.env.FEEDBACK_TABLE || 'qlue-feedback';
 const TRANSCRIPTS_TABLE = process.env.TRANSCRIPTS_TABLE || 'qlue-transcripts';
 

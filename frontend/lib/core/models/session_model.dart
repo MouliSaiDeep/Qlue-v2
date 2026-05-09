@@ -45,9 +45,12 @@ class SessionModel {
     if (accumulatedScores == null || accumulatedScores!.isEmpty) return 0;
     int total = 0;
     int count = 0;
+    // FE-BUG #16 FIX: Guard with `is num` before cast to prevent crash on non-numeric values
     accumulatedScores!.forEach((key, value) {
-      total += (value as num).toInt();
-      count++;
+      if (value is num) {
+        total += value.toInt();
+        count++;
+      }
     });
     return count > 0 ? (total / count).round() : 0;
   }

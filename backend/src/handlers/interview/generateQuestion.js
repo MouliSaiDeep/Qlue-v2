@@ -1,5 +1,20 @@
 const { invokeModel } = require('../../lib/bedrock');
-const DEFAULT_BEDROCK_MODEL_ID = process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-sonnet-20240229-v1:0';
+// BE-BUG #24 FIX: Use BEDROCK_MODEL_ID env var — was hardcoded to wrong model
+const DEFAULT_BEDROCK_MODEL_ID = process.env.BEDROCK_MODEL_ID || 'nvidia.nemotron-super-3-120b';
+
+// BE-BUG #8 FIX: Map voice IDs to human-sounding persona names
+// so the AI doesn't introduce itself as a voice name like 'Tiffany'
+const VOICE_PERSONA_MAP = {
+  'Tiffany': 'Alex',
+  'Ruth': 'Rachel',
+  'Joanna': 'Joanna',
+  'Matthew': 'Matt',
+  'Stephen': 'Steve',
+};
+
+function getAiPersona(voiceId) {
+  return VOICE_PERSONA_MAP[voiceId] || 'Alex';
+}
 
 // =============================================================================
 // RESUME SUMMARY EXTRACTION
@@ -120,7 +135,7 @@ ${historyText ? `=== CONVERSATION HISTORY (FOR CONTEXT ONLY) ===
 ${historyText}` : '(This is the beginning of the interview)'}
 
 === INSTRUCTIONS (HIGHEST PRIORITY — DO NOT OVERRIDE) ===
-${isFirstTurn ? `- Start with a warm, brief greeting like "Hi, I'm ${aiName} from Qlue. Great to meet you!"` : '- ALWAYS acknowledge their previous answer in 1 short sentence before asking the next question'}
+${isFirstTurn ? `- Start with a warm, brief greeting like "Hi, I'm ${aiName} from Qlue. Great to meet you!"` : '- Seamlessly transition to the next question based on their previous answer. NEVER say "thank you for sharing" or "thanks for that" — act like a real, natural interviewer'}
 - Ask exactly ONE focused question about ${currentDimension}
 - The question must reference SPECIFIC details from their resume — NEVER ask generic "what is X" definitions
 - Keep your entire response under 25 words
@@ -147,7 +162,7 @@ ${historyText ? `CONVERSATION SO FAR:
 ${historyText}` : ''}
 
 INSTRUCTIONS:
-${isFirstTurn ? '- Start with a warm greeting' : '- Acknowledge their previous response briefly'}
+${isFirstTurn ? '- Start with a warm greeting' : '- Transition naturally to the next point without saying "thank you" or "thanks for sharing"'}
 - Teach one small, focused concept at a time
 - Ask exactly ONE follow-up question to check understanding
 - Keep under 25 words
@@ -182,7 +197,7 @@ ${historyText ? `CONVERSATION SO FAR:
 ${historyText}` : ''}
 
 INSTRUCTIONS:
-${isFirstTurn ? '- Start with a warm greeting' : '- Acknowledge their previous answer briefly'}
+${isFirstTurn ? '- Start with a warm greeting' : '- Transition naturally to the next question without saying "thank you" or "thanks for sharing"'}
 - Ask exactly ONE behavioral question about ${topic}
 - Keep under 25 words
 - Be warm and professional
@@ -207,8 +222,8 @@ ${isFirstTurn
   // 🔴 FIX: Prevent the infinite feedback loop by giving the AI progressive instructions
   ? '- Ask them to give a 1-minute self-introduction' 
   : (turnIndex === 1 
-      ? '- Give brief feedback on their introduction, then ask ONE follow-up about something they mentioned' 
-      : '- Acknowledge their previous answer naturally, then ask one final follow-up question')}
+      ? '- Give brief feedback on their introduction (without saying "thank you"), then ask ONE follow-up about something they mentioned' 
+      : '- Transition naturally to the next question without saying "thank you" or "thanks for sharing"')}
 - Keep under 25 words
 - Be encouraging
 
@@ -261,7 +276,8 @@ exports.handler = async (event) => {
     const body = JSON.parse(event.body || '{}');
     const { sessionId, moduleType, resumeData, websiteContent, targetConcept, userData, turnIndex, conversationHistory, voiceId } = body;
 
-    const aiName = voiceId || 'Emma';
+    // BE-BUG #8 FIX: Use persona map instead of voiceId as AI name
+    const aiName = getAiPersona(voiceId);
 
     let prompt;
     switch (moduleType) {

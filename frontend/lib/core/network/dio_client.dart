@@ -39,8 +39,12 @@ class DioClient {
                 final token = await user.getIdToken(true);
                 e.requestOptions.headers['Authorization'] = 'Bearer $token';
                 
-                // Retry the request using a temporary Dio to avoid infinite interceptor loops
-                final retryDio = Dio(BaseOptions(baseUrl: ApiConstants.baseUrl));
+                // FE-BUG #21 FIX: Add timeouts to retry Dio to prevent hang on token refresh retry
+                final retryDio = Dio(BaseOptions(
+                  baseUrl: ApiConstants.baseUrl,
+                  connectTimeout: const Duration(seconds: 15),
+                  receiveTimeout: const Duration(seconds: 60),
+                ));
                 final response = await retryDio.fetch(e.requestOptions);
                 return handler.resolve(response);
               } catch (retryError) {

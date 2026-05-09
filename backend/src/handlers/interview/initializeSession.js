@@ -34,7 +34,9 @@ exports.handler = async (event) => {
                 }
                 console.info(`Force terminating existing session ${activeSession.sessionId} for ${userId}`);
                 const terminateSession = require('./terminateSession');
+                // BE-BUG #22 FIX: Pass requestContext so terminateSession can perform ownership check
                 await terminateSession.handler({
+                    requestContext: { authorizer: { uid: userId } },
                     body: JSON.stringify({ sessionId: activeSession.sessionId, reason: 'USER_INITIATED' })
                 });
             } else {

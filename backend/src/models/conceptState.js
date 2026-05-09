@@ -1,7 +1,8 @@
 const { docClient } = require('../lib/dynamodb');
 const { UpdateCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 
-const CONCEPTS_TABLE = process.env.CONCEPTS_TABLE_NAME || 'Concepts';
+// BE-BUG #12 FIX: was CONCEPTS_TABLE_NAME/'Concepts' — correct name is CONCEPT_STATES_TABLE/'qlue-concept-states'
+const CONCEPTS_TABLE = process.env.CONCEPT_STATES_TABLE || 'qlue-concept-states';
 
 const CONCEPT_STATES = {
     UNADDRESSED: 'UNADDRESSED',

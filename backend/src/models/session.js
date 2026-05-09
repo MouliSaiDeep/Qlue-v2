@@ -20,21 +20,23 @@ const INTERVIEW_STATES = {
  */
 async function createSession(sessionId, userId, moduleType, itemData = {}) {
     const now = new Date().toISOString();
+    const nowMs = Date.now(); // BE-BUG #10 FIX: use numeric epoch for GSI_UserIdStartedAt (type N)
     const session = {
         sessionId,
         userId,
         moduleType,
-        itemData, // [Mouli Week 4: Context Injection] Store resumeId/websiteUrl context
+        itemData,
         voiceId: itemData.voiceId || 'Tiffany',
         engine: itemData.engine || 'generative',
         currentState: INTERVIEW_STATES.INITIALIZING,
         turnCount: 0,
-        startTime: now,
-        updatedAt: now, // FIX: added
+        startedAt: nowMs,     // Numeric — matches GSI_UserIdStartedAt type N
+        startTime: now,       // ISO string kept for backward-compat display
+        updatedAt: now,
         silenceRetries: 0,
         accumulatedScores: {},
         version: 1,
-        activeMarker: "ACTIVE" // Used for Sparse GSI pattern
+        activeMarker: "ACTIVE"
     };
 
     const command = new PutCommand({
@@ -53,6 +55,7 @@ async function getSession(sessionId) {
     const command = new GetCommand({
         TableName: SESSIONS_TABLE,
         Key: { sessionId },
+        ConsistentRead: true // Prevent eventual consistency race conditions
     });
 
     const response = await docClient.send(command);
@@ -61,6 +64,7 @@ async function getSession(sessionId) {
 
 /**
  * Sweeps the UserActiveIndex GSI to find any currently active session for a user.
+ * BE-BUG #4 FIX: Auto-terminates zombie sessions older than 30 minutes.
  */
 async function getActiveSessionForUser(userId) {
     const command = new QueryCommand({
@@ -75,7 +79,25 @@ async function getActiveSessionForUser(userId) {
     });
 
     const response = await docClient.send(command);
-    return response.Items?.[0] || null;
+    const session = response.Items?.[0] || null;
+
+    if (session) {
+        const ZOMBIE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+        const sessionAge = Date.now() - (session.startedAt || 0);
+        if (sessionAge > ZOMBIE_THRESHOLD_MS) {
+            console.warn(`[Session] Zombie session detected: ${session.sessionId} (age: ${Math.round(sessionAge / 60000)}m). Auto-terminating.`);
+            try {
+                await updateSessionState(session.sessionId, INTERVIEW_STATES.TERMINATED, null, {
+                    terminationReason: 'ZOMBIE_CLEANUP'
+                });
+            } catch (e) {
+                console.error(`[Session] Failed to auto-terminate zombie session ${session.sessionId}:`, e.message);
+            }
+            return null;
+        }
+    }
+
+    return session;
 }
 
 /**

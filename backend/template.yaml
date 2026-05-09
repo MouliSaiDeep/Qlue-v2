@@ -114,14 +114,6 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-        - IndexName: GSI_UserIdStatus
-          KeySchema:
-            - AttributeName: userId
-              KeyType: HASH
-            - AttributeName: activeMarker
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
 
   TranscriptsTable:
     Type: AWS::DynamoDB::Table
@@ -1102,7 +1094,7 @@ Resources:
       Handler: handlers/interview/asyncWorker.handler
       CodeUri: src/
       MemorySize: 1024
-      Timeout: 30
+      Timeout: 60
       Events:
         SQSEvent:
           Type: SQS
@@ -1235,6 +1227,10 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref NotificationsTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !GetAtt AnalyzeTranscriptFunction.Arn
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FcmServerKeySecret }
 
@@ -1245,6 +1241,9 @@ Resources:
       CodeUri: src/
       MemorySize: 1024
       Timeout: 60
+      Environment:
+        Variables:
+          GENERATE_REPORT_LAMBDA: !Ref GenerateFeedbackReportFunction
       Events:
         Api:
           Type: Api
@@ -1261,6 +1260,10 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref NotificationsTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !GetAtt GenerateFeedbackReportFunction.Arn
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FcmServerKeySecret }
 
@@ -1297,6 +1300,9 @@ Resources:
       CodeUri: src/
       MemorySize: 1024
       Timeout: 60
+      Environment:
+        Variables:
+          STORE_FEEDBACK_LAMBDA: !Ref StoreFeedbackReportFunction
       Events:
         Api:
           Type: Api
@@ -1313,6 +1319,10 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref NotificationsTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !GetAtt StoreFeedbackReportFunction.Arn
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FcmServerKeySecret }
 
@@ -1323,6 +1333,9 @@ Resources:
       CodeUri: src/
       MemorySize: 256
       Timeout: 10
+      Environment:
+        Variables:
+          SEND_NOTIFICATION_LAMBDA: !Ref SendFeedbackNotificationFunction
       Events:
         Api:
           Type: Api
@@ -1339,6 +1352,10 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref NotificationsTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !GetAtt SendFeedbackNotificationFunction.Arn
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FcmServerKeySecret }
 
