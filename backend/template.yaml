@@ -940,6 +940,7 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'], Resource: '*' }]
+        - SNSPublishMessagePolicy: { TopicName: !GetAtt FeedbackTriggerTopic.TopicName }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
 
@@ -1053,7 +1054,7 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          TRIGGER_FEEDBACK_FUNCTION_NAME: !Ref TriggerFeedbackGenerationFunction
+          FEEDBACK_TOPIC_ARN: !Ref FeedbackTriggerTopic
       Events:
         Api:
           Type: Api
@@ -1095,6 +1096,9 @@ Resources:
       CodeUri: src/
       MemorySize: 1024
       Timeout: 60
+      Environment:
+        Variables:
+          FEEDBACK_TOPIC_ARN: !Ref FeedbackTriggerTopic
       Events:
         SQSEvent:
           Type: SQS
