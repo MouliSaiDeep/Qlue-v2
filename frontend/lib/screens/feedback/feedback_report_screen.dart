@@ -384,6 +384,27 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
   }
 
   Widget _buildSpiderChartCard(AppThemeColors t) {
+    // Ensure we specifically have exactly 3 items to draw a triangle
+    List<double> finalData = [0.8, 0.7, 0.9];
+    List<String> finalLabels = ["Clarity", "Fluency", "Vocabulary"];
+
+    if (_report != null && _report!.dimensionScores.isNotEmpty) {
+      final entries = _report!.dimensionScores.entries.toList();
+      if (entries.length >= 3) {
+        // Take first 3 entries
+        finalData = entries.take(3).map((e) => e.value / 100).toList();
+        finalLabels = entries.take(3).map((e) => e.key).toList();
+      } else {
+        // Pad with default data if less than 3
+        finalData = entries.map((e) => e.value / 100).toList();
+        finalLabels = entries.map((e) => e.key).toList();
+        while (finalData.length < 3) {
+          finalData.add(0.8);
+          finalLabels.add("Metric ${finalData.length}");
+        }
+      }
+    }
+
     return GlassCard(
       padding: const EdgeInsets.all(24),
       borderRadius: 24,
@@ -406,14 +427,8 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
               child: CustomPaint(
                 painter: RadarChartPainter(
                   t: t,
-                  data:
-                      _report?.dimensionScores.values
-                          .map((v) => v / 100)
-                          .toList() ??
-                      [0.8, 0.7, 0.9],
-                  labels:
-                      _report?.dimensionScores.keys.toList() ??
-                      ["Clarity", "Fluency", "Vocabulary"],
+                  data: finalData,
+                  labels: finalLabels,
                 ),
               ),
             ),
@@ -602,13 +617,13 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
                       children: [
                         if (transcript.indexOf(item) > 0)
                           const Divider(
-                            height: 48,
+                            height: 24,
                             thickness: 1,
                             color: Colors.white12,
                           ),
                         _buildTranscriptItem(
                           t,
-                          isAI ? "Q: ${item.text}" : "A: ${item.text}",
+                          isAI ? "AI: ${item.text}" : "You: ${item.text}",
                           isAI,
                         ),
                       ],

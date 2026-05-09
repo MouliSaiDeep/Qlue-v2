@@ -331,6 +331,7 @@ class _AIModulesScreenState extends State<AIModulesScreen>
             Expanded(
               child: TabBarView(
                 controller: _tabController,
+                physics: const NeverScrollableScrollPhysics(),
                 children: [_buildInterviewList(t), _buildTutorList(t)],
               ),
             ),

@@ -100,6 +100,9 @@ class InterviewProvider extends ChangeNotifier {
 
   void _handleWebSocketMessage(Map<String, dynamic> message) {
     switch (message['type']) {
+      case 'text_stream':
+        _handleTextStream(message['payload']);
+        break;
       case 'turn_complete':
         _handleTurnComplete(message['payload']);
         break;
@@ -114,6 +117,16 @@ class InterviewProvider extends ChangeNotifier {
         _safeNotify();
         break;
     }
+  }
+
+  void _handleTextStream(Map<String, dynamic> payload) {
+    if (_currentPhase != InterviewPhase.speaking) {
+      _currentPhase = InterviewPhase.speaking;
+    }
+    isStreamingText = true;
+    subtitleText = payload['fullText'] ?? subtitleText;
+    questionText = subtitleText;
+    _safeNotify();
   }
 
 void _handleTurnComplete(Map<String, dynamic> payload) {

@@ -90,8 +90,10 @@ async function generateAtomicTurn({
         userData = await getUserById(session.userId);
       }
 
+      // Stream text to the frontend while generating
+      let accumulatedText = "";
       const promptResult = await generateQuestion({
-        body: JSON.stringify({
+        body: {
           sessionId,
           moduleType,
           resumeData,
@@ -100,8 +102,21 @@ async function generateAtomicTurn({
           targetConcept,
           turnIndex: session.turnCount || 0,
           conversationHistory,
-          voiceId
-        })
+          voiceId,
+          onToken: async (token) => {
+             accumulatedText += token;
+             // Send text_stream event to the frontend
+             await postToConnection(connectionId, {
+               type: 'text_stream',
+               payload: {
+                 sessionId,
+                 text: token,
+                 fullText: accumulatedText,
+                 timestamp: Date.now()
+               }
+             }).catch(e => console.error('Failed to stream token to WS:', e));
+          }
+        }
       });
       
       const promptBody = JSON.parse(promptResult.body);
