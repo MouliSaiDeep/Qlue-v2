@@ -60,7 +60,7 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
     });
   }
 
-  Future<void> _fetchReport({int retries = 20}) async {
+  Future<void> _fetchReport({int retries = 40}) async {
     final sId = widget.session?.sessionId ?? widget.sessionId;
     if (sId == null) {
       setState(() {

@@ -16,7 +16,7 @@ class DashboardApiService {
   }
 
   Future<List<SessionModel>> getHistory({String? moduleType, int limit = 100}) async {
-    final response = await _dio.get('/dashboard/history', queryParameters: {
+    final response = await _dio.get(ApiConstants.sessionHistory, queryParameters: {
       if (moduleType != null) 'moduleType': moduleType,
       'limit': limit,
     });
