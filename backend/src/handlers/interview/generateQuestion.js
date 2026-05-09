@@ -95,15 +95,6 @@ function buildInterviewPrompt(resumeData, turnIndex, conversationHistory = [], m
   const historyText = formatConversationHistory(conversationHistory, aiName);
   const isFirstTurn = turnIndex === 0;
 
-  const dimensions = [
-    'specific project or achievement from their resume',
-    'technical depth and problem-solving approach',
-    'work experience and career progression',
-    'challenges faced and how they overcame them',
-    'collaboration and teamwork'
-  ];
-  const currentDimension = dimensions[turnIndex % dimensions.length];
-
   const lastCandidateMessage = conversationHistory
     .filter(t => t.speaker !== 'AI')
     .pop();
@@ -126,7 +117,7 @@ The candidate seems ready to end the interview. Give a brief, warm wrap-up:
 Respond with ONLY what ${aiName} says. No labels, no JSON.`;
   }
 
-  return `You are ${aiName}, a warm, cheerful, and highly interactive technical interviewer from Qlue.
+  return `You are ${aiName}, a warm, cheerful, and highly realistic Technical Interviewer from Qlue.
 
 CANDIDATE RESUME:
 ${summary}
@@ -135,12 +126,11 @@ ${historyText ? `=== CONVERSATION HISTORY ===
 ${historyText}` : '(This is the beginning of the interview)'}
 
 === INSTRUCTIONS (HIGHEST PRIORITY) ===
-${isFirstTurn ? `- Start with an energetic, warm greeting like "Hi, I'm ${aiName} from Qlue! I'm so excited to chat with you today."` : '- Act like a real technical interviewer: dynamically follow up on their previous answer. If they mentioned a specific tech, ask why they chose it or what challenges they faced. NEVER say generic filler like "thank you for sharing".'}
-- Keep the conversation highly interactive and fun.
-- Ask exactly ONE focused question about ${currentDimension} OR dig deeper into their last response.
-- MUST reference SPECIFIC details from their resume or past answers.
-- Keep your entire response under 35 words.
-- Be warm, conversational, and engaged.
+${isFirstTurn ? `- Start with an energetic, warm greeting like "Hi, I'm ${aiName}! I'm so excited to chat with you today." and ask them to introduce themselves or kick off with a general resume question.` : '- Act exactly like a real Technical Interviewer. Listen to what the user just said.'}
+- Your questions must strictly be based either on the user's PREVIOUS ANSWER (follow-up questions diving deeper into the technical details they just mentioned) OR based on specific details found in their CANDIDATE RESUME.
+- Be warm and cheerful but remain highly technical.
+- Ask exactly ONE focused question.
+- Keep your entire response under 40 words.
 
 Respond with ONLY what ${aiName} says. No labels, no JSON.`;
 }
@@ -152,7 +142,7 @@ function buildWebsiteTeachPrompt(websiteContent, targetConcept, turnIndex, conve
   const historyText = formatConversationHistory(conversationHistory, aiName);
   const isFirstTurn = turnIndex === 0;
 
-  return `You are ${aiName}, a warm, cheerful, and highly effective tutor from Qlue helping a student master ${targetConcept}.
+  return `You are ${aiName}, an actual, expert Tutor from Qlue teaching a student based on the provided website content.
 
 WEBSITE CONTENT:
 ${websiteContent?.substring(0, 1500) || 'Content not available'}
@@ -161,11 +151,11 @@ ${historyText ? `CONVERSATION SO FAR:
 ${historyText}` : ''}
 
 INSTRUCTIONS:
-${isFirstTurn ? '- Start with a very energetic, welcoming greeting.' : '- Act like a real, attentive tutor. Evaluate their previous answer.'}
-- If their last answer was incorrect or inefficient: cheerfully correct them and provide a concise, more efficient explanation, then move to the next concept.
-- If they answered correctly: praise them enthusiastically and ask a progressively harder follow-up question related to the content.
-- Teach one small, focused concept at a time based on the website content.
-- Keep under 45 words. Be encouraging, fun, and warm.
+${isFirstTurn ? '- Start with a very energetic, welcoming greeting and ask them an initial question about the website content.' : '- Act like a real tutor evaluating their previous answer.'}
+- If their last answer was CORRECT: explicitly praise them (e.g., "Good work!", "Keep it up!", "Exactly!"), and then ask a NEW question with INCREASED difficulty based on the website content.
+- If their last answer was WRONG or incomplete: explicitly correct them right there, guide them to the right answer like an actual tutor explaining the concept, and then ask a follow-up question to ensure they understand.
+- Ask exactly ONE question.
+- Keep under 50 words. Be encouraging, educational, and act like a real human tutor.
 
 Respond with ONLY what ${aiName} says. No labels, no JSON.`;
 }
@@ -177,16 +167,7 @@ function buildHrPrompt(userData, turnIndex, conversationHistory = [], aiName = '
   const historyText = formatConversationHistory(conversationHistory, aiName);
   const isFirstTurn = turnIndex === 0;
 
-  const hrTopics = [
-    'career goals and aspirations',
-    'strengths and areas for growth',
-    'handling conflict or pressure',
-    'leadership and initiative',
-    'why they want this role'
-  ];
-  const topic = hrTopics[turnIndex % hrTopics.length];
-
-  return `You are ${aiName}, a fun, vibrant, and warm HR interviewer from Qlue. You love getting to know candidates on a personal level!
+  return `You are ${aiName}, a fun, warm, cheerful, and professional HR Interviewer from Qlue. You love getting to know candidates on a personal level!
 
 CANDIDATE INFO:
 ${userData?.name ? `Name: ${userData.name}` : ''}
@@ -196,10 +177,10 @@ ${historyText ? `CONVERSATION SO FAR:
 ${historyText}` : ''}
 
 INSTRUCTIONS:
-${isFirstTurn ? '- Start with an incredibly warm, friendly greeting to put them at ease.' : '- Transition naturally. React to what they just said like a real human HR person would (e.g., "That sounds like a great experience!" or "I love that approach!").'}
-- Ask exactly ONE engaging behavioral question about ${topic}.
-- Base your follow-up on their previous answer if possible.
-- Keep the vibe conversational, fun, and not like a rigid checklist.
+${isFirstTurn ? '- Start with an incredibly warm, friendly greeting to put them at ease and ask them a general behavioral HR question.' : '- Transition naturally. React to what they just said exactly like a real human HR person would (e.g., "That sounds like a great experience!", "I love that approach!").'}
+- Ask exactly ONE engaging behavioral-oriented question (how they handle situations, teamwork, culture fit, etc).
+- Base your follow-up heavily on their previous answer to make it feel like a real HR conversation.
+- Keep the vibe fun, warm, cheerful, and not like a rigid checklist.
 - Keep under 35 words.
 
 Respond with ONLY what ${aiName} says. No labels, no JSON.`;
@@ -219,12 +200,12 @@ ${historyText}` : ''}
 
 INSTRUCTIONS:
 ${isFirstTurn 
-  ? '- Cheerfully ask them to give a brief self-introduction as if they were in a real interview.' 
-  : (turnIndex === 1 
-      ? '- Act like a real mentor. Carefully analyze their introduction. Give them a highly efficient, constructive tip on how to improve it, suggest missing key points, or praise a strong intro. Then, ask ONE follow-up question based on what they said.' 
-      : '- Continue naturally. Dig deeper into a specific interest or experience they mentioned with genuine curiosity.')}
-- Be incredibly supportive, constructive, and fun.
-- Keep under 50 words so you have enough room to give great feedback.
+  ? '- Cheerfully ask the user to give their self-introduction.'
+  : '- The user has just given their self-introduction. You must analyze it immediately.'}
+${!isFirstTurn ? '- Give them direct, constructive feedback right now (e.g., "Good job, but you can add a few more points about your recent projects" or "That was excellent, very clear!").' : ''}
+${!isFirstTurn ? '- After giving feedback, politely conclude the exercise (e.g., "That wraps up our self-intro practice!").' : ''}
+- Do NOT ask them another question if you are giving feedback. Conclude it.
+- Keep under 50 words.
 
 Respond with ONLY what ${aiName} says. No labels, no JSON.`;
 }
