@@ -272,7 +272,7 @@ function cleanAIResponse(rawText) {
 // =============================================================================
 exports.handler = async (event) => {
   try {
-    const body = JSON.parse(event.body || '{}');
+    const body = typeof event.body === 'string' ? JSON.parse(event.body || '{}') : (event.body || {});
     const { sessionId, moduleType, resumeData, websiteContent, targetConcept, userData, turnIndex, conversationHistory, voiceId } = body;
 
     // BE-BUG #8 FIX: Use persona map instead of voiceId as AI name
@@ -295,13 +295,25 @@ exports.handler = async (event) => {
         break;
     }
 
-    const result = await invokeModel(DEFAULT_BEDROCK_MODEL_ID, {
-      messages: [{ role: 'user', content: [{ text: prompt }] }]
-    });
-    const rawResponse = result.content?.[0]?.text || '';
+    let rawResponse = '';
+    const namePrefixRegex = new RegExp(`^${aiName}:\\s*`, 'i');
+
+    if (body.onToken) {
+        const { invokeModelStream } = require('../../lib/bedrock');
+        rawResponse = await invokeModelStream(DEFAULT_BEDROCK_MODEL_ID, {
+            messages: [{ role: 'user', content: [{ text: prompt }] }]
+        }, (token) => {
+            let cleanedToken = token.replace(namePrefixRegex, '');
+            body.onToken(cleanedToken);
+        });
+    } else {
+        const result = await invokeModel(DEFAULT_BEDROCK_MODEL_ID, {
+            messages: [{ role: 'user', content: [{ text: prompt }] }]
+        });
+        rawResponse = result.content?.[0]?.text || '';
+    }
 
     let cleanedResponse = cleanAIResponse(rawResponse);
-    const namePrefixRegex = new RegExp(`^${aiName}:\\s*`, 'i');
     cleanedResponse = cleanedResponse.replace(namePrefixRegex, '');
 
     return {
