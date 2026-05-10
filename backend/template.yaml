@@ -1078,6 +1078,12 @@ Resources:
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
         - SNSPublishMessagePolicy: { TopicName: !GetAtt FeedbackTriggerTopic.TopicName }
 
+  # ==============================================================================
+  # ASYNC INTERVIEW ARCHITECTURE (SQS -> WORKER -> WEBSOCKET)
+  # ==============================================================================
+  # This pattern handles long-running AI generations asynchronously to avoid 
+  # API Gateway 29s timeouts and keep the WebSocket connection responsive.
+  
   AsyncInterviewDLQ:
     Type: AWS::SQS::Queue
     Properties:
@@ -1085,6 +1091,8 @@ Resources:
 
   AsyncInterviewQueue:
     Type: AWS::SQS::Queue
+    Metadata:
+      Description: "Primary buffer for interview turns. Handlers push messages here; Worker consumes them."
     Properties:
       VisibilityTimeout: 180 # 3 minutes for real-time interview retry
       RedrivePolicy:
@@ -1093,6 +1101,8 @@ Resources:
 
   AsyncInterviewWorkerFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      Description: "The 'Brain' of the async flow. Consumes SQS, calls Bedrock/Polly, and streams results back via WebSocket."
     Properties:
       Handler: handlers/interview/asyncWorker.handler
       CodeUri: src/
@@ -1473,10 +1483,10 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Events:
-        Api:
+        DashboardApi:
           Type: Api
           Properties:
-            Path: /session/detail
+            Path: /dashboard/session/{sessionId}
             Method: get
             RestApiId: !Ref RestApi
       Policies:
