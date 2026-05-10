@@ -190,6 +190,21 @@ async function generateAtomicTurn({
       return { success: true, terminated: true };
     }
 
+    // Auto-terminate Self-Intro module after the AI provides its feedback (turn 1)
+    if ((moduleType === 'INTRO' || moduleType === 'SELF_INTRO') && (session.turnCount || 0) >= 1) {
+       console.log(`[AtomicTurn] Auto-terminating Self-Intro session ${sessionId} after providing feedback.`);
+       const terminateSession = require('./terminateSession');
+       await terminateSession.handler({
+         requestContext: { authorizer: { uid: session.userId } },
+         body: JSON.stringify({ sessionId, reason: 'INTRO_COMPLETE' })
+       });
+       await postToConnection(connectionId, {
+         type: 'termination',
+         payload: { sessionId, reason: 'INTRO_COMPLETE', timestamp: Date.now() }
+       });
+       return { success: true, terminated: true };
+    }
+
     await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.AI_SPEAKING, {
       incrementTurnCount: true,
     });

@@ -8,11 +8,11 @@ const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'us-ea
 const REPORT_LAMBDA = process.env.GENERATE_REPORT_LAMBDA;
 
 const MODULE_DIMENSIONS = {
-  RESUME: ['clarity', 'fluency', 'technicalVocabulary', 'useOfExamples'],
-  HR: ['teamwork', 'ethicalThinking', 'problemSolving', 'communicationClarity', 'selfAwareness'],
-  WEBSITE: ['comprehensionAccuracy', 'learningProgression', 'criticalThinking', 'responseClarity', 'conceptRetention'],
-  INTRO: ['clarity', 'structure', 'confidence', 'relevance'],
-  SELF_INTRO: ['clarity', 'structure', 'confidence', 'relevance'] // Alias for backward compatibility
+  RESUME: ['Technical Accuracy', 'Clarity', 'Use of Examples'],
+  HR: ['Problem Solving', 'Communication', 'Self Awareness'],
+  WEBSITE: ['Comprehension', 'Critical Thinking', 'Concept Retention'],
+  INTRO: ['Clarity', 'Structure', 'Confidence'],
+  SELF_INTRO: ['Clarity', 'Structure', 'Confidence'] // Alias for backward compatibility
 };
 
 exports.handler = async (event) => {
