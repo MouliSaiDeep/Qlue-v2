@@ -68,13 +68,19 @@ class InterviewProvider extends ChangeNotifier {
       errorMessage = error;
       _safeNotify();
     });
+    // FE-BUG #6 FIX: Only fire isSessionEnded on an unexpected disconnect.
+    // Intentional disconnects (via _cleanupResources) call wsClient.disconnect() which
+    // must NOT add to the disconnects stream — see websocket_client.dart fix.
     _wsClient!.disconnects.listen((_) {
-      isSessionEnded = true;
-      _currentPhase = InterviewPhase.ready;
-      _safeNotify();
+      if (!isSessionEnded) {
+        isSessionEnded = true;
+        _currentPhase = InterviewPhase.ready;
+        _safeNotify();
+      }
     });
+    // FE-BUG #20 FIX: Guard reconnect against already-ended sessions
     _wsClient!.reconnects.listen((_) {
-      if (sessionId != null) {
+      if (!isSessionEnded && sessionId != null) {
         _wsClient!.sendMessage({
           'type': 'session_reconnect',
           'payload': {'sessionId': sessionId}
@@ -94,6 +100,9 @@ class InterviewProvider extends ChangeNotifier {
 
   void _handleWebSocketMessage(Map<String, dynamic> message) {
     switch (message['type']) {
+      case 'text_stream':
+        _handleTextStream(message['payload']);
+        break;
       case 'turn_complete':
         _handleTurnComplete(message['payload']);
         break;
@@ -108,6 +117,16 @@ class InterviewProvider extends ChangeNotifier {
         _safeNotify();
         break;
     }
+  }
+
+  void _handleTextStream(Map<String, dynamic> payload) {
+    if (_currentPhase != InterviewPhase.speaking) {
+      _currentPhase = InterviewPhase.speaking;
+    }
+    isStreamingText = true;
+    subtitleText = payload['fullText'] ?? subtitleText;
+    questionText = subtitleText;
+    _safeNotify();
   }
 
 void _handleTurnComplete(Map<String, dynamic> payload) {
@@ -150,10 +169,12 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
         _startListening();
       })
           .catchError((error) {
+        // FE-BUG #14 FIX: audioData catch falls back to listening, not error state
         errorMessage = 'Audio playback failed: $error';
-        _currentPhase = InterviewPhase.error;
+        _currentPhase = InterviewPhase.listening;
         debugPrint('TTS playback error: $error');
         _safeNotify();
+        _startListening();
       });
     } else {
       // No audio available — still show question and allow user to respond
@@ -248,6 +269,7 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
   // Additional methods for screen compatibility
   void resetForNewSession() {
     _cleanup();
+    _isInitializing = false;
     isSessionEnded = false;
     isConnecting = true;
     sessionId = null;
@@ -264,15 +286,24 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
     _safeNotify();
   }
 
-  Future<void> initSession(String type, {String? resumeId, String? websiteUrl}) async {
-    moduleType = type;
-    isConnecting = true;
-    _safeNotify();
+  bool _isInitializing = false;
 
-    await _sttService.init();
-    // Get the current user's Firebase ID token
-    final user = FirebaseAuth.instance.currentUser;
-    final idToken = await user?.getIdToken();
+  Future<void> initSession(String type, {String? resumeId, String? websiteUrl}) async {
+    if (_isInitializing) {
+      debugPrint('Skipping duplicate initSession call');
+      return;
+    }
+    _isInitializing = true;
+    
+    try {
+      moduleType = type;
+      isConnecting = true;
+      _safeNotify();
+
+      await _sttService.init();
+      // Get the current user's Firebase ID token
+      final user = FirebaseAuth.instance.currentUser;
+      final idToken = await user?.getIdToken();
 
     if (user == null || idToken == null) {
       errorMessage = 'Authentication required. Please log in again.';
@@ -355,31 +386,47 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
     });
     isConnecting = false;
     _safeNotify();
+    } finally {
+      _isInitializing = false;
+    }
   }
 
-  // frontend/lib/features/interview/providers/interview_provider.dart (Around Line 248)
-
+  // FE-BUG #1 FIX: endSession must NOT call resetForNewSession() after setting
+  // isSessionEnded=true — resetForNewSession resets isSessionEnded to false,
+  // which prevents the feedback screen navigation guard from ever firing.
   Future<void> endSession() async {
     if (isSessionEnded) return;
     final savedSessionId = sessionId;
     terminateSession();
-    if(savedSessionId !=null){
-      try{
+    if (savedSessionId != null) {
+      try {
         await DioClient().dio.post('${ApiConstants.interviewInit}/$savedSessionId/terminate');
-      }
-      catch(e){
-        debugPrint("REST terminate failed: $e");
+      } catch (e) {
+        debugPrint('REST terminate failed: $e');
       }
     }
     await Future.delayed(const Duration(milliseconds: 300));
+    _cleanupResources(); // Dispose services WITHOUT touching isSessionEnded
     isSessionEnded = true;
-    resetForNewSession();
-    sessionId = savedSessionId;
-
+    sessionId = savedSessionId; // Preserve sessionId for feedback navigation
+    _currentPhase = InterviewPhase.ready;
     _safeNotify();
   }
 
+  /// Disposes all active services and WebSocket connections WITHOUT resetting
+  /// session state flags. Used by endSession() to preserve isSessionEnded.
+  void _cleanupResources() {
+    _safetyTimer?.cancel();
+    _wsSubscription?.cancel();
+    _wsSubscription = null;
+    _sttService.stop();
+    _ttsService.stop();
+    _wsClient?.disconnect();
+    _wsClient = null;
+  }
+
   void _cleanup() {
+    _safetyTimer?.cancel();
     _wsSubscription?.cancel();
     _wsSubscription = null;
     _sttService.stop();

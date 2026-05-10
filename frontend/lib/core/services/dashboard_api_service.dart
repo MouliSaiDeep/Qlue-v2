@@ -1,3 +1,4 @@
+import "../constants/api_constants.dart";
 import '../network/dio_client.dart';
 import '../models/session_model.dart';
 import '../models/dashboard_model.dart';
@@ -15,8 +16,8 @@ class DashboardApiService {
     return RadarData.fromJson(response.data);
   }
 
-  Future<List<SessionModel>> getHistory({String? moduleType, int limit = 20}) async {
-    final response = await _dio.get('/dashboard/history', queryParameters: {
+  Future<List<SessionModel>> getHistory({String? moduleType, int limit = 100}) async {
+    final response = await _dio.get(ApiConstants.sessionHistory, queryParameters: {
       if (moduleType != null) 'moduleType': moduleType,
       'limit': limit,
     });

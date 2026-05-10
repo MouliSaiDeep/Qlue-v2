@@ -4,7 +4,7 @@
 const ddb = require('../lib/dynamodb');
 const { randomUUID } = require('crypto');
 
-const TABLE_NAME = process.env.FEEDBACK_TABLE || 'Feedback';
+const TABLE_NAME = process.env.FEEDBACK_TABLE || 'qlue-feedback'; // BE-BUG #23 FIX: was 'Feedback'
 
 /**
  * Creates and stores a new feedback report.

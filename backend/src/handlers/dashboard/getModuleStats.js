@@ -6,35 +6,35 @@ const docClient = DynamoDBDocumentClient.from(client);
 
 const SESSIONS_TABLE = process.env.SESSIONS_TABLE_NAME || 'Sessions';
 
-function getCutoffDate(periodStr) {
+function getCutoffTimestamp(periodStr) {
     const now = new Date();
     if (periodStr === '7d') now.setDate(now.getDate() - 7);
     else if (periodStr === '30d') now.setDate(now.getDate() - 30);
     else if (periodStr === '90d') now.setDate(now.getDate() - 90);
     else return null; 
-    return now.toISOString();
+    return now.getTime(); // Return numeric timestamp for GSI_UserIdStartedAt
 }
 
 exports.handler = async (event) => {
     try {
-        const userId = event.requestContext?.authorizer?.claims?.sub || event.queryStringParameters?.userId;
+        const userId = event.requestContext?.authorizer?.claims?.sub || event.queryStringParameters?.userId || event.requestContext?.authorizer?.uid;
         const period = event.queryStringParameters?.period || '30d';
 
         if (!userId) return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized.' }) };
 
-        const cutoff = getCutoffDate(period);
+        const cutoff = getCutoffTimestamp(period);
         
         let keyCond = 'userId = :uid';
         const expVals = { ':uid': userId };
 
         if (cutoff) {
-            keyCond += ' AND startTime >= :cutoff';
+            keyCond += ' AND startedAt >= :cutoff';
             expVals[':cutoff'] = cutoff;
         }
 
         const sessionCmd = new QueryCommand({
             TableName: SESSIONS_TABLE,
-            IndexName: 'UserDateIndex',
+            IndexName: 'GSI_UserIdStartedAt',
             KeyConditionExpression: keyCond,
             ExpressionAttributeValues: expVals
         });

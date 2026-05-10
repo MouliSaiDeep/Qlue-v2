@@ -1,7 +1,7 @@
 const { getSessionById, updateSessionState, INTERVIEW_STATES } = require('../../models/session');
 const { saveTranscript } = require('../../models/transcript');
 
-const SILENCE_THRESHOLD = 3;
+const SILENCE_THRESHOLD = 5; // BE-BUG #5 FIX: was 3, too aggressive for interviews
 const MAX_TURNS = 20;
 
 function detectExitIntent(text) {
@@ -45,7 +45,8 @@ exports.handler = async (event) => {
         };
       }
 
-      await updateSessionState(sessionId, session.currentState, null, { silenceRetries });
+      // BE-BUG #18 FIX: transition to SILENCE_DETECTED state, not stay in current state
+      await updateSessionState(sessionId, INTERVIEW_STATES.SILENCE_DETECTED, null, { silenceRetries });
 
       return {
         statusCode: 200,

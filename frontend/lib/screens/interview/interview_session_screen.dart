@@ -36,17 +36,44 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
   
   bool _isEnding = false;
   bool _hasNavigated = false;
+  bool _isDisposed = false; // FE-BUG #17 FIX: guard for doWhile after dispose
 
   late InterviewProvider _provider;
   late VoidCallback _providerListener;
+
+  Timer? _statusTimer;
+  int _messageIndex = 0;
+
+  List<String> get _loadingMessages {
+    switch (widget.moduleType) {
+      case 'RESUME':
+        return ["Analyzing your resume...", "Scanning key skills and experience...", "Preparing personalized questions..."];
+      case 'WEBSITE':
+        return ["Analyzing the study material...", "Extracting key concepts...", "Preparing tutor session..."];
+      case 'INTRO':
+        return ["Analyzing communication style...", "Preparing introduction assessment...", "Calibrating evaluation criteria..."];
+      case 'HR':
+      default:
+        return ["Analyzing behavioral patterns...", "Calibrating question difficulty...", "Preparing situational scenarios..."];
+    }
+  }
+
+  void _startStatusTimer() {
+    _statusTimer?.cancel();
+    _statusTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (mounted) {
+        setState(() {
+          _messageIndex = (_messageIndex + 1) % _loadingMessages.length;
+        });
+      }
+    });
+  }
 
   @override
   void initState() {
     super.initState();
 
-    // CRITICAL: Reset provider to prevent redirect from old session
     _provider = context.read<InterviewProvider>();
-    _provider.resetForNewSession();
 
     _animationController = AnimationController(
       vsync: this,
@@ -68,11 +95,25 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
     _providerListener = () {
       if (mounted) {
         _simulateIntensity(_provider.currentPhase);
+        if (_provider.isConnecting && _statusTimer == null) {
+          _startStatusTimer();
+        } else if (!_provider.isConnecting && _statusTimer != null) {
+          _statusTimer?.cancel();
+          _statusTimer = null;
+        }
       }
     };
     _provider.addListener(_providerListener);
 
+    // CRITICAL: Reset + init deferred to post-frame so notifyListeners() is
+    // never called while the widget tree is still being built (avoids the
+    // "setState() called during build" assertion).
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      // Reset provider to prevent redirect from old session state
+      _provider.resetForNewSession();
+
       final type = widget.moduleType ?? (widget.resumeId != null ? 'RESUME' : (widget.websiteUrl != null ? 'WEBSITE' : 'HR'));
       if (!(type == 'RESUME' || type == 'HR' || type == 'WEBSITE' || type == 'INTRO')) {
         throw ArgumentError('Invalid moduleType');
@@ -93,7 +134,10 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
   void _handleEnd(InterviewProvider provider) async {
     if (_isEnding) return;
     setState(() => _isEnding = true);
-    await provider.endSession();
+    // FE-BUG #18 FIX: catch errors from endSession so they don't swallow silently
+    await provider.endSession().catchError((e) {
+      debugPrint('[InterviewSession] endSession error: $e');
+    });
   }
 
 
@@ -125,17 +169,18 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
   bool _isSimulating = false;
 
   void _simulateIntensity(InterviewPhase phase) {
-    if (_isSimulating || !mounted) return;
+    // FE-BUG #17 FIX: Check _isDisposed to stop doWhile after widget is disposed
+    if (_isSimulating || !mounted || _isDisposed) return;
     _isSimulating = true;
     
     Future.doWhile(() async {
       final currentPhase = context.read<InterviewProvider>().currentPhase;
-      if (!mounted || (currentPhase != InterviewPhase.speaking && currentPhase != InterviewPhase.listening)) {
+      if (!mounted || _isDisposed || (currentPhase != InterviewPhase.speaking && currentPhase != InterviewPhase.listening)) {
         _isSimulating = false;
         return false;
       }
       final target = 0.1 + math.Random().nextDouble() * (currentPhase == InterviewPhase.speaking ? 0.4 : 0.8);
-      if (mounted) {
+      if (mounted && !_isDisposed) {
         _intensityController.animateTo(target, duration: const Duration(milliseconds: 500), curve: Curves.easeInOut);
       }
       await Future.delayed(const Duration(milliseconds: 600));
@@ -145,6 +190,8 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
 
   @override
   void dispose() {
+    _statusTimer?.cancel();
+    _isDisposed = true; // FE-BUG #17 FIX: flag before cancelling controllers
     _provider.removeListener(_providerListener);
     _animationController.dispose();
     _intensityController.dispose();
@@ -175,15 +222,46 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
     }
 
     // Determine status text for bottom
-    String statusText = "";
+    Widget statusWidget = const SizedBox.shrink();
     if (isConnecting) {
-      statusText = "Establishing connection...";
-    } else if (isAiSpeaking && provider.isStreamingText) {
-      statusText = "Qlue is thinking...";
-    } else if (isAiSpeaking) {
-      statusText = "Qlue is speaking...";
-    } else if (isListening) {
-      statusText = provider.silenceStrikes > 0 ? "Waiting for your response..." : "Listening...";
+      statusWidget = AnimatedSwitcher(
+        duration: const Duration(milliseconds: 500),
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        child: Text(
+          _loadingMessages[_messageIndex],
+          key: ValueKey<int>(_messageIndex),
+          style: TextStyle(
+            fontSize: 12,
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.w700,
+            color: Colors.white.withValues(alpha: 0.4),
+            letterSpacing: 2,
+          ),
+        ),
+      );
+    } else {
+      String statusText = "";
+      if (isAiSpeaking && provider.isStreamingText) {
+        statusText = "Qlue is thinking...";
+      } else if (isAiSpeaking) {
+        statusText = "Qlue is speaking...";
+      } else if (isListening) {
+        statusText = provider.silenceStrikes > 0 ? "Waiting for your response..." : "Listening...";
+      }
+      if (statusText.isNotEmpty) {
+        statusWidget = Text(
+          statusText,
+          style: TextStyle(
+            fontSize: 12,
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.w700,
+            color: Colors.white.withValues(alpha: 0.4),
+            letterSpacing: 2,
+          ),
+        );
+      }
     }
 
     // Determine AI text to show at top
@@ -222,6 +300,20 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
       sphereColor = Colors.white;
     }
 
+    // Determine dot matrix mode from current phase
+    DotMatrixMode dotMode;
+    if (isConnecting) {
+      dotMode = DotMatrixMode.glow;
+    } else if (isAiSpeaking) {
+      dotMode = DotMatrixMode.radiation;
+    } else if (isListening) {
+      dotMode = DotMatrixMode.accretion;
+    } else if (isProcessing) {
+      dotMode = DotMatrixMode.random;
+    } else {
+      dotMode = DotMatrixMode.glow;
+    }
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -239,7 +331,7 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
                   time: _time,
                   intensity: _intensity,
                   baseColor: sphereColor,
-                  isInwards: !isAiSpeaking,
+                  mode: dotMode,
                   tapOffset: null,
                   tapTime: 0,
                 ),
@@ -361,20 +453,10 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
                     ),
  
                   // STATUS TEXT (BOTTOM)
-                  if (statusText.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 24, top: 8),
-                      child: Text(
-                        statusText,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white.withValues(alpha: 0.4),
-                          letterSpacing: 2,
-                        ),
-                      ),
-                    ),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 24, top: 8),
+                    child: statusWidget,
+                  ),
  
                   // SILENCE STRIKES INDICATOR
                   if (provider.silenceStrikes > 0)

@@ -1,23 +1,32 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+// FE-BUG #2 FIX: Replace bool isInwards with a proper enum so each phase has
+// a distinct, named rendering mode instead of a binary flag.
+// FE-BUG #9 FIX: Replace math.Random() per-frame (causes flicker) with
+// deterministic math.sin() noise seeded by dot index + time.
+enum DotMatrixMode {
+  radiation,  // AI speaking — outward wave, green
+  accretion,  // User listening — inward wave, orange
+  random,     // Processing — deterministic sin-based noise, blue/purple
+  glow,       // Connecting — pulsing brightness decay, off-white
+}
+
 class AiDotMatrixPainter extends CustomPainter {
   final double time;
-  final double intensity; // Voice intensity (0 to 1)
-  final bool isInwards; // True = Accretion (User), False = Radiation (AI)
+  final double intensity;
   final Color baseColor;
-  
-  // Interaction Data
+  final DotMatrixMode mode;
   final Offset? tapOffset;
   final double tapTime;
 
-  AiDotMatrixPainter({
+  const AiDotMatrixPainter({
     required this.time,
+    required this.intensity,
     required this.baseColor,
-    this.intensity = 0.0,
-    this.isInwards = false,
+    required this.mode,
     this.tapOffset,
-    this.tapTime = 0.0,
+    this.tapTime = 0,
   });
 
   @override
@@ -46,23 +55,31 @@ class AiDotMatrixPainter extends CustomPainter {
 
           final double normDist = distFromCenter / maxRadius;
           
-          // BASE VOICE RIPPLE
-          final double waveSpeed = isInwards ? 5.0 : -5.0;
+          // BASE VOICE RIPPLE (mapped from DotMatrixMode)
+          // Radiation (AI speaking) -> Outward wave (-5.0)
+          // Accretion (User listening) -> Inward wave (5.0)
+          final double waveSpeed = mode == DotMatrixMode.accretion ? 5.0 : 
+                                   mode == DotMatrixMode.radiation ? -5.0 : 0.0;
+                                   
           final double waveFrequency = 24.0;
           final double ripplePhase = (normDist * waveFrequency) + (time * waveSpeed);
           
           double state = 0.08 + 0.04 * math.sin(time + i * 0.2 + j * 0.1);
           
-          if (intensity > 0.1) {
+          if (intensity > 0.1 && waveSpeed != 0.0) {
              final double ripple = math.sin(ripplePhase);
              if (ripple > 0.2) {
-                final double decay = isInwards ? (0.2 + normDist * 0.8) : (1.0 - normDist * 0.7);
+                // Inward (accretion) fades out at edges, Outward (radiation) fades out at center
+                final double decay = mode == DotMatrixMode.accretion ? 
+                                     (0.2 + normDist * 0.8) : (1.0 - normDist * 0.7);
                 state += (ripple + 1.0) * intensity * decay * 0.4;
              }
           }
 
-          if (intensity > 0.0 && !isInwards && baseColor != Colors.green) { 
-             state += (math.Random().nextDouble() * 0.15); 
+          // Deterministic noise for random/processing mode (FE-BUG #9 FIX retained)
+          if (intensity > 0.0 && mode == DotMatrixMode.random) { 
+             final double noise = math.sin(i * 127.1 + time * 1.8) * math.sin(j * 311.7 + time * 2.3);
+             state += (noise.abs() * 0.15); 
           }          
 
           // INTERACTIVE TAP RIPPLE - Snappy Hardware Response
@@ -103,11 +120,11 @@ class AiDotMatrixPainter extends CustomPainter {
   }
 
   void _drawSpectralGlow(Canvas canvas, Offset center, double radius, Color baseColor, double intensity) {
-    final glowRadius = radius * (1.5 + intensity * 0.5); // was 2.0 + intensity * 1.5
+    final glowRadius = radius * (1.5 + intensity * 0.5);
     
     final gradient = RadialGradient(
       colors: [
-        baseColor.withValues(alpha: 0.15 + intensity * 0.1), // was 0.2 + intensity * 0.25
+        baseColor.withValues(alpha: 0.15 + intensity * 0.1),
         baseColor.withValues(alpha: 0.05),
         Colors.transparent,
       ],
@@ -125,10 +142,10 @@ class AiDotMatrixPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant AiDotMatrixPainter oldDelegate) {
     return oldDelegate.time != time ||
-           oldDelegate.intensity != intensity ||
-           oldDelegate.baseColor != baseColor ||
-           oldDelegate.isInwards != isInwards ||
-           oldDelegate.tapOffset != tapOffset ||
-           oldDelegate.tapTime != tapTime;
+        oldDelegate.intensity != intensity ||
+        oldDelegate.mode != mode ||
+        oldDelegate.baseColor != baseColor ||
+        oldDelegate.tapOffset != tapOffset ||
+        oldDelegate.tapTime != tapTime;
   }
 }

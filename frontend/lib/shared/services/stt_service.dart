@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 
@@ -10,15 +11,15 @@ class SttService {
 
     _isInitialized = await _speech.initialize(
       onError: (error) {
-        print('STT Error: $error');
+        debugPrint('STT Error: $error'); // FE-BUG #12 FIX: use debugPrint not print
         if (error.errorMsg == 'no_match' || error.errorMsg == 'busy') {
-          print('STT: Recoverable error, continuing...');
+          debugPrint('STT: Recoverable error, continuing...');
         }
       },
       onStatus: (status) {
-        print('STT Status: $status');
+        debugPrint('STT Status: $status');
         if (status == 'done') {
-          print('STT: Listening done (may have timed out)');
+          debugPrint('STT: Listening done (may have timed out)');
         }
       },
     );
@@ -41,7 +42,7 @@ class SttService {
         }
       },
       listenFor: const Duration(seconds: 120),
-      pauseFor: const Duration(seconds: 15),
+      pauseFor: const Duration(seconds: 30), // FE-BUG #13 FIX: was 15s, too short for interview thinking time
       partialResults: true,
       localeId: 'en_US',
       listenMode: ListenMode.dictation,

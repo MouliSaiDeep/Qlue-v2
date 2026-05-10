@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'core/env.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'app.dart';
@@ -15,18 +15,17 @@ import 'core/theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  await dotenv.load(fileName: ".env");
   await Firebase.initializeApp(
     options: FirebaseOptions(
-      apiKey: dotenv.env['FIREBASE_API_KEY'] ?? '',
-      appId: dotenv.env['FIREBASE_APP_ID'] ?? '',
-      messagingSenderId: dotenv.env['MESSAGING_SENDER_ID'] ?? '',
-      projectId: dotenv.env['FIREBASE_PROJECT_ID'] ?? '',
-      measurementId: dotenv.env['MEASUREMENT_ID'],
+      apiKey: Env.firebaseApiKey,
+      appId: Env.firebaseAppId,
+      messagingSenderId: Env.messagingSenderId,
+      projectId: Env.firebaseProjectId,
+      measurementId: Env.measurementId,
     ),
   );
   await GoogleSignIn.instance.initialize(
-    clientId: kIsWeb ? (dotenv.env['GOOGLE_CLIENT_ID'] ?? '') : null,
+    clientId: kIsWeb ? Env.googleClientId : null,
   );
   
   runApp(const QlueApp());

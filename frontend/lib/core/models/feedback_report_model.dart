@@ -38,9 +38,8 @@ class FeedbackReportModel {
     return FeedbackReportModel(
       sessionId: json['sessionId'] ?? '',
       overallScore: (json['overallScore'] ?? 0).toDouble(),
-      dimensionScores: (json['dimensionScores'] as Map<String, dynamic>?)?.map(
-        (key, value) => MapEntry(key, (value as num).toDouble()),
-      ) ?? {},
+      // FE-BUG #7 FIX: use safe parser instead of direct cast which throws on null/List
+      dimensionScores: _parseDimensionScores(json['dimensionScores']),
       strengths: List<String>.from(json['strengths'] ?? []),
       // Handle both 'weaknesses' and 'improvements' keys from backend
       weaknesses: List<String>.from(json['weaknesses'] ?? json['improvements'] ?? []),
@@ -48,6 +47,18 @@ class FeedbackReportModel {
       executiveSummary: json['executiveSummary'] ?? 'No summary available.',
       transcript: transcript,
     );
+  }
+
+  static Map<String, double> _parseDimensionScores(dynamic data) {
+    if (data == null) return {};
+    if (data is! Map) return {};
+    final result = <String, double>{};
+    (data as Map).forEach((key, value) {
+      if (value is num) {
+        result[key.toString()] = value.toDouble();
+      }
+    });
+    return result;
   }
 }
 

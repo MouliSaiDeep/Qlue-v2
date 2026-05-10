@@ -12,6 +12,9 @@ const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
 const AUDIO_BUCKET = process.env.AUDIO_BUCKET;
 
+// BE-BUG #6 FIX: Max context messages for truncation (was dead code, now applied)
+const MAX_CONTEXT_MESSAGES = 20;
+
 async function uploadAudioToS3(sessionId, turnIndex, audioBuffer) {
   if (!AUDIO_BUCKET) return null;
 
@@ -50,17 +53,23 @@ async function generateAtomicTurn({
   
   try {
     const voiceId = requestedVoiceId || session.voiceId || 'Tiffany';
-    
     const engine = requestedEngine || session.engine || 'generative';
     
     console.log(`[AtomicTurn] Session ${sessionId} | Turn ${session.turnCount || 0} | Voice: ${voiceId} | Engine: ${engine}`);
 
     const transcripts = await getTranscriptBySession(sessionId);
-    const conversationHistory = transcripts.map(t => ({
+
+    // BE-BUG #6 FIX: Truncate context to MAX_CONTEXT_MESSAGES
+    let conversationHistory = transcripts.map(t => ({
       speaker: t.speaker,
       text: t.text,
       turnIndex: t.turnIndex
     }));
+    if (conversationHistory.length > MAX_CONTEXT_MESSAGES) {
+      const first = conversationHistory[0];
+      const recent = conversationHistory.slice(-(MAX_CONTEXT_MESSAGES - 1));
+      conversationHistory = [first, ...recent];
+    }
 
     let aiText = preGeneratedText;
     if (!aiText) {
@@ -73,16 +82,18 @@ async function generateAtomicTurn({
         const resume = await getResumeById(session.itemData.resumeId);
         resumeData = resume?.parsedData || resume;
       }
-      if(moduleType==='WEBSITE'){
-        websiteContent=session.itemData?.scrapedSummary|| "no website content"
-        targetConcept = session.itemData?.targetConcept|| "the main topic";
+      if (moduleType === 'WEBSITE') {
+        websiteContent = session.itemData?.scrapedSummary || 'no website content';
+        targetConcept = session.itemData?.targetConcept || 'the main topic';
       }
       if (session.userId) {
         userData = await getUserById(session.userId);
       }
 
+      // Stream text to the frontend while generating
+      let accumulatedText = "";
       const promptResult = await generateQuestion({
-        body: JSON.stringify({
+        body: {
           sessionId,
           moduleType,
           resumeData,
@@ -91,8 +102,21 @@ async function generateAtomicTurn({
           targetConcept,
           turnIndex: session.turnCount || 0,
           conversationHistory,
-          voiceId
-        })
+          voiceId,
+          onToken: async (token) => {
+             accumulatedText += token;
+             // Send text_stream event to the frontend
+             await postToConnection(connectionId, {
+               type: 'text_stream',
+               payload: {
+                 sessionId,
+                 text: token,
+                 fullText: accumulatedText,
+                 timestamp: Date.now()
+               }
+             }).catch(e => console.error('Failed to stream token to WS:', e));
+          }
+        }
       });
       
       const promptBody = JSON.parse(promptResult.body);
@@ -126,13 +150,21 @@ async function generateAtomicTurn({
         aiText = aiText.substring(0, 100) + '.';
         const shortAudio = await synthesizeSpeech(aiText, voiceId, engine);
         audioData = shortAudio.audioBase64 || '';
-        audioUrl = ''; // BUG-11 FIX: Explicitly clear audioUrl when using audioData fallback
+        audioUrl = '';
       }
     } else {
       audioData = audioBase64;
     }
 
     await saveTranscript(sessionId, session.turnCount || 0, 'AI', aiText);
+
+    // BE-BUG #1 FIX: Transition to AI_SPEAKING BEFORE sending WS message (not USER_RESPONDING)
+    // BE-BUG #21 FIX: DB state update happens before postToConnection
+    await updateSessionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, null, {
+      questionText: aiText,
+      voiceId: voiceId,
+      engine: engine
+    });
 
     const responsePayload = {
       type: 'turn_complete',
@@ -143,7 +175,7 @@ async function generateAtomicTurn({
         audioData,
         audioUrl,
         currentConceptId: session.currentConceptId || null,
-        state: INTERVIEW_STATES.USER_RESPONDING,
+        state: INTERVIEW_STATES.AI_SPEAKING,
         timestamp: Date.now()
       }
     };
@@ -151,11 +183,30 @@ async function generateAtomicTurn({
     await postToConnection(connectionId, responsePayload);
     console.log(`[AtomicTurn] Sent turn_complete in ${Date.now() - startTime}ms`);
 
-    await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, null, {
-      questionText: aiText,
-      incrementTurnCount: true, // BUG-10 FIX: Use atomic increment to prevent duplicate race conditions
-      voiceId: voiceId,
-      engine: engine
+    // BE-BUG #2 FIX: Re-check terminal state before transitioning to USER_RESPONDING
+    const freshSession = await getSessionById(sessionId);
+    if (freshSession && [INTERVIEW_STATES.TERMINATED, INTERVIEW_STATES.GENERATING_FEEDBACK, INTERVIEW_STATES.ERROR].includes(freshSession.currentState)) {
+      console.warn(`[AtomicTurn] Session ${sessionId} moved to terminal state during processing; skipping USER_RESPONDING transition`);
+      return { success: true, terminated: true };
+    }
+
+    // Auto-terminate Self-Intro module after the AI provides its feedback (turn 1)
+    if ((moduleType === 'INTRO' || moduleType === 'SELF_INTRO') && (session.turnCount || 0) >= 1) {
+       console.log(`[AtomicTurn] Auto-terminating Self-Intro session ${sessionId} after providing feedback.`);
+       const terminateSession = require('./terminateSession');
+       await terminateSession.handler({
+         requestContext: { authorizer: { uid: session.userId } },
+         body: JSON.stringify({ sessionId, reason: 'INTRO_COMPLETE' })
+       });
+       await postToConnection(connectionId, {
+         type: 'termination',
+         payload: { sessionId, reason: 'INTRO_COMPLETE', timestamp: Date.now() }
+       });
+       return { success: true, terminated: true };
+    }
+
+    await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.AI_SPEAKING, {
+      incrementTurnCount: true,
     });
 
     return { success: true };
@@ -191,7 +242,6 @@ exports.handler = async (event) => {
       continue;
     }
 
-// 1. Add expectedTurnCount to the destructured message object
     const { 
       connectionId, 
       sessionId, 
@@ -199,7 +249,8 @@ exports.handler = async (event) => {
       voiceId, 
       engine,
       action,
-      expectedTurnCount 
+      expectedTurnCount,
+      userId   // BE-BUG #17 FIX: userId now destructured from message
     } = message;
 
     console.log(`[AsyncWorker] Processing ${action} for session ${sessionId}`);
@@ -216,7 +267,6 @@ exports.handler = async (event) => {
         continue;
       }
 
-      // 2. Fix the condition to check expectedTurnCount instead of body.expectedTurnCount
       if (action === 'turn_submit' && session.turnCount > (expectedTurnCount || 0)) {
         console.warn(`[AsyncWorker] Turn ${expectedTurnCount} already processed (current: ${session.turnCount}), skipping`);
         continue;
@@ -241,7 +291,7 @@ exports.handler = async (event) => {
         const processResult = await processUserInput.handler({
           requestContext: {
             authorizer: {
-              uid: message.userId
+              uid: userId
             }
           },
           body: JSON.stringify({
@@ -257,15 +307,14 @@ exports.handler = async (event) => {
         if (processBody.shouldTerminate) {
           const terminateSession = require('./terminateSession');
           await terminateSession.handler({
-            // ADD requestContext HERE so the termination is authorized
             requestContext: {
               authorizer: {
-                uid: message.userId
+                uid: userId
               }
             },
             body: JSON.stringify({ sessionId, reason: processBody.reason || 'SILENCE_TIMEOUT' })
           });
-          const actualreason=processBody.reason || 'SILENCE_TIMEOUT'
+          const actualreason = processBody.reason || 'SILENCE_TIMEOUT';
           await postToConnection(connectionId, {
             type: 'termination',
             payload: { sessionId, reason: actualreason, timestamp: Date.now() }

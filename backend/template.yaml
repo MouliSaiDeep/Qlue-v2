@@ -5,6 +5,8 @@ Description: Qlue AI-powered voice interview simulation mobile app.
 Globals:
   Function:
     Runtime: nodejs24.x
+    Architectures:
+      - arm64
     Layers:
       - !Ref QlueSharedLayer
       - !Ref AppDependenciesLayer
@@ -111,14 +113,6 @@ Resources:
             - AttributeName: userId
               KeyType: HASH
             - AttributeName: startedAt
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-        - IndexName: GSI_UserIdStatus
-          KeySchema:
-            - AttributeName: userId
-              KeyType: HASH
-            - AttributeName: activeMarker
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
@@ -948,6 +942,7 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'], Resource: '*' }]
+        - SNSPublishMessagePolicy: { TopicName: !GetAtt FeedbackTriggerTopic.TopicName }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
 
@@ -1061,7 +1056,7 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          TRIGGER_FEEDBACK_FUNCTION_NAME: !Ref TriggerFeedbackGenerationFunction
+          FEEDBACK_TOPIC_ARN: !Ref FeedbackTriggerTopic
       Events:
         Api:
           Type: Api
@@ -1083,6 +1078,12 @@ Resources:
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
         - SNSPublishMessagePolicy: { TopicName: !GetAtt FeedbackTriggerTopic.TopicName }
 
+  # ==============================================================================
+  # ASYNC INTERVIEW ARCHITECTURE (SQS -> WORKER -> WEBSOCKET)
+  # ==============================================================================
+  # This pattern handles long-running AI generations asynchronously to avoid 
+  # API Gateway 29s timeouts and keep the WebSocket connection responsive.
+  
   AsyncInterviewDLQ:
     Type: AWS::SQS::Queue
     Properties:
@@ -1090,6 +1091,8 @@ Resources:
 
   AsyncInterviewQueue:
     Type: AWS::SQS::Queue
+    Metadata:
+      Description: "Primary buffer for interview turns. Handlers push messages here; Worker consumes them."
     Properties:
       VisibilityTimeout: 180 # 3 minutes for real-time interview retry
       RedrivePolicy:
@@ -1098,11 +1101,16 @@ Resources:
 
   AsyncInterviewWorkerFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      Description: "The 'Brain' of the async flow. Consumes SQS, calls Bedrock/Polly, and streams results back via WebSocket."
     Properties:
       Handler: handlers/interview/asyncWorker.handler
       CodeUri: src/
       MemorySize: 1024
-      Timeout: 30
+      Timeout: 60
+      Environment:
+        Variables:
+          FEEDBACK_TOPIC_ARN: !Ref FeedbackTriggerTopic
       Events:
         SQSEvent:
           Type: SQS
@@ -1235,6 +1243,10 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref NotificationsTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !GetAtt AnalyzeTranscriptFunction.Arn
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FcmServerKeySecret }
 
@@ -1245,6 +1257,9 @@ Resources:
       CodeUri: src/
       MemorySize: 1024
       Timeout: 60
+      Environment:
+        Variables:
+          GENERATE_REPORT_LAMBDA: !Ref GenerateFeedbackReportFunction
       Events:
         Api:
           Type: Api
@@ -1261,6 +1276,10 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref NotificationsTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !GetAtt GenerateFeedbackReportFunction.Arn
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FcmServerKeySecret }
 
@@ -1297,6 +1316,9 @@ Resources:
       CodeUri: src/
       MemorySize: 1024
       Timeout: 60
+      Environment:
+        Variables:
+          STORE_FEEDBACK_LAMBDA: !Ref StoreFeedbackReportFunction
       Events:
         Api:
           Type: Api
@@ -1313,6 +1335,10 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref NotificationsTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !GetAtt StoreFeedbackReportFunction.Arn
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FcmServerKeySecret }
 
@@ -1323,6 +1349,9 @@ Resources:
       CodeUri: src/
       MemorySize: 256
       Timeout: 10
+      Environment:
+        Variables:
+          SEND_NOTIFICATION_LAMBDA: !Ref SendFeedbackNotificationFunction
       Events:
         Api:
           Type: Api
@@ -1339,6 +1368,10 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref NotificationsTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !GetAtt SendFeedbackNotificationFunction.Arn
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FcmServerKeySecret }
 
@@ -1386,6 +1419,7 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
   GetScoreTrendsFunction:
     Type: AWS::Serverless::Function
@@ -1449,10 +1483,10 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Events:
-        Api:
+        DashboardApi:
           Type: Api
           Properties:
-            Path: /session/detail
+            Path: /dashboard/session/{sessionId}
             Method: get
             RestApiId: !Ref RestApi
       Policies:

@@ -266,7 +266,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final auth = Provider.of<AuthProvider>(context, listen: false);
       
       FilePickerResult? result = await FilePicker.pickFiles(
-        type: FileType.image,
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'],
         allowMultiple: false,
         withData: kIsWeb,
       );

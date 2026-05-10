@@ -155,6 +155,14 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen> {
   String _selectedFilter = 'Date'; // 'Date', 'Module', 'Score'
   
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<DashboardProvider>().fetchHistory();
+    });
+  }
+
   List<SessionModel> _getFilteredSessions(List<SessionModel> allSessions) {
     List<SessionModel> sessions = List.from(allSessions);
     

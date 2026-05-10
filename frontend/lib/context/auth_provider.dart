@@ -8,6 +8,7 @@ import '../core/constants/api_constants.dart';
 class AuthProvider extends ChangeNotifier {
   User? _currentUser;
   bool _isLoading = false;
+  bool _isInitializing = true;
   String? _error;
 
   String _email = "";
@@ -21,6 +22,7 @@ class AuthProvider extends ChangeNotifier {
 
   User? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
+  bool get isInitializing => _isInitializing;
   String? get error => _error;
   bool get isAuthenticated => _currentUser != null || _isBypassAuthenticated;
   
@@ -53,13 +55,26 @@ class AuthProvider extends ChangeNotifier {
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 
   AuthProvider() {
-    _auth.authStateChanges().listen((User? user) {
+    final startTime = DateTime.now();
+    _auth.authStateChanges().listen((User? user) async {
       final wasNull = _currentUser == null;
       _currentUser = user;
-      notifyListeners();
+      
       if (user != null) {
         _syncWithBackend();
         if (wasNull) fetchProfileData(); // Auto fetch on login
+      }
+
+      if (_isInitializing) {
+        final elapsed = DateTime.now().difference(startTime);
+        final remaining = const Duration(milliseconds: 2000) - elapsed;
+        if (remaining > Duration.zero) {
+          await Future.delayed(remaining);
+        }
+        _isInitializing = false;
+        notifyListeners();
+      } else {
+        notifyListeners();
       }
     });
   }
@@ -197,17 +212,23 @@ class AuthProvider extends ChangeNotifier {
     final oldProfession = _profession;
     final oldSkills = List<String>.from(_skills);
     final oldVoiceId = _voiceId;
+    final oldPhotoUrl = _photoUrl;
+    final oldDisplayName = _displayName;
 
     try {
       // 1. Optimistic Local Update
       if (profession != null) _profession = profession;
       if (skills != null) _skills = List.from(skills);
       if (voiceId != null) _voiceId = voiceId;
+      if (imageUrl != null) _photoUrl = imageUrl;
+      if (name != null) _displayName = name;
       notifyListeners();
 
       // 2. Update Firebase if needed
       if (name != null) await _currentUser!.updateDisplayName(name);
-      if (imageUrl != null) await _currentUser!.updatePhotoURL(imageUrl);
+      if (imageUrl != null && (imageUrl.startsWith('http') || imageUrl.startsWith('https'))) {
+        await _currentUser!.updatePhotoURL(imageUrl);
+      }
       
       // 3. Update Backend
       await DioClient().dio.put(
@@ -230,6 +251,8 @@ class AuthProvider extends ChangeNotifier {
       _profession = oldProfession;
       _skills = oldSkills;
       _voiceId = oldVoiceId;
+      _photoUrl = oldPhotoUrl;
+      _displayName = oldDisplayName;
       notifyListeners();
       rethrow; // Pass error back to UI if needed
     }

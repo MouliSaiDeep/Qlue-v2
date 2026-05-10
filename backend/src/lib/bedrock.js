@@ -10,7 +10,7 @@ const bedrockClient = new BedrockRuntimeClient({
   region: process.env.AWS_REGION || 'us-east-1',
   requestHandler: new NodeHttpHandler({
     connectionTimeout: 5000,
-    requestTimeout: 15000
+    requestTimeout: 50000 // Increased from 15000 to prevent LLM timeouts during generation
   })
 });
 

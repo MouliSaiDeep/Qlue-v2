@@ -22,27 +22,81 @@ class Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    ImageProvider image;
+    Widget imageWidget;
     
+    // Default widget to use when an image fails to load
+    Widget errorWidget = Icon(Icons.sentiment_satisfied_alt, size: size * 0.6, color: Colors.white);
+
     if (imageUrl != null && imageUrl!.isNotEmpty) {
       if (imageUrl!.startsWith('http') || imageUrl!.startsWith('https')) {
-        image = NetworkImage(imageUrl!);
+        imageWidget = Image.network(
+          imageUrl!,
+          fit: BoxFit.cover,
+          width: size,
+          height: size,
+          errorBuilder: (context, error, stackTrace) => Container(
+            color: const Color(0xFF7C3AED),
+            width: size,
+            height: size,
+            child: Center(child: errorWidget),
+          ),
+        );
       } else if (!kIsWeb && (imageUrl!.startsWith('/') || (imageUrl!.length > 1 && imageUrl![1] == ':'))) {
-        image = FileImage(File(imageUrl!));
+        imageWidget = Image.file(
+          File(imageUrl!),
+          fit: BoxFit.cover,
+          width: size,
+          height: size,
+          errorBuilder: (context, error, stackTrace) => Container(
+            color: const Color(0xFF7C3AED),
+            width: size,
+            height: size,
+            child: Center(child: errorWidget),
+          ),
+        );
       } else if (!kIsWeb) {
-        image = FileImage(File(imageUrl!));
+        imageWidget = Image.file(
+          File(imageUrl!),
+          fit: BoxFit.cover,
+          width: size,
+          height: size,
+          errorBuilder: (context, error, stackTrace) => Container(
+            color: const Color(0xFF7C3AED),
+            width: size,
+            height: size,
+            child: Center(child: errorWidget),
+          ),
+        );
       } else {
-        // Web fallback: Use letter avatar if URL detection fails or it's a local path string on web
-        image = NetworkImage("https://ui-avatars.com/api/?name=${name ?? 'User'}&background=random&color=fff&size=256");
+        // Web fallback
+        imageWidget = Image.network(
+          "https://ui-avatars.com/api/?name=${name ?? 'User'}&background=random&color=fff&size=256",
+          fit: BoxFit.cover,
+          width: size,
+          height: size,
+          errorBuilder: (context, error, stackTrace) => Container(
+            color: const Color(0xFF7C3AED),
+            width: size,
+            height: size,
+            child: Center(child: errorWidget),
+          ),
+        );
       }
     } else {
       // Default: Dynamic Letter Avatar
-      image = NetworkImage("https://ui-avatars.com/api/?name=${name ?? 'User'}&background=7C3AED&color=fff&size=256");
+      imageWidget = Image.network(
+        "https://ui-avatars.com/api/?name=${name ?? 'User'}&background=7C3AED&color=fff&size=256",
+        fit: BoxFit.cover,
+        width: size,
+        height: size,
+        errorBuilder: (context, error, stackTrace) => Container(
+          color: const Color(0xFF7C3AED),
+          width: size,
+          height: size,
+          child: Center(child: errorWidget),
+        ),
+      );
     }
-
-    // Optimization: Resize image before decoding to save memory
-    final int cacheSize = (size * 3).toInt();
-    image = ResizeImage.resizeIfNeeded(cacheSize, null, image);
 
     return Container(
       width: size,
@@ -51,11 +105,9 @@ class Avatar extends StatelessWidget {
         shape: isCircle ? BoxShape.circle : BoxShape.rectangle,
         borderRadius: isCircle ? null : BorderRadius.circular(borderRadius),
         border: border,
-        image: DecorationImage(
-          image: image,
-          fit: BoxFit.cover,
-        ),
       ),
+      clipBehavior: Clip.antiAlias,
+      child: imageWidget,
     );
   }
 }

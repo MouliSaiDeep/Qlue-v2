@@ -3,7 +3,7 @@
  * Implements Stranded State Revert to prevent Ghost Speaking Lockout.
  */
 const { getConnection, deactivateConnection } = require('../../models/wsConnection');
-const { getSession, updateSessionState, INTERVIEW_STATES } = require('../../models/session');
+const { getSession, getActiveSessionForUser, updateSessionState, INTERVIEW_STATES } = require('../../models/session');
 
 exports.handler = async (event) => {
   const connectionId = event.requestContext.connectionId;
@@ -12,8 +12,18 @@ exports.handler = async (event) => {
     // 1. Get the session associated with the dropping connection
     const connectionRecord = await getConnection(connectionId);
 
-    if (connectionRecord && connectionRecord.sessionId) {
-      const sessionId = connectionRecord.sessionId;
+    let sessionId = connectionRecord?.sessionId;
+
+    // BE-BUG #20 FIX: If connectionRecord has no sessionId, look up active session by userId
+    if (!sessionId && connectionRecord?.userId) {
+      const activeSession = await getActiveSessionForUser(connectionRecord.userId);
+      if (activeSession) {
+        sessionId = activeSession.sessionId;
+        console.warn(`[Disconnect Guard] No sessionId on connectionRecord, found active session ${sessionId} via userId ${connectionRecord.userId}`);
+      }
+    }
+
+    if (sessionId) {
       const session = await getSession(sessionId);
 
       // 2. GHOST STATE PREVENTION:
