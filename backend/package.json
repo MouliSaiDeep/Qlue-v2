@@ -1,6 +1,9 @@
 {
   "name": "qlue-backend-dev",
   "version": "1.0.0",
+  "scripts": {
+    "test": "jest"
+  },
   "devDependencies": {
     "aws-sdk": "^2.1693.0",
     "body-parser": "^2.2.2",

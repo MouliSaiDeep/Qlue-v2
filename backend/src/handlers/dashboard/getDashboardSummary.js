@@ -35,7 +35,7 @@ exports.handler = async (event) => {
             return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized. User ID missing.' }) };
         }
 
-        // Query TBL-003 (Sessions) via GSI for all user sessions
+        // Prepare Query Commands
         const sessionCmd = new QueryCommand({
             TableName: SESSIONS_TABLE,
             IndexName: 'GSI_UserIdStartedAt',
@@ -45,8 +45,23 @@ exports.handler = async (event) => {
             }
         });
 
-        const sessionData = await docClient.send(sessionCmd);
+        const feedbackCmd = new QueryCommand({
+            TableName: FEEDBACK_TABLE,
+            IndexName: 'GSI_UserIdGeneratedAt',
+            KeyConditionExpression: 'userId = :uid',
+            ExpressionAttributeValues: { ':uid': userId },
+            ScanIndexForward: false, // Latest first
+            Limit: 1
+        });
+
+        // Execute Queries Concurrently
+        const [sessionData, feedbackData] = await Promise.all([
+            docClient.send(sessionCmd),
+            docClient.send(feedbackCmd)
+        ]);
+
         const sessions = sessionData.Items || [];
+        const latestFeedback = feedbackData.Items?.[0] || null;
 
         // Metrics Accumulators
         let totalSessions = sessions.length;
@@ -73,18 +88,6 @@ exports.handler = async (event) => {
         const bestScore = scoresArray.length > 0 ? Math.max(...scoresArray) : 0;
         const sumScores = scoresArray.reduce((acc, curr) => acc + curr, 0);
         const averageScore = completedSessions > 0 ? Math.round(sumScores / completedSessions) : 0;
-
-        // 3. Query Latest Feedback
-        const feedbackCmd = new QueryCommand({
-            TableName: FEEDBACK_TABLE,
-            IndexName: 'GSI_UserIdGeneratedAt',
-            KeyConditionExpression: 'userId = :uid',
-            ExpressionAttributeValues: { ':uid': userId },
-            ScanIndexForward: false, // Latest first
-            Limit: 1
-        });
-        const feedbackData = await docClient.send(feedbackCmd);
-        const latestFeedback = feedbackData.Items?.[0] || null;
 
         return {
             statusCode: 200,

@@ -16,14 +16,54 @@ exports.handler = async (event) => {
             };
         }
 
-        if (password.length < 6) {
+        // 1. Enhanced Input Validation
+
+        // Email format validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
             return {
                 statusCode: 400,
-                body: JSON.stringify({ error: "Password must be at least 6 characters long" })
+                body: JSON.stringify({
+                    error: "Invalid email format",
+                    code: "INVALID_EMAIL"
+                })
             };
         }
 
-        // 1. Create the user in Firebase Auth
+        // Password complexity validation:
+        // - At least 8 characters
+        // - At least one uppercase letter
+        // - At least one lowercase letter
+        // - At least one number
+        // - At least one special character (any non-alphanumeric)
+        const hasUpperCase = /[A-Z]/.test(password);
+        const hasLowerCase = /[a-z]/.test(password);
+        const hasNumbers = /\d/.test(password);
+        const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+        const isLongEnough = password.length >= 8;
+
+        if (!isLongEnough || !hasUpperCase || !hasLowerCase || !hasNumbers || !hasSpecialChar) {
+            return {
+                statusCode: 400,
+                body: JSON.stringify({
+                    error: "Password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one number, and one special character.",
+                    code: "WEAK_PASSWORD"
+                })
+            };
+        }
+
+        // Display name length validation
+        if (displayName && displayName.length > 50) {
+            return {
+                statusCode: 400,
+                body: JSON.stringify({
+                    error: "Display name must be at most 50 characters long",
+                    code: "INVALID_DISPLAY_NAME"
+                })
+            };
+        }
+
+        // 2. Create the user in Firebase Auth
         const auth = await firebase.getAuth();
         const userRecord = await auth.createUser({
             email,
@@ -32,7 +72,7 @@ exports.handler = async (event) => {
             emailVerified: false 
         });
 
-        // 2. Sync to DynamoDB (Non-blocking fallback)
+        // 3. Sync to DynamoDB (Non-blocking fallback)
         try {
             const { saveUser } = require('../../models/user');
             await saveUser({
@@ -59,7 +99,7 @@ exports.handler = async (event) => {
         }
 
         try {
-            // 2. We use the Web REST API to securely login the user behind the scenes 
+            // 4. We use the Web REST API to securely login the user behind the scenes
             // to get their idToken, which is required to trigger Firebase's native verification email
             const signInRes = await axios.post(
                 `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`,
@@ -68,7 +108,7 @@ exports.handler = async (event) => {
             
             const idToken = signInRes.data.idToken;
 
-            // 3. Trigger Firebase's native email sender
+            // 5. Trigger Firebase's native email sender
             await axios.post(
                 `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_API_KEY}`,
                 { requestType: 'VERIFY_EMAIL', idToken: idToken }
