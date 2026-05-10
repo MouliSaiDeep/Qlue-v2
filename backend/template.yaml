@@ -1407,6 +1407,7 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
   GetScoreTrendsFunction:
     Type: AWS::Serverless::Function
