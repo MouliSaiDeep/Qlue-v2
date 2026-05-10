@@ -42,6 +42,7 @@ async function createSession(sessionId, userId, moduleType, itemData = {}) {
     const command = new PutCommand({
         TableName: SESSIONS_TABLE,
         Item: session,
+        ConditionExpression: "attribute_not_exists(sessionId)"
     });
 
     await docClient.send(command);

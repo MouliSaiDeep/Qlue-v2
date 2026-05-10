@@ -84,9 +84,13 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
         final data = rawData is String ? jsonDecode(rawData) : rawData;
         
         // The endpoint returns {session, feedback, transcript}
-        final feedbackData = data['feedback'];
+        var feedbackData = data['feedback'];
         if (feedbackData != null) {
           // FE-BUG FIX: Inject transcript into feedbackData so the model parser can find it
+          // Ensure feedbackData is modifiable
+          if (feedbackData is Map) {
+            feedbackData = Map<String, dynamic>.from(feedbackData);
+          }
           if (data['transcript'] != null) {
             feedbackData['transcript'] = data['transcript'];
           }
