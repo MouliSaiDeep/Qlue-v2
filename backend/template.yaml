@@ -5,6 +5,8 @@ Description: Qlue AI-powered voice interview simulation mobile app.
 Globals:
   Function:
     Runtime: nodejs24.x
+    Architectures:
+      - arm64
     Layers:
       - !Ref QlueSharedLayer
       - !Ref AppDependenciesLayer
