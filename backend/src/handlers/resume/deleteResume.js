@@ -4,7 +4,7 @@ const { setActiveResumeId, getUserById } = require('../../models/user');
 const { update } = require('../../lib/dynamodb');
 const { success, unauthorized, badRequest, notFound, internalError } = require('../../lib/response');
 
-const RESUMES_TABLE = process.env.RESUMES_TABLE;
+const CORE_TABLE = process.env.CORE_TABLE;
 const BUCKET_NAME = process.env.RESUMES_BUCKET || 'qlue-resumes';
 
 /**
@@ -39,7 +39,7 @@ exports.handler = async (event) => {
         }
 
         // 2. Delete from DynamoDB
-        await deleteResumeRecord(userId, resume.resumeKey);
+        await deleteResumeRecord(userId, resumeId);
 
         // 3. Handle Active Resume Handover
         if (resume.isActive) {

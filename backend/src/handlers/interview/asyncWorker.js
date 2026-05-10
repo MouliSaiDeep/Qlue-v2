@@ -1,4 +1,4 @@
-const { getSession, updateSessionState, INTERVIEW_STATES } = require('../../models/session');
+const { getSession, updateSessionState, INTERVIEW_STATES, getConceptsBySession } = require('../../models/session');
 const { postToConnection, StaleConnectionError } = require('../../lib/websocket');
 const { SPEAKERS, saveTranscript, getTranscriptBySession } = require('../../models/transcript');
 const { synthesizeToBase64Chunks } = require('../../lib/polly');
@@ -7,7 +7,6 @@ const { putObject, generatePresignedUrl } = require('../../lib/s3');
 const { getResumeById } = require('../../models/resume');
 const { getUserById } = require('../../models/user');
 const { fetchAndCleanContent } = require('../../lib/scraper');
-const { getConceptsBySession } = require('../../models/conceptState');
 const { processUserTurn, parseBedrockJSON } = require('../../services/interviewService');
 const terminateSession = require('./terminateSession');
 

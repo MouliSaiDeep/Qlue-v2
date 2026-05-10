@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: Qlue AI-powered voice interview simulation mobile app.
+Description: Qlue AI-powered voice interview simulation mobile app - True Single Table Design.
 
 Globals:
   Function:
@@ -11,21 +11,8 @@ Globals:
 
     Environment:
       Variables:
-        USERS_TABLE: !Ref QlueCoreTableV2
-        RESUMES_TABLE: !Ref QlueCoreTableV2
-        SESSIONS_TABLE: !Ref QlueCoreTableV2
-        TRANSCRIPTS_TABLE: !Ref TranscriptsTableV2
-        FEEDBACK_TABLE: !Ref QlueCoreTableV2
-        CONCEPT_STATES_TABLE: !Ref QlueCoreTableV2
-        WS_CONNECTIONS_TABLE: !Ref WSConnectionsTableV2
-        NOTIFICATIONS_TABLE: !Ref QlueCoreTableV2
-        USERS_TABLE_V2: !Ref QlueCoreTableV2
-        RESUMES_TABLE_V2: !Ref QlueCoreTableV2
-        SESSIONS_TABLE_V2: !Ref QlueCoreTableV2
-        TRANSCRIPTS_TABLE_V2: !Ref TranscriptsTableV2
-        FEEDBACK_TABLE_V2: !Ref QlueCoreTableV2
-        WS_CONNECTIONS_TABLE_V2: !Ref WSConnectionsTableV2
-        NOTIFICATIONS_TABLE_V2: !Ref QlueCoreTableV2
+        CORE_TABLE: !Ref QlueCoreTable
+        CONNECTIONS_TABLE: !Ref QlueConnectionsTable
         FIREBASE_SECRET_ID: !Ref FirebaseServiceAccountSecret
         BEDROCK_SECRET_ID: !Ref BedrockConfigSecret
         SCRAPER_SECRET_ID: !Ref ScraperApiKeySecret
@@ -42,12 +29,13 @@ Conditions:
 
 Resources:
   # ==============================================================================
-  # DYNAMODB TABLES
+  # DYNAMODB TABLES (True Single Table Design)
   # ==============================================================================
 
-  QlueCoreTableV2:
+  QlueCoreTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      TableName: qlue-core-table
       BillingMode: PAY_PER_REQUEST
       TableClass: STANDARD
       PointInTimeRecoverySpecification:
@@ -62,198 +50,41 @@ Resources:
           AttributeType: S
         - AttributeName: SK
           AttributeType: S
-        - AttributeName: userId
+        - AttributeName: GSI1PK
           AttributeType: S
-        - AttributeName: profileKey
+        - AttributeName: GSI1SK
           AttributeType: S
-        - AttributeName: email
+        - AttributeName: entityType
           AttributeType: S
-        - AttributeName: phone
+        - AttributeName: status
           AttributeType: S
-        - AttributeName: authProviderKey
-          AttributeType: S
-        - AttributeName: resumeId
-          AttributeType: S
-        - AttributeName: activeResumeKey
-          AttributeType: S
-        - AttributeName: fileHash
-          AttributeType: S
-        - AttributeName: sessionId
-          AttributeType: S
-        - AttributeName: sessionKey
-          AttributeType: S
-        - AttributeName: startedAt
-          AttributeType: S
-        - AttributeName: statusKey
-          AttributeType: S
-        - AttributeName: feedbackStatus
-          AttributeType: S
-        - AttributeName: feedbackStatusKey
-          AttributeType: S
-        - AttributeName: feedbackId
-          AttributeType: S
-        - AttributeName: notificationKey
-          AttributeType: S
-        - AttributeName: unreadKey
-          AttributeType: S
-        - AttributeName: type
-          AttributeType: S
-        - AttributeName: sentAt
-          AttributeType: N
       KeySchema:
         - AttributeName: PK
           KeyType: HASH
         - AttributeName: SK
           KeyType: RANGE
       GlobalSecondaryIndexes:
-        - IndexName: EmailIndex
+        - IndexName: GSI1
           KeySchema:
-            - AttributeName: email
+            - AttributeName: GSI1PK
               KeyType: HASH
-            - AttributeName: userId
+            - AttributeName: GSI1SK
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-        - IndexName: PhoneIndex
+        - IndexName: GSI2_Sparse
           KeySchema:
-            - AttributeName: phone
+            - AttributeName: entityType
               KeyType: HASH
-            - AttributeName: userId
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-        - IndexName: AuthProviderIndex
-          KeySchema:
-            - AttributeName: authProviderKey
-              KeyType: HASH
-            - AttributeName: userId
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-        - IndexName: ResumeIdIndex
-          KeySchema:
-            - AttributeName: resumeId
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
-        - IndexName: ResumeHashIndex
-          KeySchema:
-            - AttributeName: fileHash
-              KeyType: HASH
-            - AttributeName: userId
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-        - IndexName: ActiveResumeIndex
-          KeySchema:
-            - AttributeName: userId
-              KeyType: HASH
-            - AttributeName: activeResumeKey
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-        - IndexName: SessionIdIndex
-          KeySchema:
-            - AttributeName: sessionId
-              KeyType: HASH
-            - AttributeName: userId
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-        - IndexName: SessionStatusIndex
-          KeySchema:
-            - AttributeName: userId
-              KeyType: HASH
-            - AttributeName: statusKey
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-        - IndexName: FeedbackStatusIndex
-          KeySchema:
-            - AttributeName: feedbackStatus
-              KeyType: HASH
-            - AttributeName: feedbackStatusKey
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-        - IndexName: FeedbackIdIndex
-          KeySchema:
-            - AttributeName: feedbackId
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
-        - IndexName: UserSessionTimeIndex
-          KeySchema:
-            - AttributeName: userId
-              KeyType: HASH
-            - AttributeName: startedAt
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-        - IndexName: UnreadNotificationIndex
-          KeySchema:
-            - AttributeName: userId
-              KeyType: HASH
-            - AttributeName: unreadKey
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-        - IndexName: NotificationTypeIndex
-          KeySchema:
-            - AttributeName: type
-              KeyType: HASH
-            - AttributeName: sentAt
+            - AttributeName: status
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
 
-  TranscriptsTableV2:
+  QlueConnectionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      BillingMode: PAY_PER_REQUEST
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
-      SSESpecification:
-        SSEEnabled: true
-      AttributeDefinitions:
-        - AttributeName: sessionId
-          AttributeType: S
-        - AttributeName: turnKey
-          AttributeType: S
-        - AttributeName: userId
-          AttributeType: S
-        - AttributeName: createdAt
-          AttributeType: S
-        - AttributeName: moduleConcept
-          AttributeType: S
-        - AttributeName: conceptKey
-          AttributeType: S
-      KeySchema:
-        - AttributeName: sessionId
-          KeyType: HASH
-        - AttributeName: turnKey
-          KeyType: RANGE
-      GlobalSecondaryIndexes:
-        - IndexName: UserTranscriptIndex
-          KeySchema:
-            - AttributeName: userId
-              KeyType: HASH
-            - AttributeName: createdAt
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-        - IndexName: ModuleConceptIndex
-          KeySchema:
-            - AttributeName: moduleConcept
-              KeyType: HASH
-            - AttributeName: conceptKey
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-
-  WSConnectionsTableV2:
-    Type: AWS::DynamoDB::Table
-    Properties:
+      TableName: qlue-connections-table
       BillingMode: PAY_PER_REQUEST
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
@@ -263,36 +94,11 @@ Resources:
         AttributeName: ttl
         Enabled: true
       AttributeDefinitions:
-        - AttributeName: userId
-          AttributeType: S
-        - AttributeName: connectionKey
-          AttributeType: S
         - AttributeName: connectionId
           AttributeType: S
-        - AttributeName: sessionId
-          AttributeType: S
       KeySchema:
-        - AttributeName: userId
+        - AttributeName: connectionId
           KeyType: HASH
-        - AttributeName: connectionKey
-          KeyType: RANGE
-      GlobalSecondaryIndexes:
-        - IndexName: ConnectionIdIndex
-          KeySchema:
-            - AttributeName: connectionId
-              KeyType: HASH
-            - AttributeName: userId
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-        - IndexName: SessionConnectionIndex
-          KeySchema:
-            - AttributeName: sessionId
-              KeyType: HASH
-            - AttributeName: connectionKey
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
 
   # ==============================================================================
   # S3 BUCKETS
@@ -518,7 +324,7 @@ Resources:
       Timeout: 10
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref FirebaseServiceAccountSecret
 
@@ -538,7 +344,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref FirebaseServiceAccountSecret
 
@@ -558,7 +364,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref FirebaseServiceAccountSecret
 
@@ -578,7 +384,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref FirebaseServiceAccountSecret
 
@@ -598,7 +404,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref FirebaseServiceAccountSecret
 
@@ -618,7 +424,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref FirebaseServiceAccountSecret
 
@@ -638,7 +444,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref FirebaseServiceAccountSecret
 
@@ -658,7 +464,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref FirebaseServiceAccountSecret
 
@@ -678,7 +484,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref FirebaseServiceAccountSecret
 
@@ -698,9 +504,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
-        - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !Ref FirebaseServiceAccountSecret
+            TableName: !Ref QlueCoreTable
 
   UpdateFcmTokenFunction:
     Type: AWS::Serverless::Function
@@ -718,7 +522,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
 
   # ========= RESUME =========
   GeneratePresignedUrlFunction:
@@ -737,7 +541,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - S3CrudPolicy:
             BucketName: !Ref ResumesBucket
 
@@ -757,9 +561,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
-        - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - S3CrudPolicy:
             BucketName: !Ref ResumesBucket
         - Statement:
@@ -799,7 +601,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - S3CrudPolicy:
             BucketName: !Ref ResumesBucket
 
@@ -819,7 +621,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - S3CrudPolicy:
             BucketName: !Ref ResumesBucket
 
@@ -839,7 +641,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - S3CrudPolicy:
             BucketName: !Ref ResumesBucket
 
@@ -859,9 +661,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
-        - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - S3CrudPolicy:
             BucketName: !Ref ResumesBucket
 
@@ -881,7 +681,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - S3CrudPolicy:
             BucketName: !Ref ResumesBucket
 
@@ -901,7 +701,7 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref QlueCoreTableV2
+            TableName: !Ref QlueCoreTable
         - S3CrudPolicy:
             BucketName: !Ref ResumesBucket
 
@@ -921,12 +721,7 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - Statement:
             [
               {
@@ -967,12 +762,7 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - Statement:
             [
               {
@@ -1013,12 +803,7 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - Statement:
             [
               {
@@ -1059,12 +844,7 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - Statement:
             [
               {
@@ -1105,12 +885,7 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - Statement:
             [
               {
@@ -1154,12 +929,7 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - Statement:
             [
               {
@@ -1214,13 +984,8 @@ Resources:
             Queue: !GetAtt AsyncInterviewQueue.Arn
             BatchSize: 1
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueConnectionsTable }
         - Statement:
             [
               {
@@ -1271,7 +1036,7 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueConnectionsTable }
         - AWSSecretsManagerGetSecretValuePolicy:
             { SecretArn: !Ref FirebaseServiceAccountSecret }
         - Statement:
@@ -1291,7 +1056,7 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueConnectionsTable }
         - Statement:
             [
               {
@@ -1313,13 +1078,8 @@ Resources:
           ASYNC_QUEUE_URL: !Ref AsyncInterviewQueue
           FEEDBACK_TOPIC_ARN: !Ref FeedbackTriggerTopic
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueConnectionsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - Statement:
             [
               {
@@ -1374,7 +1134,7 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueConnectionsTable }
         - Statement:
             [
               {
@@ -1392,7 +1152,7 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueConnectionsTable }
         - Statement:
             [
               {
@@ -1416,12 +1176,7 @@ Resources:
           Properties:
             Topic: !Ref FeedbackTriggerTopic
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - Statement:
             [
               {
@@ -1452,12 +1207,7 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - Statement:
             [
               {
@@ -1488,12 +1238,7 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - Statement:
             [
               {
@@ -1524,12 +1269,7 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - Statement:
             [
               {
@@ -1560,12 +1300,7 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - Statement:
             [
               {
@@ -1596,12 +1331,7 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - Statement:
             [
               {
@@ -1633,10 +1363,10 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - AWSSecretsManagerGetSecretValuePolicy:
             { SecretArn: !Ref FirebaseServiceAccountSecret }
+
   GetScoreTrendsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -1652,7 +1382,7 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - AWSSecretsManagerGetSecretValuePolicy:
             { SecretArn: !Ref FirebaseServiceAccountSecret }
 
@@ -1671,7 +1401,7 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - AWSSecretsManagerGetSecretValuePolicy:
             { SecretArn: !Ref FirebaseServiceAccountSecret }
 
@@ -1690,7 +1420,7 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - AWSSecretsManagerGetSecretValuePolicy:
             { SecretArn: !Ref FirebaseServiceAccountSecret }
 
@@ -1709,8 +1439,7 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
-        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - AWSSecretsManagerGetSecretValuePolicy:
             { SecretArn: !Ref FirebaseServiceAccountSecret }
 
@@ -1729,7 +1458,7 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTableV2 }
+        - DynamoDBCrudPolicy: { TableName: !Ref QlueCoreTable }
         - AWSSecretsManagerGetSecretValuePolicy:
             { SecretArn: !Ref FirebaseServiceAccountSecret }
 

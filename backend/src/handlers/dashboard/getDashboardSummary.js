@@ -4,7 +4,7 @@ const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const docClient = DynamoDBDocumentClient.from(client);
 
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-core-v2';
+const CORE_TABLE = process.env.CORE_TABLE;
 
 /**
  * Calculates a unified integer score from the accumulatedScores object.
@@ -34,13 +34,14 @@ exports.handler = async (event) => {
             return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized. User ID missing.' }) };
         }
 
-        // Query TBL-003 (Sessions) via GSI for all user sessions
+        // Query TBL-003 (Sessions) via GSI1 for all user sessions
         const sessionCmd = new QueryCommand({
-            TableName: SESSIONS_TABLE,
-            // In V2, userId is the Partition Key, so we can query directly
-            KeyConditionExpression: 'userId = :uid',
+            TableName: CORE_TABLE,
+            IndexName: 'GSI1',
+            KeyConditionExpression: 'GSI1PK = :pk AND begins_with(GSI1SK, :skPrefix)',
             ExpressionAttributeValues: {
-                ':uid': userId
+                ':pk': `USER#${userId}`,
+                ':skPrefix': 'SESSION#'
             }
         });
 

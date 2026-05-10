@@ -5,7 +5,7 @@ const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws
 const { NodeHttpHandler } = require('@smithy/node-http-handler');
 const ddb = require('./dynamodb');
 
-const WS_CONNECTIONS_TABLE = process.env.WS_CONNECTIONS_TABLE;
+const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE;
 
 // Cache the clients by endpoint to avoid reallocation per request since lambda may handle requests from multiple stages
 const apigwClients = new Map();
@@ -40,7 +40,7 @@ async function registerConnection(connectionId, userId) {
     ttl: ttlTime
   };
   
-  return await ddb.put(WS_CONNECTIONS_TABLE, item);
+  return await ddb.put(CONNECTIONS_TABLE, item);
 }
 
 /**
@@ -48,7 +48,7 @@ async function registerConnection(connectionId, userId) {
  */
 async function deregisterConnection(connectionId) {
   return await ddb.delete(
-    WS_CONNECTIONS_TABLE,
+    CONNECTIONS_TABLE,
     { connectionId }
   );
 }
@@ -58,7 +58,7 @@ async function deregisterConnection(connectionId) {
  */
 async function getActiveConnection(userId) {
   const response = await ddb.query(
-    WS_CONNECTIONS_TABLE,
+    CONNECTIONS_TABLE,
     'userId = :uid AND isActive = :active',
     {
       values: {

@@ -15,6 +15,9 @@ exports.handler = async (event) => {
 
     try {
         const auth = await firebase.getAuth();
+        
+        // The 'true' flag forces a backend revocation check. 
+        // This is highly secure but susceptible to slight network delays/clock skew.
         const decodedToken = await auth.verifyIdToken(bearerToken, true);
         
         // Return IAM Policy for Authorized user
@@ -26,14 +29,16 @@ exports.handler = async (event) => {
         });
 
     } catch (error) {
-        console.error("Token verification failed:", error.message);
+        console.error("Token verification failed:", error.code, error.message);
         
-        // Return Deny policy instead of throwing to avoid 500s where 403 is intended
-        // Note: For 401, we must throw "Unauthorized"
-        if (error.code === 'auth/id-token-expired') {
+        // FIX: Treat ANY standard Firebase Auth token error as a 401 Unauthorized.
+        // This includes 'auth/id-token-expired', 'auth/invalid-id-token' (clock skew), 
+        // and 'auth/id-token-revoked'.
+        if (error.code && error.code.startsWith('auth/')) {
             throw new Error("Unauthorized");
         }
 
+        // Return Deny policy (403) ONLY as a fallback for severe structural or internal errors
         return generatePolicy('user', 'Deny', event.methodArn || '*');
     }
 };

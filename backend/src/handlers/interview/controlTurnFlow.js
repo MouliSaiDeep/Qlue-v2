@@ -33,8 +33,8 @@ async function transitionState(sessionId, targetState, updates = {}) {
         throw new Error(`Invalid interview state transition: ${currentState} -> ${targetState}`);
     }
 
-    // V2: Pass userId and sessionKey for composite key lookup
-    return await updateSessionState(session.userId, session.sessionKey, targetState, currentState, {
+    // Pass sessionId for lookup
+    return await updateSessionState(sessionId, targetState, currentState, {
         ...updates,
         expectedVersion: session.version
     });

@@ -46,10 +46,10 @@ class DioClient {
           if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
             print("🔄 Attempting to refresh Firebase Token...");
             final user = FirebaseAuth.instance.currentUser;
-
+            
             // Check if we already tried to refresh for this specific request
             final int retryCount = e.requestOptions.headers['_retryCount'] ?? 0;
-
+            
             if (user != null && retryCount < 2) {
               e.requestOptions.headers['_retryCount'] = retryCount + 1;
               try {
@@ -58,7 +58,7 @@ class DioClient {
                 if (token != null && token.isNotEmpty) {
                   print("✅ Token refreshed successfully! Retrying request...");
                   e.requestOptions.headers['Authorization'] = 'Bearer $token';
-
+                  
                   // Retry the request using a temporary Dio to avoid infinite interceptor loops
                   final retryDio = Dio(BaseOptions(baseUrl: ApiConstants.baseUrl));
                   final response = await retryDio.fetch(e.requestOptions);

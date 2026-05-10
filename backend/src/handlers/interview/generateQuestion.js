@@ -2,6 +2,7 @@ const { getSession, updateSessionState } = require('../../models/session');
 const { getResumeById } = require('../../models/resume');
 const { getUserById } = require('../../models/user');
 const { getTranscriptBySession } = require('../../models/transcript');
+const { getConceptsBySession, selectNextConcept } = require('../../models/session');
 const { invokeModel, buildResumeQuestionPrompt, buildHRQuestionPrompt, buildWebsiteTeachPrompt } = require('../../lib/bedrock');
 const { success, internalError, notFound } = require('../../lib/response');
 
@@ -142,7 +143,6 @@ exports.handler = async (event) => {
                     onlyQuestion = "To get started with tutoring, please provide a website URL you'd like to learn about.";
                 } else {
                     const { fetchAndCleanContent } = require('../../lib/scraper');
-                    const { getConceptsBySession } = require('../../models/conceptState');
                     
                     // Use cached scraped content from session if available, otherwise scrape and warn
                     let content = session.scrapedSummary || session.itemData?.scrapedSummary;

@@ -1,8 +1,13 @@
-const { getSession, updateSessionState } = require('../models/session');
+const { getSession, updateSessionState, updateConceptState, getConceptsBySession, INTERVIEW_STATES: SESSION_INTERVIEW_STATES } = require('../models/session');
 const { SPEAKERS, saveTranscript, getTranscriptBySession } = require('../models/transcript');
 const { transitionState, INTERVIEW_STATES } = require('../handlers/interview/controlTurnFlow');
 const { invokeModel, buildScoringPrompt, buildWebsiteTeachPrompt, buildSelfIntroEvalPrompt } = require('../lib/bedrock');
-const { CONCEPT_STATES, updateConceptState, getConceptsBySession } = require('../models/conceptState');
+
+const CONCEPT_STATES = {
+    UNADDRESSED: 'UNADDRESSED',
+    TUTORED: 'TUTORED',
+    MASTERED: 'MASTERED'
+};
 
 /**
  * Robust JSON extraction from LLM responses.
@@ -26,7 +31,6 @@ async function processUserTurn(sessionId, textTranscript, isSilence, currentConc
     const session = await getSession(sessionId);
     if (!session) throw new Error('Session not found');
 
-    const { userId, sessionKey } = session;
     const currentConceptId = currentConceptIdInput || session.currentConceptId;
 
     // --- 1. SILENCE NEGOTIATION ---
@@ -89,7 +93,7 @@ async function processUserTurn(sessionId, textTranscript, isSilence, currentConc
     if (session.moduleType === 'WEBSITE' && currentConceptId) {
         const masteryScore = parseFloat(scores['concept understanding'] || 0);
         const newState = masteryScore >= 70 ? CONCEPT_STATES.MASTERED : CONCEPT_STATES.TUTORED;
-        await updateConceptState(userId, sessionKey, currentConceptId, newState, 1);
+        await updateConceptState(sessionId, currentConceptId, newState, 1);
     }
 
     // Next Response Generation
@@ -98,7 +102,7 @@ async function processUserTurn(sessionId, textTranscript, isSilence, currentConc
     
     if (session.moduleType === 'WEBSITE') {
         const content = session.itemData?.scrapedSummary || "Content loaded.";
-        const concepts = await getConceptsBySession(userId, sessionKey);
+        const concepts = await getConceptsBySession(sessionId);
         targetConcept = currentConceptId || (concepts.length > 0 ? concepts[0].conceptId : "General Overview");
 
         const history = (await getTranscriptBySession(sessionId)).map(t => ({
@@ -112,7 +116,7 @@ async function processUserTurn(sessionId, textTranscript, isSilence, currentConc
             const parsed = parseBedrockJSON(bedrockResult.content[0].text);
             nextAIResponse = parsed.response || parsed.question || null;
             if (parsed.isCorrect) {
-                await updateConceptState(userId, sessionKey, targetConcept, CONCEPT_STATES.MASTERED, 1);
+                await updateConceptState(sessionId, targetConcept, CONCEPT_STATES.MASTERED, 1);
             }
         }
     } else if (session.moduleType === 'INTRO') {
