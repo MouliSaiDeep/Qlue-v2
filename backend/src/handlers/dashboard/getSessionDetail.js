@@ -68,7 +68,13 @@ exports.handler = async (event) => {
             ScanIndexForward: true // Ascending by turnIndex
         });
         const transcriptRes = await docClient.send(transcriptCmd);
-        const transcript = transcriptRes.Items || [];
+        let transcript = transcriptRes.Items || [];
+        // Sort transcripts explicitly by turnIndex then timestamp
+        transcript.sort((a, b) => {
+            const turnDiff = (a.turnIndex || 0) - (b.turnIndex || 0);
+            if (turnDiff !== 0) return turnDiff;
+            return (a.timestamp || 0) - (b.timestamp || 0);
+        });
 
         return {
             statusCode: 200,

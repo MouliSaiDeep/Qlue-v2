@@ -1,9 +1,9 @@
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 const { UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const { getSession, getSessionById, updateSessionState, INTERVIEW_STATES } = require('../../models/session');
-const { getTranscriptBySession } = require('../../models/transcript');
-// BE-BUG #15 FIX: Import postToConnection from shared lib instead of duplicating it here
-const { deregisterConnection, postToConnection } = require('../../lib/websocket');
+const { getTranscriptBySession, getLatestTranscripts } = require('../../models/transcript');
+const { deregisterConnection } = require('../../lib/websocket');
+const { docClient } = require('../../lib/dynamodb');
 
 const sqsClient = new SQSClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const ASYNC_QUEUE_URL = process.env.ASYNC_QUEUE_URL;
@@ -23,14 +23,15 @@ async function sendError(connectionId, message, code = 400) {
 async function updateConnectionHeartbeat(connectionId) {
   if (!connectionId) return;
   try {
-    const { docClient } = require('../../lib/dynamodb');
     await docClient.send(new UpdateCommand({
       TableName: WS_CONNECTIONS_TABLE,
       Key: { connectionId },
       UpdateExpression: 'SET lastHeartbeat = :heartbeat, #ttl = :ttl',
+      ConditionExpression: 'attribute_not_exists(connectionId) OR isActive = :active',
       ExpressionAttributeNames: { '#ttl': 'ttl' },
       ExpressionAttributeValues: {
         ':heartbeat': Date.now(),
+        ':active': 'true',
         ':ttl': Math.floor(Date.now() / 1000) + (2 * 60 * 60)
       }
     }));
@@ -41,9 +42,8 @@ async function updateConnectionHeartbeat(connectionId) {
 
 async function getLastAiTurnIndex(sessionId, sessionTurnCount = 0) {
   try {
-    const transcripts = await getTranscriptBySession(sessionId);
-    for (let i = transcripts.length - 1; i >= 0; i--) {
-      const item = transcripts[i];
+    const transcripts = await getLatestTranscripts(sessionId, 5);
+    for (const item of transcripts) {
       if (item.speaker === 'AI') {
         return Number(item.turnIndex) || 0;
       }
@@ -80,9 +80,6 @@ async function handleSessionInit(connectionId, body, userId) {
     // Do not advance session state here; asyncWorker owns session initialization state transitions.
 
     // BUG-4 FIX: Use UpdateCommand with attribute_not_exists to prevent overwrite race
-    const dynamodb = require('../../lib/dynamodb');
-    const { docClient } = require('../../lib/dynamodb');
-    
     try {
       await docClient.send(new UpdateCommand({
         TableName: WS_CONNECTIONS_TABLE,
@@ -100,7 +97,8 @@ async function handleSessionInit(connectionId, body, userId) {
       }));
     } catch (updateErr) {
       if (updateErr.name === 'ConditionalCheckFailedException') {
-        console.warn(`Connection ${connectionId} already mapped to different session`);
+        console.warn(`Connection ${connectionId} mapping failed: condition not met`);
+        return await sendError(connectionId, 'Session initialization failed: connection state conflict', 409);
       } else {
         throw updateErr;
       }
@@ -210,25 +208,30 @@ async function handleSessionReconnect(connectionId, body, userId) {
       return await sendError(connectionId, 'Session not found');
     }
 
-    // BE-BUG #16 FIX: Verify session ownership before allowing reconnect
-    if (session.userId !== userId) {
-      console.warn(`[Reconnect] Ownership violation: user ${userId} attempted to reconnect to session owned by ${session.userId}`);
-      return await sendError(connectionId, 'Forbidden: Session does not belong to this user', 403);
-    }
-    const dynamodb = require('../../lib/dynamodb');
-    await dynamodb.docClient.send(new UpdateCommand({
-      TableName: WS_CONNECTIONS_TABLE,
-      Key: { connectionId },
-      UpdateExpression: 'SET sessionId = :sessionId, userId = :userId, isActive = :active, connectedAt = :connectedAt, #ttl = :ttl',
-      ExpressionAttributeNames: { '#ttl': 'ttl' },
-      ExpressionAttributeValues: {
-        ':sessionId': sessionId,
-        ':userId': userId,
-        ':active': 'true',
-        ':connectedAt': Date.now(),
-        ':ttl': Math.floor(Date.now() / 1000) + (2 * 60 * 60)
+    // Update connection mapping
+    try {
+      await docClient.send(new UpdateCommand({
+        TableName: WS_CONNECTIONS_TABLE,
+        Key: { connectionId },
+        UpdateExpression: 'SET sessionId = :sessionId, userId = :userId, isActive = :active, connectedAt = :connectedAt, #ttl = :ttl',
+        ConditionExpression: 'attribute_not_exists(connectionId) OR isActive = :active',
+        ExpressionAttributeNames: { '#ttl': 'ttl' },
+        ExpressionAttributeValues: {
+          ':sessionId': sessionId,
+          ':userId': userId,
+          ':active': 'true',
+          ':connectedAt': Date.now(),
+          ':ttl': Math.floor(Date.now() / 1000) + (2 * 60 * 60)
+        }
+      }));
+    } catch (updateErr) {
+      if (updateErr.name === 'ConditionalCheckFailedException') {
+        console.warn(`Connection ${connectionId} reconnection failed: condition not met`);
+        return await sendError(connectionId, 'Session reconnection failed: connection state conflict', 409);
+      } else {
+        throw updateErr;
       }
-    }));
+    }
 
     if (session.currentState === INTERVIEW_STATES.TERMINATED || session.currentState === INTERVIEW_STATES.GENERATING_FEEDBACK) {
       await postToConnection(connectionId, {
