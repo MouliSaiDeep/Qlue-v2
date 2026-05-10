@@ -22,7 +22,14 @@ class DioClient {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          final user = FirebaseAuth.instance.currentUser;
+          User? user = FirebaseAuth.instance.currentUser;
+
+          // Wait briefly if Firebase is still initializing during a Hot Restart
+          if (user == null) {
+            await Future.delayed(const Duration(milliseconds: 100));
+            user = FirebaseAuth.instance.currentUser;
+          }
+
           if (user != null) {
             final token = await user.getIdToken();
             if (token != null && token.isNotEmpty) {
@@ -32,7 +39,12 @@ class DioClient {
           return handler.next(options);
         },
         onError: (DioException e, handler) async {
+          // Debug logging for easier troubleshooting
+          print("🚨 API ERROR: ${e.response?.statusCode} on ${e.requestOptions.path}");
+          print("🚨 API RESPONSE: ${e.response?.data}");
+
           if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+            print("🔄 Attempting to refresh Firebase Token...");
             final user = FirebaseAuth.instance.currentUser;
 
             // Check if we already tried to refresh for this specific request
@@ -44,6 +56,7 @@ class DioClient {
                 // Force refresh the token
                 final token = await user.getIdToken(true);
                 if (token != null && token.isNotEmpty) {
+                  print("✅ Token refreshed successfully! Retrying request...");
                   e.requestOptions.headers['Authorization'] = 'Bearer $token';
 
                   // Retry the request using a temporary Dio to avoid infinite interceptor loops
@@ -52,9 +65,12 @@ class DioClient {
                   return handler.resolve(response);
                 }
               } catch (retryError) {
+                print("❌ Token refresh or retry failed: $retryError");
                 // If refresh fails, just pass the original error
                 return handler.next(e);
               }
+            } else {
+               print("❌ User is null or retry limit exceeded.");
             }
           }
           return handler.next(e);
