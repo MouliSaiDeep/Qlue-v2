@@ -10,6 +10,23 @@ exports.handler = async (event) => {
         const { websiteUrl } = JSON.parse(event.body || '{}');
         if (!websiteUrl) return error('URL required', 400);
 
+        let urlObj;
+        try {
+            urlObj = new URL(websiteUrl);
+        } catch (e) {
+            return error('Invalid URL format', 400);
+        }
+
+        const hostname = urlObj.hostname.toLowerCase();
+        const isAllowedDomain = hostname.includes('w3') || hostname.includes('geeksgeek') || hostname.includes('geeksforgeeks');
+
+        if (!isAllowedDomain) {
+            return success({
+                isEducational: false,
+                reason: "For now, only w3schools and geeksforgeeks domains are supported for AI Tutor scraping."
+            });
+        }
+
         // 1. Scrape content to verify it exists and is readable
         const { content } = await fetchAndCleanContent(websiteUrl);
 

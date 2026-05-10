@@ -116,15 +116,6 @@ function buildInterviewPrompt(resumeData, turnIndex, conversationHistory = [], m
   const historyText = formatConversationHistory(conversationHistory, aiName);
   const isFirstTurn = turnIndex === 0;
 
-  const dimensions = [
-    'specific project or achievement from their resume',
-    'technical depth and problem-solving approach',
-    'work experience and career progression',
-    'challenges faced and how they overcame them',
-    'collaboration and teamwork'
-  ];
-  const currentDimension = dimensions[turnIndex % dimensions.length];
-
   const lastCandidateMessage = conversationHistory
     .filter(t => t.speaker !== 'AI')
     .pop();
@@ -146,7 +137,7 @@ The candidate seems ready to end the interview. Give a brief, warm wrap-up:
 Respond with ONLY what ${aiName} says. No labels, no JSON.`;
   }
 
-  return `You are ${aiName}, a warm, cheerful, and highly interactive technical interviewer from Qlue.
+  return `You are ${aiName}, a warm, cheerful, and highly realistic Technical Interviewer from Qlue.
 
 CANDIDATE RESUME:
 ${summary}
@@ -174,7 +165,7 @@ function buildWebsiteTeachPrompt(websiteContent, targetConcept, turnIndex, conve
   const historyText = formatConversationHistory(conversationHistory, aiName);
   const isFirstTurn = turnIndex === 0;
 
-  return `You are ${aiName}, a warm, cheerful, and highly effective tutor from Qlue helping a student master ${targetConcept}.
+  return `You are ${aiName}, an actual, expert Tutor from Qlue teaching a student based on the provided website content.
 
 WEBSITE CONTENT:
 ${websiteContent?.substring(0, 1500) || 'Content not available'}
@@ -201,16 +192,7 @@ function buildHrPrompt(userData, turnIndex, conversationHistory = [], aiName = '
   const historyText = formatConversationHistory(conversationHistory, aiName);
   const isFirstTurn = turnIndex === 0;
 
-  const hrTopics = [
-    'career goals and aspirations',
-    'strengths and areas for growth',
-    'handling conflict or pressure',
-    'leadership and initiative',
-    'why they want this role'
-  ];
-  const topic = hrTopics[turnIndex % hrTopics.length];
-
-  return `You are ${aiName}, a fun, vibrant, and warm HR interviewer from Qlue. You love getting to know candidates on a personal level!
+  return `You are ${aiName}, a fun, warm, cheerful, and professional HR Interviewer from Qlue. You love getting to know candidates on a personal level!
 
 CANDIDATE INFO:
 ${userData?.name ? `Name: ${userData.name}` : ''}
@@ -220,10 +202,10 @@ ${historyText ? `CONVERSATION SO FAR:
 ${historyText}` : ''}
 
 INSTRUCTIONS:
-${isFirstTurn ? '- Start with an incredibly warm, friendly greeting to put them at ease.' : '- Transition naturally. React to what they just said like a real human HR person would (e.g., "That sounds like a great experience!" or "I love that approach!").'}
-- Ask exactly ONE engaging behavioral question about ${topic}.
-- Base your follow-up on their previous answer if possible.
-- Keep the vibe conversational, fun, and not like a rigid checklist.
+${isFirstTurn ? '- Start with an incredibly warm, friendly greeting to put them at ease and ask them a general behavioral HR question.' : '- Transition naturally. React to what they just said exactly like a real human HR person would (e.g., "That sounds like a great experience!", "I love that approach!").'}
+- Ask exactly ONE engaging behavioral-oriented question (how they handle situations, teamwork, culture fit, etc).
+- Base your follow-up heavily on their previous answer to make it feel like a real HR conversation.
+- Keep the vibe fun, warm, cheerful, and not like a rigid checklist.
 - Keep under 35 words.
 - NEVER use emojis.
 - ALWAYS format your response clearly as a short acknowledgment followed by the behavioral question.

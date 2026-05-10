@@ -49,8 +49,29 @@ async function getTranscriptBySession(sessionId) {
     return result.Items || [];
 }
 
+/**
+ * Retrieves the most recent transcripts for a session, ordered by turnIndex descending.
+ * Useful for finding the last AI turn or a small window of history efficiently.
+ */
+async function getLatestTranscripts(sessionId, limit = 5) {
+    const command = new QueryCommand({
+        TableName: TRANSCRIPTS_TABLE,
+        IndexName: 'GSI_SessionIdTurnIndex',
+        KeyConditionExpression: 'sessionId = :sid',
+        ExpressionAttributeValues: {
+            ':sid': sessionId
+        },
+        ScanIndexForward: false, // Descending by turnIndex
+        Limit: limit
+    });
+
+    const result = await docClient.send(command);
+    return result.Items || [];
+}
+
 module.exports = {
     SPEAKERS,
     saveTranscript,
-    getTranscriptBySession
+    getTranscriptBySession,
+    getLatestTranscripts
 };
