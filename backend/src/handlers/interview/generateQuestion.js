@@ -90,6 +90,27 @@ function formatConversationHistory(transcripts, aiName = 'AI') {
 // =============================================================================
 // INTERVIEW PROMPT BUILDER
 // =============================================================================
+
+const EXIT_INTENT_PATTERNS = [
+    /\bthank\s+(you|u)\b.*\b(interview|time|opportunity|chat|talk)\b/i,
+    /\bthat\'?s?\s+(it|all|everything)\b/i,
+    /\b(i\'?m?\s+)?done\b/i,
+    /\b(i\s+)?(have\s+)?(to\s+)?go\b/i,
+    /\bend\s+(the\s+)?interview\b/i,
+    /\bwrap\s+(it\s+)?up\b/i,
+    /\bno\s+(more\s+)?questions\b/i,
+    /\b(i\s+)?(think\s+)?(we\'?re?\s+)?(good|finished|complete)\b/i,
+    /\bappreciate\s+(your\s+)?time\b/i,
+    /\bhave\s+a\s+(good|great)\s+day\b/i,
+    /\bgoodbye\b/i,
+    /\bbye\b/i
+];
+
+function checkExitIntent(transcript) {
+    if (!transcript) return false;
+    return EXIT_INTENT_PATTERNS.some(pattern => pattern.test(transcript));
+}
+
 function buildInterviewPrompt(resumeData, turnIndex, conversationHistory = [], moduleType = 'RESUME', aiName = 'Emma') {
   const summary = extractResumeSummary(resumeData);
   const historyText = formatConversationHistory(conversationHistory, aiName);
@@ -98,9 +119,7 @@ function buildInterviewPrompt(resumeData, turnIndex, conversationHistory = [], m
   const lastCandidateMessage = conversationHistory
     .filter(t => t.speaker !== 'AI')
     .pop();
-  const exitPhrases = ['thank you', 'i\'m done', 'that\'s all', 'no more', 'goodbye', 'bye', 'end'];
-  const wantsToExit = lastCandidateMessage &&
-    exitPhrases.some(p => lastCandidateMessage.text?.toLowerCase().includes(p));
+  const wantsToExit = lastCandidateMessage && checkExitIntent(lastCandidateMessage.text);
 
   if (wantsToExit) {
     return `You are ${aiName}, a warm, cheerful, and professional interviewer from Qlue.
@@ -113,6 +132,7 @@ The candidate seems ready to end the interview. Give a brief, warm wrap-up:
 - Mention one specific thing you loved about the conversation
 - Wish them well with a cheerful tone
 - Keep it under 30 words
+- NEVER use emojis.
 
 Respond with ONLY what ${aiName} says. No labels, no JSON.`;
   }
@@ -126,11 +146,14 @@ ${historyText ? `=== CONVERSATION HISTORY ===
 ${historyText}` : '(This is the beginning of the interview)'}
 
 === INSTRUCTIONS (HIGHEST PRIORITY) ===
-${isFirstTurn ? `- Start with an energetic, warm greeting like "Hi, I'm ${aiName}! I'm so excited to chat with you today." and ask them to introduce themselves or kick off with a general resume question.` : '- Act exactly like a real Technical Interviewer. Listen to what the user just said.'}
-- Your questions must strictly be based either on the user's PREVIOUS ANSWER (follow-up questions diving deeper into the technical details they just mentioned) OR based on specific details found in their CANDIDATE RESUME.
-- Be warm and cheerful but remain highly technical.
-- Ask exactly ONE focused question.
-- Keep your entire response under 40 words.
+${isFirstTurn ? `- Start with an energetic, warm greeting like "Hi, I'm ${aiName} from Qlue! I'm so excited to chat with you today."` : '- Act like a real technical interviewer: dynamically follow up on their previous answer. If they mentioned a specific tech, ask why they chose it or what challenges they faced. NEVER say generic filler like "thank you for sharing".'}
+- Keep the conversation highly interactive and fun.
+- Ask exactly ONE focused question about ${currentDimension} OR dig deeper into their last response.
+- MUST reference SPECIFIC details from their resume or past answers.
+- Keep your entire response under 35 words.
+- Be warm, conversational, and engaged.
+- NEVER use emojis.
+- ALWAYS format your response clearly as a short conversational acknowledgment followed by the question.
 
 Respond with ONLY what ${aiName} says. No labels, no JSON.`;
 }
@@ -151,11 +174,13 @@ ${historyText ? `CONVERSATION SO FAR:
 ${historyText}` : ''}
 
 INSTRUCTIONS:
-${isFirstTurn ? '- Start with a very energetic, welcoming greeting and ask them an initial question about the website content.' : '- Act like a real tutor evaluating their previous answer.'}
-- If their last answer was CORRECT: explicitly praise them (e.g., "Good work!", "Keep it up!", "Exactly!"), and then ask a NEW question with INCREASED difficulty based on the website content.
-- If their last answer was WRONG or incomplete: explicitly correct them right there, guide them to the right answer like an actual tutor explaining the concept, and then ask a follow-up question to ensure they understand.
-- Ask exactly ONE question.
-- Keep under 50 words. Be encouraging, educational, and act like a real human tutor.
+${isFirstTurn ? '- Start with a very energetic, welcoming greeting.' : '- Act like a real, attentive tutor. Evaluate their previous answer.'}
+- If their last answer was incorrect or inefficient: cheerfully correct them and provide a concise, more efficient explanation, then move to the next concept.
+- If they answered correctly: praise them enthusiastically and ask a progressively harder follow-up question related to the content.
+- Teach one small, focused concept at a time based on the website content.
+- Keep under 45 words. Be encouraging, fun, and warm.
+- NEVER use emojis.
+- ALWAYS format your response clearly as an evaluation/feedback followed by the follow-up question.
 
 Respond with ONLY what ${aiName} says. No labels, no JSON.`;
 }
@@ -182,6 +207,8 @@ ${isFirstTurn ? '- Start with an incredibly warm, friendly greeting to put them 
 - Base your follow-up heavily on their previous answer to make it feel like a real HR conversation.
 - Keep the vibe fun, warm, cheerful, and not like a rigid checklist.
 - Keep under 35 words.
+- NEVER use emojis.
+- ALWAYS format your response clearly as a short acknowledgment followed by the behavioral question.
 
 Respond with ONLY what ${aiName} says. No labels, no JSON.`;
 }
@@ -200,12 +227,14 @@ ${historyText}` : ''}
 
 INSTRUCTIONS:
 ${isFirstTurn 
-  ? '- Cheerfully ask the user to give their self-introduction.'
-  : '- The user has just given their self-introduction. You must analyze it immediately.'}
-${!isFirstTurn ? '- Give them direct, constructive feedback right now (e.g., "Good job, but you can add a few more points about your recent projects" or "That was excellent, very clear!").' : ''}
-${!isFirstTurn ? '- After giving feedback, politely conclude the exercise (e.g., "That wraps up our self-intro practice!").' : ''}
-- Do NOT ask them another question if you are giving feedback. Conclude it.
-- Keep under 50 words.
+  ? '- Cheerfully ask them to give a brief self-introduction as if they were in a real interview.' 
+  : (turnIndex === 1 
+      ? '- Act like a real mentor. Carefully analyze their introduction. Give them a highly efficient, constructive tip on how to improve it, suggest missing key points, or praise a strong intro. Then, ask ONE follow-up question based on what they said.' 
+      : '- Continue naturally. Dig deeper into a specific interest or experience they mentioned with genuine curiosity.')}
+- Be incredibly supportive, constructive, and fun.
+- Keep under 35 words. Give extremely concise feedback.
+- NEVER use emojis.
+- ALWAYS format your response clearly as your feedback/acknowledgment followed immediately by the follow-up question.
 
 Respond with ONLY what ${aiName} says. No labels, no JSON.`;
 }
@@ -228,6 +257,11 @@ function cleanAIResponse(rawText) {
     // Not JSON
   }
 
+  // If the AI split it with '||' we just join it with a space or break
+  if (cleaned.includes('||')) {
+    cleaned = cleaned.split('||').map(s => s.trim()).join(' ');
+  }
+
   cleaned = cleaned
     .replace(/^Emma:\s*/i, '')
     .replace(/^Interviewer:\s*/i, '')
@@ -241,7 +275,7 @@ function cleanAIResponse(rawText) {
   cleaned = cleaned
     .replace(/\s*\([^)]*\)\s*/g, ' ')
     .replace(/\s*\[[^\]]*\]\s*/g, ' ')
-    .replace(/\s*{[^}]*}\s*/g, ' ');
+    .replace(/\s*\{[^}]*\}\s*/g, ' ');
 
   cleaned = cleaned.replace(/\s+/g, ' ').trim();
 
