@@ -7,7 +7,6 @@ const axios = require('axios');
 exports.handler = async (event) => {
     try {
         const body = JSON.parse(event.body || '{}');
-        console.debug("Registration Request:", { ...body, password: '***' });
         const { email, password, displayName } = body;
 
         if (!email || !password) {
