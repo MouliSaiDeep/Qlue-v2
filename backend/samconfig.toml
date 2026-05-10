@@ -5,14 +5,13 @@ cached = true
 parallel = true
 
 [default.deploy.parameters]
-stack_name = "qlue-season8-prod"
-s3_bucket = "qlue-sam-artifacts-mouli-12345"
-resolve_s3 = false
-s3_prefix = "qlue-season8-prod"
-region = "us-east-1"
-confirm_changeset = false
+stack_name = "qlue-dev"
+resolve_s3 = true
+s3_prefix = "qlue-dev"
+confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
 image_repositories = []
+disable_rollback = true
 
 [default.global.parameters]
 region = "us-east-1"

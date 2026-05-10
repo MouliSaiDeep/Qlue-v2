@@ -6,6 +6,7 @@ import 'package:feather_icons/feather_icons.dart';
 import '../../core/theme.dart';
 import '../../core/models/session_model.dart';
 import '../../core/models/feedback_report_model.dart';
+import 'package:dio/dio.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/constants/api_constants.dart';
 import '../../components/glass_card.dart';
@@ -116,15 +117,19 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
       }
     } catch (e) {
       debugPrint("Error fetching feedback report: $e");
-      if (retries > 0) {
-        // Continue retrying even if there's an API error, as it might be a transient failure
+      // Do NOT retry on auth errors (401/403) — they won't resolve on their own.
+      final is4xxAuthError = e is DioException &&
+          (e.response?.statusCode == 401 || e.response?.statusCode == 403);
+      if (!is4xxAuthError && retries > 0) {
+        // Continue retrying only for transient failures
         await Future.delayed(const Duration(seconds: 3));
         if (mounted) _fetchReport(retries: retries - 1);
       } else {
         setState(() {
           _isLoading = false;
-          _errorMessage =
-              "Unable to load feedback at this time. It may still be generating.";
+          _errorMessage = is4xxAuthError
+              ? "Authentication error. Please log in again and retry."
+              : "Unable to load feedback at this time. It may still be generating.";
         });
       }
     }

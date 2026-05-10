@@ -208,7 +208,7 @@ class WebSocketClient {
     _intentionalDisconnect = true;
     _reconnectTimer?.cancel();
     _heartbeatTimer?.cancel();
-    _channel?.sink.close(status.goingAway);
+    _channel?.sink.close(status.normalClosure);
     _channel = null;
     _isConnected = false;
     _status = WebSocketStatus.disconnected;

@@ -73,9 +73,7 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
   void initState() {
     super.initState();
 
-    // CRITICAL: Reset provider to prevent redirect from old session
     _provider = context.read<InterviewProvider>();
-    _provider.resetForNewSession();
 
     _animationController = AnimationController(
       vsync: this,
@@ -107,7 +105,15 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
     };
     _provider.addListener(_providerListener);
 
+    // CRITICAL: Reset + init deferred to post-frame so notifyListeners() is
+    // never called while the widget tree is still being built (avoids the
+    // "setState() called during build" assertion).
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      // Reset provider to prevent redirect from old session state
+      _provider.resetForNewSession();
+
       final type = widget.moduleType ?? (widget.resumeId != null ? 'RESUME' : (widget.websiteUrl != null ? 'WEBSITE' : 'HR'));
       if (!(type == 'RESUME' || type == 'HR' || type == 'WEBSITE' || type == 'INTRO')) {
         throw ArgumentError('Invalid moduleType');

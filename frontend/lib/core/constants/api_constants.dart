@@ -1,8 +1,8 @@
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../env.dart';
 
 class ApiConstants {
-  static String get baseUrl => dotenv.get('API_BASE_URL', fallback: 'https://api.qlue.ai');
-  static String get websocketUrl => dotenv.get('WEBSOCKET_URL', fallback: 'wss://ws.qlue.ai');
+  static String get baseUrl => Env.apiBaseUrl;
+  static String get websocketUrl => Env.websocketUrl;
 
   static const String login = '/auth/login';
   static const String register = '/auth/register';
