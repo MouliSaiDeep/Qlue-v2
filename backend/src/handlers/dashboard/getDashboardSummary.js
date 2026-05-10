@@ -34,13 +34,14 @@ exports.handler = async (event) => {
             return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized. User ID missing.' }) };
         }
 
-        // Query TBL-003 (Sessions) via GSI for all user sessions
+        // Query TBL-003 (Sessions) via GSI1 for all user sessions
         const sessionCmd = new QueryCommand({
             TableName: CORE_TABLE,
-            // In V2, userId is the Partition Key, so we can query directly
-            KeyConditionExpression: 'userId = :uid',
+            IndexName: 'GSI1',
+            KeyConditionExpression: 'GSI1PK = :pk AND begins_with(GSI1SK, :skPrefix)',
             ExpressionAttributeValues: {
-                ':uid': userId
+                ':pk': `USER#${userId}`,
+                ':skPrefix': 'SESSION#'
             }
         });
 

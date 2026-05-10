@@ -22,30 +22,47 @@ class DioClient {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          final user = FirebaseAuth.instance.currentUser;
+          User? user = FirebaseAuth.instance.currentUser;
+
+          // Wait briefly if Firebase is still initializing during a Hot Restart
+          if (user == null) {
+            await Future.delayed(const Duration(milliseconds: 100));
+            user = FirebaseAuth.instance.currentUser;
+          }
+
           if (user != null) {
-            final token = await user.getIdToken();
+            // Passing false uses the cached token unless it's close to expiring
+            final token = await user.getIdToken(false);
             options.headers['Authorization'] = 'Bearer $token';
           }
           return handler.next(options);
         },
         onError: (DioException e, handler) async {
-          if (e.response?.statusCode == 401) {
+          // ADD THESE PRINT STATEMENTS
+          print("🚨 API ERROR: ${e.response?.statusCode} on ${e.requestOptions.path}");
+          print("🚨 API RESPONSE: ${e.response?.data}");
+
+          if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+            print("🔄 Attempting to refresh Firebase Token...");
             final user = FirebaseAuth.instance.currentUser;
+            
             if (user != null && e.requestOptions.headers['_retry'] != true) {
               e.requestOptions.headers['_retry'] = true;
               try {
-                // Force refresh the token
                 final token = await user.getIdToken(true);
-                e.requestOptions.headers['Authorization'] = 'Bearer $token';
+                print("✅ Token refreshed successfully! Retrying request...");
                 
-                // Retry the request using a temporary Dio to avoid infinite interceptor loops
+                e.requestOptions.headers['Authorization'] = 'Bearer $token';
                 final retryDio = Dio(BaseOptions(baseUrl: ApiConstants.baseUrl));
                 final response = await retryDio.fetch(e.requestOptions);
+                
                 return handler.resolve(response);
               } catch (retryError) {
+                print("❌ Token refresh or retry failed: $retryError");
                 return handler.next(e);
               }
+            } else {
+               print("❌ User is null or retry flag already set.");
             }
           }
           return handler.next(e);

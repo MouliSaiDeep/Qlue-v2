@@ -31,18 +31,20 @@ exports.handler = async (event) => {
 
         const cutoff = getCutoffDate(period);
         
-        // Use UserDateIndex (GSI: Partition=userId, Sort=startTime)
-        let keyCond = 'userId = :uid';
-        const expVals = { ':uid': userId };
+        let keyCond = 'GSI1PK = :pk';
+        const expVals = { ':pk': `USER#${userId}` };
 
         if (cutoff) {
-            keyCond += ' AND startedAt >= :cutoff';
-            expVals[':cutoff'] = cutoff;
+            keyCond += ' AND GSI1SK >= :cutoffSK';
+            expVals[':cutoffSK'] = `SESSION#${cutoff}`;
+        } else {
+            keyCond += ' AND begins_with(GSI1SK, :skPrefix)';
+            expVals[':skPrefix'] = 'SESSION#';
         }
 
         const sessionCmd = new QueryCommand({
             TableName: CORE_TABLE,
-            IndexName: 'UserSessionTimeIndex',
+            IndexName: 'GSI1',
             KeyConditionExpression: keyCond,
             ExpressionAttributeValues: expVals
         });
