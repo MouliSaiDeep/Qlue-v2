@@ -25,25 +25,34 @@ class DioClient {
           final user = FirebaseAuth.instance.currentUser;
           if (user != null) {
             final token = await user.getIdToken();
-            options.headers['Authorization'] = 'Bearer $token';
+            if (token != null && token.isNotEmpty) {
+              options.headers['Authorization'] = 'Bearer $token';
+            }
           }
           return handler.next(options);
         },
         onError: (DioException e, handler) async {
-          if (e.response?.statusCode == 401) {
+          if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
             final user = FirebaseAuth.instance.currentUser;
-            if (user != null && e.requestOptions.headers['_retry'] != true) {
-              e.requestOptions.headers['_retry'] = true;
+
+            // Check if we already tried to refresh for this specific request
+            final int retryCount = e.requestOptions.headers['_retryCount'] ?? 0;
+
+            if (user != null && retryCount < 2) {
+              e.requestOptions.headers['_retryCount'] = retryCount + 1;
               try {
                 // Force refresh the token
                 final token = await user.getIdToken(true);
-                e.requestOptions.headers['Authorization'] = 'Bearer $token';
-                
-                // Retry the request using a temporary Dio to avoid infinite interceptor loops
-                final retryDio = Dio(BaseOptions(baseUrl: ApiConstants.baseUrl));
-                final response = await retryDio.fetch(e.requestOptions);
-                return handler.resolve(response);
+                if (token != null && token.isNotEmpty) {
+                  e.requestOptions.headers['Authorization'] = 'Bearer $token';
+
+                  // Retry the request using a temporary Dio to avoid infinite interceptor loops
+                  final retryDio = Dio(BaseOptions(baseUrl: ApiConstants.baseUrl));
+                  final response = await retryDio.fetch(e.requestOptions);
+                  return handler.resolve(response);
+                }
               } catch (retryError) {
+                // If refresh fails, just pass the original error
                 return handler.next(e);
               }
             }
