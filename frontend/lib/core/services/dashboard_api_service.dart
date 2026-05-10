@@ -1,4 +1,4 @@
-import "../constants/api_constants.dart";
+import 'package:frontend/core/constants/api_constants.dart';
 import '../network/dio_client.dart';
 import '../models/session_model.dart';
 import '../models/dashboard_model.dart';

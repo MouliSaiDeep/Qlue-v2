@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/screens/interview/feedback_report_screen.dart';
 import 'package:go_router/go_router.dart';
 import 'context/auth_provider.dart';
 import 'screens/auth/login_screen.dart';
@@ -11,7 +12,6 @@ import 'screens/tabs/profile_screen.dart';
 import 'screens/interview/interview_session_screen.dart';
 import 'screens/resume/resume_upload_screen.dart';
 import 'screens/resume/resume_detail_screen.dart';
-import 'screens/feedback/feedback_report_screen.dart';
 import 'context/dashboard_provider.dart';
 import 'core/models/session_model.dart';
 
@@ -127,8 +127,11 @@ GoRouter buildAppRouter(AuthProvider authProvider) {
 
       final isAuthenticated = authProvider.isAuthenticated;
       final isAuthPage = state.matchedLocation == '/login' || 
-                         state.matchedLocation == '/register' ||
-                         state.matchedLocation == '/splash';
+                         state.matchedLocation == '/register';
+
+      if (state.matchedLocation == '/splash') {
+        return isAuthenticated ? '/dashboard' : '/login';
+      }
 
       if (!isAuthenticated && !isAuthPage) {
         return '/login';

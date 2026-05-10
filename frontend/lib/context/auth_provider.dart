@@ -55,14 +55,26 @@ class AuthProvider extends ChangeNotifier {
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 
   AuthProvider() {
-    _auth.authStateChanges().listen((User? user) {
+    final startTime = DateTime.now();
+    _auth.authStateChanges().listen((User? user) async {
       final wasNull = _currentUser == null;
       _currentUser = user;
-      _isInitializing = false;
-      notifyListeners();
+      
       if (user != null) {
         _syncWithBackend();
         if (wasNull) fetchProfileData(); // Auto fetch on login
+      }
+
+      if (_isInitializing) {
+        final elapsed = DateTime.now().difference(startTime);
+        final remaining = const Duration(milliseconds: 2000) - elapsed;
+        if (remaining > Duration.zero) {
+          await Future.delayed(remaining);
+        }
+        _isInitializing = false;
+        notifyListeners();
+      } else {
+        notifyListeners();
       }
     });
   }
