@@ -6,17 +6,17 @@ class DashboardApiService {
   final _dio = DioClient().dio;
 
   Future<DashboardSummary> getSummary() async {
-    final response = await _dio.get('/dashboard/summary');
+    final response = await _dio.get('dashboard/summary');
     return DashboardSummary.fromJson(response.data);
   }
 
   Future<RadarData> getModuleStats({String period = '30d'}) async {
-    final response = await _dio.get('/dashboard/stats', queryParameters: {'period': period});
+    final response = await _dio.get('dashboard/stats', queryParameters: {'period': period});
     return RadarData.fromJson(response.data);
   }
 
   Future<List<SessionModel>> getHistory({String? moduleType, int limit = 20}) async {
-    final response = await _dio.get('/dashboard/history', queryParameters: {
+    final response = await _dio.get('dashboard/history', queryParameters: {
       if (moduleType != null) 'moduleType': moduleType,
       'limit': limit,
     });
