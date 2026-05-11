@@ -13,6 +13,7 @@ class ApiConstants {
   
   static const String interviewInit = '/interview/init';
   static const String interviewTerminate = '/interview/terminate';
+  static const String interviewProcess = '/interview/process';
   
   static const String resumeValidateHash = '/resume/validate-hash';
   static const String resumeUploadUrl = '/resume/upload-url';

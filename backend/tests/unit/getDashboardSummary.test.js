@@ -35,7 +35,7 @@ describe('getDashboardSummary baseline', () => {
         ];
 
         mockSend.mockImplementation(async (command) => {
-            if (command.IndexName === 'UserIdIndex') {
+            if (command.IndexName === 'GSI_UserIdStartedAt') {
                 return { Items: mockSessions };
             }
             if (command.IndexName === 'GSI_UserIdGeneratedAt') {

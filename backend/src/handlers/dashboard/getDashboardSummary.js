@@ -79,8 +79,14 @@ exports.handler = async (event) => {
             }
 
             // Only score sessions that generated metrics
-            if (session.accumulatedScores && Object.keys(session.accumulatedScores).length > 0) {
-                const aggrScore = calculateAggregateScore(session.accumulatedScores);
+            let aggrScore = 0;
+            if (session.overallScore !== undefined) {
+                aggrScore = Math.round(session.overallScore);
+            } else if (session.accumulatedScores && Object.keys(session.accumulatedScores).length > 0) {
+                aggrScore = calculateAggregateScore(session.accumulatedScores);
+            }
+
+            if (aggrScore > 0) {
                 scoresArray.push(aggrScore);
                 completedSessions++;
 
