@@ -1,38 +1,29 @@
+const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { mockClient } = require("aws-sdk-client-mock");
 const { handler } = require('../../src/handlers/dashboard/getDashboardSummary');
 
-// Use virtual mocks because the dependencies might not be installed in the environment
-jest.mock('@aws-sdk/client-dynamodb', () => ({
-    DynamoDBClient: jest.fn()
-}), { virtual: true });
+const ddbMock = mockClient(DynamoDBDocumentClient);
 
-jest.mock('@aws-sdk/lib-dynamodb', () => ({
-    DynamoDBDocumentClient: {
-        from: jest.fn().mockReturnValue({
-            send: jest.fn()
-        })
-    },
-    QueryCommand: jest.fn().mockImplementation((args) => args)
-}), { virtual: true });
+describe('getDashboardSummary handler', () => {
+  beforeEach(() => {
+    ddbMock.reset();
+  });
 
-const { DynamoDBDocumentClient } = require('@aws-sdk/lib-dynamodb');
+  it('should return 401 if userId is missing', async () => {
+    const event = {
+      requestContext: { authorizer: {} }
+    };
 
-describe('getDashboardSummary baseline', () => {
-    let mockSend;
+    const result = await handler(event);
 
-    beforeEach(() => {
-        jest.clearAllMocks();
-        mockSend = DynamoDBDocumentClient.from().send;
-    });
+    expect(result.statusCode).toBe(401);
+  });
 
-    it('should return dashboard summary correctly', async () => {
-        const userId = 'user123';
-        const mockSessions = [
-            { userId, moduleType: 'RESUME', accumulatedScores: { technical: 80, communication: 90 } },
-            { userId, moduleType: 'HR', accumulatedScores: { culture: 70 } }
-        ];
-        const mockFeedback = [
-            { userId, strengths: ['Java'], weaknesses: ['Python'], executiveSummary: 'Good' }
-        ];
+  it('should calculate dashboard summary correctly', async () => {
+    const userId = 'user123';
+    const event = {
+      requestContext: { authorizer: { uid: userId } }
+    };
 
         mockSend.mockImplementation(async (command) => {
             if (command.IndexName === 'GSI_UserIdStartedAt') {
@@ -44,31 +35,36 @@ describe('getDashboardSummary baseline', () => {
             return { Items: [] };
         });
 
-        const event = {
-            requestContext: {
-                authorizer: {
-                    uid: userId
-                }
-            }
-        };
-
-        const result = await handler(event);
-        expect(result.statusCode).toBe(200);
-        const body = JSON.parse(result.body);
-        expect(body.userId).toBe(userId);
-        expect(body.summary.totalSessions).toBe(2);
-        expect(body.summary.completedSessions).toBe(2);
-        expect(body.summary.averageScore).toBe(78);
-        expect(body.summary.bestScore).toBe(85);
-        expect(body.summary.latestFeedback.strengths).toEqual(['Java']);
+    ddbMock.on(QueryCommand, { TableName: 'qlue-sessions' }).resolves({
+      Items: mockSessions
     });
 
-    it('should handle unauthorized requests', async () => {
-        const event = {
-            requestContext: {}
-        };
-
-        const result = await handler(event);
-        expect(result.statusCode).toBe(401);
+    ddbMock.on(QueryCommand, { TableName: 'qlue-feedback' }).resolves({
+      Items: mockFeedback
     });
+
+    const result = await handler(event);
+
+    expect(result.statusCode).toBe(200);
+    const body = JSON.parse(result.body);
+    expect(body.userId).toBe(userId);
+    expect(body.summary.totalSessions).toBe(2);
+    expect(body.summary.completedSessions).toBe(2);
+    // (85 + 70) / 2 = 77.5 -> 78
+    expect(body.summary.averageScore).toBe(78);
+    expect(body.summary.bestScore).toBe(85);
+    expect(body.summary.latestFeedback.strengths).toEqual(['Java']);
+  });
+
+  it('should return 500 on error', async () => {
+    const event = {
+      requestContext: { authorizer: { uid: 'user123' } }
+    };
+
+    ddbMock.on(QueryCommand).rejects(new Error('DDB error'));
+
+    const result = await handler(event);
+
+    expect(result.statusCode).toBe(500);
+  });
 });

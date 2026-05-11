@@ -62,6 +62,9 @@ dev_dependencies:
     sdk: flutter
   envied_generator: ^0.5.4
   build_runner: ^2.4.9
+  flutter_launcher_icons: ^0.13.1
+  mocktail: ^1.0.4
+  plugin_platform_interface: ^2.1.8
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -111,3 +114,13 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  web:
+    generate: true
+    image_path: "assets/images/qlue_logo_icon.png"
+  image_path: "assets/images/qlue_logo_icon.png"
+  adaptive_icon_background: "#000000"
+  adaptive_icon_foreground: "assets/images/qlue_logo_icon.png"
