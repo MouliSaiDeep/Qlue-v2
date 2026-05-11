@@ -1,11 +1,15 @@
 /**
  * Lambda handler for generating qualitative feedback reports using Bedrock.
+ * Optimized for speed using Claude 3 Haiku and flattened storage pipeline.
  */
 const { invokeModel, buildFeedbackPrompt } = require('../../lib/bedrock');
+const { createFeedbackReport } = require('../../models/feedback');
+const { updateSessionState, INTERVIEW_STATES } = require('../../models/session');
 const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 
 const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'us-east-1' });
-const STORE_LAMBDA = process.env.STORE_FEEDBACK_LAMBDA;
+const NOTIFY_LAMBDA = process.env.SEND_NOTIFICATION_LAMBDA;
+const FEEDBACK_MODEL = process.env.FEEDBACK_MODEL_ID;
 
 function getRealisticSummary(score, moduleType) {
   if (score >= 85) return `Candidate demonstrated strong proficiency in the ${moduleType} module and meets hiring standards for this specific area.`;
@@ -15,18 +19,23 @@ function getRealisticSummary(score, moduleType) {
 }
 
 exports.handler = async (event) => {
-  const { sessionId, userId, moduleType, transcript, dimensionScores, metadata } = event;
+  const { sessionId, userId, moduleType, transcript, metadata } = event;
+  const dimensionScores = event.dimensionScores || event.accumulatedScores || {};
 
   try {
-    console.info(`Generating qualitative feedback for session ${sessionId}`);
+    console.info(`Generating qualitative feedback for session ${sessionId} using ${FEEDBACK_MODEL}`);
 
-    // 1. Build feedback prompt and invoke Bedrock
-    // Note: Ensure buildFeedbackPrompt explicitly instructs the LLM to "be brutally honest, objective, and do not sugar-coat weaknesses."
-    const promptParams = buildFeedbackPrompt(moduleType, transcript, dimensionScores);
+    // 1. Compute overall score using computeModuleScores internal handler logic
+    const computeModuleScores = require('../interview/computeModuleScores');
+    const scoreResult = await computeModuleScores.handler({ dimensionScores, moduleType });
+    const overallScore = scoreResult.overallScore || 0;
+    const finalDimensionScores = scoreResult.normalizedScores || dimensionScores;
 
-    const bedrockResponse = await invokeModel(undefined, promptParams, { logTokens: true });
+    // 2. Build prompt and invoke Bedrock (Claude 3 Haiku is 10x faster than Nemotron)
+    const promptParams = buildFeedbackPrompt(moduleType, transcript, finalDimensionScores);
+    const bedrockResponse = await invokeModel(FEEDBACK_MODEL, promptParams, { logTokens: true });
     
-    // 2. Parse Bedrock response
+    // 3. Parse Bedrock response
     let feedbackData = {};
     try {
       const text = bedrockResponse.content?.[0]?.text || '';
@@ -35,44 +44,67 @@ exports.handler = async (event) => {
       feedbackData = JSON.parse(jsonMatch[0]);
     } catch (e) {
       console.error('Failed to parse Bedrock feedback JSON:', e);
-      // Realistic fallback instead of fake positivity
       feedbackData = {
         strengths: ['Unable to extract specific strengths from this session.'],
-        improvements: ['System error prevented detailed weakness extraction. Review transcript manually.'],
-        recommendations: ['Repeat the module to generate a complete qualitative profile.']
+        improvements: ['System error prevented detailed weakness extraction.'],
+        recommendations: ['Review transcript manually.']
       };
     }
-
-    // 3. Compute overall score (Average of dimensions as fallback for computeModuleScores)
-    const scores = Object.values(dimensionScores);
-    const overallScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
 
     // 4. Prepare complete report payload
     const reportPayload = {
       sessionId,
       userId,
       moduleType,
-      overallScore: Math.round(overallScore * 10) / 10, // 1 decimal place
-      dimensionScores,
+      generatedAt: Date.now(),
+      overallScore: Math.round(overallScore * 10) / 10,
+      dimensionScores: finalDimensionScores,
       strengths: feedbackData.strengths || [],
       weaknesses: feedbackData.improvements || feedbackData.weaknesses || [],
       recommendations: feedbackData.recommendations || [],
-      // Use the strict tiered summary rather than a sugar-coated default
       executiveSummary: feedbackData.summary || getRealisticSummary(overallScore, moduleType),
-      sessionMetadata: metadata
+      sessionMetadata: {
+        ...metadata,
+        modelUsed: FEEDBACK_MODEL,
+        tokenUsage: bedrockResponse.usage
+      }
     };
 
-    console.info(`Feedback report generated for ${sessionId}. Triggering storage.`);
-    
-    const command = new InvokeCommand({
-      FunctionName: STORE_LAMBDA,
-      InvocationType: 'Event',
-      Payload: Buffer.from(JSON.stringify(reportPayload))
+    // 5. Store the feedback report directly
+    console.info(`Storing feedback report for session ${sessionId}`);
+    const storeResult = await createFeedbackReport(reportPayload);
+    if (!storeResult.success) {
+      throw new Error(`Failed to store feedback: ${storeResult.error?.message}`);
+    }
+    const feedbackId = storeResult.feedbackId;
+
+    // 6. Update session record directly
+    console.info(`Updating session ${sessionId} with final state and scores`);
+    await updateSessionState(sessionId, INTERVIEW_STATES.TERMINATED, null, {
+      accumulatedScores: finalDimensionScores,
+      overallScore: Math.round(overallScore * 10) / 10,
+      updatedAt: new Date().toISOString()
     });
 
-    await lambdaClient.send(command);
-    
-    return { success: true, sessionId };
+    // 7. Trigger notification directly
+    if (NOTIFY_LAMBDA) {
+      console.info(`Triggering completion notification for user ${userId}`);
+      const notifyCommand = new InvokeCommand({
+        FunctionName: NOTIFY_LAMBDA,
+        InvocationType: 'Event',
+        Payload: Buffer.from(JSON.stringify({
+          userId,
+          sessionId,
+          feedbackId,
+          overallScore,
+          moduleType
+        }))
+      });
+      await lambdaClient.send(notifyCommand);
+    }
+
+    console.info(`Feedback generation and storage completed for session ${sessionId}`);
+    return { success: true, feedbackId };
 
   } catch (error) {
     console.error(`Feedback generation failed for session ${sessionId}:`, error);

@@ -6,6 +6,7 @@ class SessionModel {
   final String moduleType;
   final DateTime startedAt;
   final Map<String, dynamic>? accumulatedScores;
+  final double? overallScore;
   final String? status;
 
   SessionModel({
@@ -14,6 +15,7 @@ class SessionModel {
     required this.moduleType,
     required this.startedAt,
     this.accumulatedScores,
+    this.overallScore,
     this.status,
   });
 
@@ -37,11 +39,13 @@ class SessionModel {
       accumulatedScores: json['accumulatedScores'] != null 
           ? Map<String, dynamic>.from(json['accumulatedScores']) 
           : null,
+      overallScore: json['overallScore'] != null ? (json['overallScore'] as num).toDouble() : null,
       status: json['status'] ?? json['currentState'],
     );
   }
 
   int get score {
+    if (overallScore != null) return overallScore!.round();
     if (accumulatedScores == null || accumulatedScores!.isEmpty) return 0;
     int total = 0;
     int count = 0;

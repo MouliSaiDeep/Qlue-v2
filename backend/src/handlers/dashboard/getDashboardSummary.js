@@ -5,7 +5,7 @@ const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1
 const docClient = DynamoDBDocumentClient.from(client);
 
 const FEEDBACK_TABLE = process.env.FEEDBACK_TABLE || 'qlue-feedback';
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE_NAME || 'qlue-sessions';
+const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions';
 
 /**
  * Calculates a unified integer score from the accumulatedScores object.
@@ -65,15 +65,17 @@ exports.handler = async (event) => {
 
         // Metrics Accumulators
         let totalSessions = sessions.length;
-        let moduleBreakdown = { RESUME: 0, HR: 0, WEBSITE: 0 };
+        let moduleBreakdown = { RESUME: 0, HR: 0, WEBSITE: 0, INTRO: 0 };
+        let bestModuleScores = { RESUME: 0, HR: 0, WEBSITE: 0, INTRO: 0 };
         let scoresArray = [];
         let completedSessions = 0;
 
         // Process Data
         for (const session of sessions) {
             // Module Distribution
-            if (session.moduleType && moduleBreakdown[session.moduleType] !== undefined) {
-                moduleBreakdown[session.moduleType]++;
+            const mod = (session.moduleType || "").toUpperCase();
+            if (moduleBreakdown[mod] !== undefined) {
+                moduleBreakdown[mod]++;
             }
 
             // Only score sessions that generated metrics
@@ -81,6 +83,13 @@ exports.handler = async (event) => {
                 const aggrScore = calculateAggregateScore(session.accumulatedScores);
                 scoresArray.push(aggrScore);
                 completedSessions++;
+
+                // Track best per module
+                if (mod && bestModuleScores[mod] !== undefined) {
+                    if (aggrScore > bestModuleScores[mod]) {
+                        bestModuleScores[mod] = aggrScore;
+                    }
+                }
             }
         }
 
@@ -103,6 +112,7 @@ exports.handler = async (event) => {
                     averageScore,
                     bestScore,
                     moduleBreakdown,
+                    bestModuleScores,
                     latestFeedback: latestFeedback ? {
                         strengths: latestFeedback.strengths || [],
                         improvements: latestFeedback.weaknesses || latestFeedback.improvements || [],

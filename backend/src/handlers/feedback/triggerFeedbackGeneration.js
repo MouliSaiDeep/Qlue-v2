@@ -6,6 +6,7 @@ const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 
 const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const TRANSCRIPT_TABLE = process.env.TRANSCRIPTS_TABLE || 'qlue-transcripts';
+const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions';
 const ANALYZE_LAMBDA = process.env.ANALYZE_TRANSCRIPT_LAMBDA;
 
 exports.handler = async (event) => {
@@ -41,6 +42,10 @@ exports.handler = async (event) => {
         .map(t => `${(t.speaker || 'UNKNOWN').toUpperCase()}: ${t.text}`)
         .join('\n\n');
 
+      // 2b. Fetch Session for accumulatedScores
+      const sessionResult = await ddb.get(SESSIONS_TABLE, { sessionId });
+      const accumulatedScores = sessionResult.success && sessionResult.data ? sessionResult.data.accumulatedScores : null;
+
       // 3. Invoke analyzeTranscript asynchronously
       const payload = {
         sessionId,
@@ -48,10 +53,11 @@ exports.handler = async (event) => {
         moduleType,
         transcript: fullTranscript,
         contextRef,
+        accumulatedScores,
         metadata: {
           turnCount: transcriptResult.data.length,
-          startTime: transcriptResult.data[0].timestamp,
-          endTime: transcriptResult.data[transcriptResult.data.length - 1].timestamp
+          startTime: new Date(transcriptResult.data[0].timestamp).getTime(),
+          endTime: new Date(transcriptResult.data[transcriptResult.data.length - 1].timestamp).getTime()
         }
       };
 

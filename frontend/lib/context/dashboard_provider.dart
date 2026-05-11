@@ -21,6 +21,17 @@ class DashboardProvider extends ChangeNotifier {
   String? _error;
   String? get error => _error;
 
+  // Stale flag: when true, the dashboard screen will re-fetch on next visit
+  bool _isStale = false;
+  bool get isStale => _isStale;
+
+  /// Mark the dashboard as stale so it re-fetches on next visit.
+  /// Call this after a session completes feedback generation.
+  void markStale() {
+    _isStale = true;
+    notifyListeners();
+  }
+
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
@@ -30,8 +41,9 @@ class DashboardProvider extends ChangeNotifier {
     try {
       _setLoading(true);
       _error = null;
+      _isStale = false;
 
-      // Fetch sumary, stats and history in parallel
+      // Fetch summary, stats and history in parallel
       final results = await Future.wait([
         _apiService.getSummary(),
         _apiService.getModuleStats(),

@@ -99,10 +99,9 @@ exports.handler = async (event) => {
         }
 
         try {
-            // 4. We use the Web REST API to securely login the user behind the scenes
-            // to get their idToken, which is required to trigger Firebase's native verification email
+            const FIREBASE_AUTH_BASE_URL = process.env.FIREBASE_AUTH_BASE_URL || 'https://identitytoolkit.googleapis.com/v1/accounts';
             const signInRes = await axios.post(
-                `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`,
+                `${FIREBASE_AUTH_BASE_URL}:signInWithPassword?key=${FIREBASE_API_KEY}`,
                 { email, password, returnSecureToken: true }
             );
             
@@ -110,7 +109,7 @@ exports.handler = async (event) => {
 
             // 5. Trigger Firebase's native email sender
             await axios.post(
-                `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_API_KEY}`,
+                `${FIREBASE_AUTH_BASE_URL}:sendOobCode?key=${FIREBASE_API_KEY}`,
                 { requestType: 'VERIFY_EMAIL', idToken: idToken }
             );
         } catch (emailErr) {

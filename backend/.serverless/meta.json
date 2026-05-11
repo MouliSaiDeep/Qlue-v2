@@ -1,0 +1,64 @@
+{
+  "C:\\Qlue-v2\\Qlue-v2\\backend\\samconfig.toml": {
+    "versionFramework": "4.35.1",
+    "servicePath": "C:\\Qlue-v2\\Qlue-v2\\backend\\samconfig.toml",
+    "serviceConfigFileName": "samconfig.toml",
+    "service": {
+      "version": 0.1,
+      "default": {
+        "build": {
+          "parameters": {
+            "cached": true,
+            "parallel": true
+          }
+        },
+        "deploy": {
+          "parameters": {
+            "stack_name": "qlue-dev",
+            "resolve_s3": true,
+            "s3_prefix": "qlue-dev",
+            "confirm_changeset": true,
+            "capabilities": "CAPABILITY_IAM",
+            "image_repositories": [],
+            "disable_rollback": true
+          }
+        },
+        "global": {
+          "parameters": {
+            "region": "us-east-1"
+          }
+        }
+      },
+      "prod": {
+        "deploy": {
+          "parameters": {
+            "stack_name": "qlue-season8-prod",
+            "resolve_s3": true,
+            "s3_prefix": "qlue-season8-prod",
+            "region": "us-east-1",
+            "confirm_changeset": false,
+            "capabilities": "CAPABILITY_IAM",
+            "image_repositories": []
+          }
+        }
+      }
+    },
+    "error": {
+      "message": "You must sign in or use a license key with Serverless Framework V.4 and later versions. Please use \"serverless login\".",
+      "stack": "Error: You must sign in or use a license key with Serverless Framework V.4 and later versions. Please use \"serverless login\".\n    at Authentication.getAuthenticatedData (file:///C:/Users/mouli/.serverless/releases/4.35.1/package/dist/sf-core.js:940:3023)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async Authentication.authenticate (file:///C:/Users/mouli/.serverless/releases/4.35.1/package/dist/sf-core.js:943:4133)\n    at async CfnRunner.resolveVariablesAndAuthenticate (file:///C:/Users/mouli/.serverless/releases/4.35.1/package/dist/sf-core.js:951:2394)\n    at async CfnRunner.run (file:///C:/Users/mouli/.serverless/releases/4.35.1/package/dist/sf-core.js:1505:3028)\n    at async route (file:///C:/Users/mouli/.serverless/releases/4.35.1/package/dist/sf-core.js:2566:2848)\n    at async Object.run (file:///C:/Users/mouli/.serverless/releases/4.35.1/package/dist/sf-core.js:2567:3886)\n    at async run2 (file:///C:/Users/mouli/.serverless/releases/4.35.1/package/dist/sf-core.js:2567:5040)"
+    },
+    "serviceRawFile": "version = 0.1\r\n\r\n[default.build.parameters]\r\ncached = true\r\nparallel = true\r\n\r\n[default.deploy.parameters]\r\nstack_name = \"qlue-dev\"\r\nresolve_s3 = true\r\ns3_prefix = \"qlue-dev\"\r\nconfirm_changeset = true\r\ncapabilities = \"CAPABILITY_IAM\"\r\nimage_repositories = []\r\ndisable_rollback = true\r\n\r\n[default.global.parameters]\r\nregion = \"us-east-1\"\r\n\r\n[prod.deploy.parameters]\r\nstack_name = \"qlue-season8-prod\"\r\nresolve_s3 = true\r\ns3_prefix = \"qlue-season8-prod\"\r\nregion = \"us-east-1\"\r\nconfirm_changeset = false\r\ncapabilities = \"CAPABILITY_IAM\"\r\nimage_repositories = []\r\n",
+    "command": [
+      "deploy"
+    ],
+    "options": {
+      "function": "getModuleStats",
+      "stage": "staging"
+    },
+    "serviceProviderAwsCfStackId": null,
+    "serviceProviderAwsCfStackCreated": null,
+    "serviceProviderAwsCfStackUpdated": null,
+    "serviceProviderAwsCfStackStatus": null,
+    "serviceProviderAwsCfStackOutputs": null
+  }
+}

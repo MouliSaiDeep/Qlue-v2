@@ -2,6 +2,20 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Qlue AI-powered voice interview simulation mobile app.
 
+Parameters:
+  BedrockModelId:
+    Type: String
+    Default: 'nvidia.nemotron-super-3-120b'
+    Description: 'The primary LLM for interview reasoning and question generation.'
+  FeedbackModelId:
+    Type: String
+    Default: 'anthropic.claude-3-haiku-20240307-v1:0'
+    Description: 'The specialized LLM for high-speed qualitative feedback generation.'
+  AllowedVoices:
+    Type: String
+    Default: 'Tiffany,Ruth,Joanna,Matthew,Stephen'
+    Description: 'Comma-separated list of allowed Amazon Polly voices.'
+
 Globals:
   Function:
     Runtime: nodejs24.x
@@ -26,8 +40,11 @@ Globals:
         AUDIO_BUCKET: !Ref AudioBucket
         FEEDBACK_TOPIC_ARN: !Ref FeedbackTriggerTopic
         WEBSOCKET_ENDPOINT: !Sub "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
-        BEDROCK_MODEL_ID: 'nvidia.nemotron-super-3-120b'
-        ALLOWED_VOICES: "Tiffany,Ruth,Joanna,Matthew,Stephen"
+        BEDROCK_MODEL_ID: !Ref BedrockModelId
+        ALLOWED_VOICES: !Ref AllowedVoices
+        FIREBASE_AUTH_BASE_URL: 'https://identitytoolkit.googleapis.com/v1/accounts'
+        FIREBASE_TOKEN_BASE_URL: 'https://securetoken.googleapis.com/v1/token'
+        SCRAPER_BASE_URL: 'https://api.scrape.do'
 
 Resources:
   # ==============================================================================
@@ -1314,11 +1331,13 @@ Resources:
     Properties:
       Handler: handlers/feedback/generateFeedbackReport.handler
       CodeUri: src/
-      MemorySize: 1024
+      MemorySize: 1536
       Timeout: 60
       Environment:
         Variables:
           STORE_FEEDBACK_LAMBDA: !Ref StoreFeedbackReportFunction
+          SEND_NOTIFICATION_LAMBDA: !Ref SendFeedbackNotificationFunction
+          FEEDBACK_MODEL_ID: !Ref FeedbackModelId
       Events:
         Api:
           Type: Api
@@ -1338,7 +1357,9 @@ Resources:
         - Statement:
             - Effect: Allow
               Action: lambda:InvokeFunction
-              Resource: !GetAtt StoreFeedbackReportFunction.Arn
+              Resource: 
+                - !GetAtt StoreFeedbackReportFunction.Arn
+                - !GetAtt SendFeedbackNotificationFunction.Arn
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref BedrockConfigSecret }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FcmServerKeySecret }
 
@@ -1420,6 +1441,13 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:Query']
+              Resource:
+                - !Sub "${SessionsTable.Arn}/index/*"
+                - !Sub "${FeedbackTable.Arn}/index/*"
+                - !Sub "${TranscriptsTable.Arn}/index/*"
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
   GetScoreTrendsFunction:
     Type: AWS::Serverless::Function
@@ -1473,6 +1501,11 @@ Resources:
             RestApiId: !Ref RestApi
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:Query']
+              Resource:
+                - !Sub "${SessionsTable.Arn}/index/*"
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
 
   GetSessionDetailFunction:
@@ -1492,6 +1525,14 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:Query']
+              Resource:
+                - !Sub "${SessionsTable.Arn}/index/*"
+                - !Sub "${FeedbackTable.Arn}/index/*"
+                - !Sub "${TranscriptsTable.Arn}/index/*"
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
 
   GetTranscriptFunction:
