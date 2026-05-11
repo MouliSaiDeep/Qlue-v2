@@ -50,11 +50,14 @@ class AuthProvider extends ChangeNotifier {
     return _currentUser?.displayName ?? "User";
   }
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  // google_sign_in 7.x uses singleton instance
-  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+  final FirebaseAuth _auth;
+  final GoogleSignIn _googleSignIn;
+  final Dio _dio;
 
-  AuthProvider() {
+  AuthProvider({FirebaseAuth? auth, GoogleSignIn? googleSignIn, Dio? dio})
+      : _auth = auth ?? FirebaseAuth.instance,
+        _googleSignIn = googleSignIn ?? GoogleSignIn.instance,
+        _dio = dio ?? DioClient().dio {
     final startTime = DateTime.now();
     _auth.authStateChanges().listen((User? user) async {
       final wasNull = _currentUser == null;
@@ -84,7 +87,7 @@ class AuthProvider extends ChangeNotifier {
     _clearError();
     try {
       // 1. Call backend to check verification and get sync status
-      final response = await DioClient().dio.post(
+      final response = await _dio.post(
         ApiConstants.login,
         data: {'email': email, 'password': password},
       );
@@ -113,7 +116,7 @@ class AuthProvider extends ChangeNotifier {
     _clearError();
     try {
       // Call backend to handle registration and verification email
-      await DioClient().dio.post(
+      await _dio.post(
         ApiConstants.register,
         data: {
           'email': email,
@@ -163,7 +166,7 @@ class AuthProvider extends ChangeNotifier {
       if (user != null) {
         // Explicitly sync with backend for Google Sign-in
         final idToken = await user.getIdToken();
-        await DioClient().dio.post(
+        await _dio.post(
           ApiConstants.googleLogin,
           data: {'idToken': idToken},
         );
@@ -185,13 +188,13 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> _syncWithBackend() async {
     try {
-      await DioClient().dio.post(ApiConstants.authSync);
+      await _dio.post(ApiConstants.authSync);
     } catch (_) {}
   }
 
   Future<void> fetchProfileData() async {
     try {
-      final response = await DioClient().dio.get(ApiConstants.authProfile);
+      final response = await _dio.get(ApiConstants.authProfile);
       final data = response.data;
       _email = data['email'] ?? "";
       _profession = data['profession'] ?? "";
@@ -231,7 +234,7 @@ class AuthProvider extends ChangeNotifier {
       }
       
       // 3. Update Backend
-      await DioClient().dio.put(
+      await _dio.put(
         ApiConstants.authProfile,
         data: {
           if (name != null) 'displayName': name,
@@ -260,7 +263,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> updateFcmToken(String token) async {
     try {
-      await DioClient().dio.post(ApiConstants.updateFcmToken, data: {'token': token});
+      await _dio.post(ApiConstants.updateFcmToken, data: {'token': token});
     } catch (_) {}
   }
 
