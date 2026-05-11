@@ -25,13 +25,15 @@ describe('getDashboardSummary handler', () => {
       requestContext: { authorizer: { uid: userId } }
     };
 
-    const mockSessions = [
-      { userId, moduleType: 'RESUME', accumulatedScores: { technical: 80, communication: 90 } },
-      { userId, moduleType: 'HR', accumulatedScores: { culture: 70 } }
-    ];
-    const mockFeedback = [
-      { userId, strengths: ['Java'], weaknesses: ['Python'], executiveSummary: 'Good' }
-    ];
+        mockSend.mockImplementation(async (command) => {
+            if (command.IndexName === 'GSI_UserIdStartedAt') {
+                return { Items: mockSessions };
+            }
+            if (command.IndexName === 'GSI_UserIdGeneratedAt') {
+                return { Items: mockFeedback };
+            }
+            return { Items: [] };
+        });
 
     ddbMock.on(QueryCommand, { TableName: 'qlue-sessions' }).resolves({
       Items: mockSessions

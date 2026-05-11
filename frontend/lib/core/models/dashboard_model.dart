@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 class DashboardSummary {
   final int totalSessions;
   final int completedSessions;
@@ -70,8 +68,18 @@ class RadarData {
 
   Map<String, double> getDimensionsForModule(String module) {
     final modKey = module.toUpperCase();
-    if (!data.containsKey(modKey) || data[modKey]!.isEmpty) {
+    if (!data.containsKey(modKey) || data[modKey] == null || data[modKey]!.isEmpty) {
       // Default placeholder radar data to keep UI beautiful even when empty
+      if (modKey == 'RESUME') {
+        return {"Clarity": 0.0, "Fluency": 0.0, "Tech Vocab": 0.0, "Examples": 0.0};
+      } else if (modKey == 'HR') {
+        return {"Teamwork": 0.0, "Ethics": 0.0, "Problem": 0.0, "Comm": 0.0, "Self": 0.0};
+      } else if (modKey == 'WEBSITE') {
+        return {"Accuracy": 0.0, "Growth": 0.0, "Logic": 0.0, "Comm": 0.0, "Memory": 0.0};
+      } else if (modKey == 'INTRO') {
+        return {"Clarity": 0.0, "Structure": 0.0, "Confidence": 0.0, "Relevance": 0.0};
+      }
+
       return {
         "Comm": 0.0,
         "Tech": 0.0,

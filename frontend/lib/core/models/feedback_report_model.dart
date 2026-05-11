@@ -28,7 +28,9 @@ class FeedbackReportModel {
           role: item['speaker'] ?? 'UNKNOWN',
           text: item['text'] ?? '',
           timestamp: item['timestamp'] != null 
-            ? DateTime.parse(item['timestamp']) 
+            ? (item['timestamp'] is int
+                ? DateTime.fromMillisecondsSinceEpoch(item['timestamp'])
+                : DateTime.tryParse(item['timestamp'].toString()) ?? DateTime.now())
             : DateTime.now(),
           turnIndex: item['turnIndex'] ?? 0,
         );
@@ -53,7 +55,7 @@ class FeedbackReportModel {
     if (data == null) return {};
     if (data is! Map) return {};
     final result = <String, double>{};
-    (data as Map).forEach((key, value) {
+    data.forEach((key, value) {
       if (value is num) {
         result[key.toString()] = value.toDouble();
       } else if (value is String) {

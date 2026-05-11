@@ -161,6 +161,11 @@ async function updateSessionState(sessionId, newState, expectedCurrentState = nu
         expressionAttributeValues[":accumulatedScores"] = updates.accumulatedScores;
     }
 
+    if (updates.overallScore !== undefined) {
+        updateExpression += ", overallScore = :overallScore";
+        expressionAttributeValues[":overallScore"] = updates.overallScore;
+    }
+
     if (updates.questionText !== undefined) {
         updateExpression += ", questionText = :questionText";
         expressionAttributeValues[":questionText"] = updates.questionText;

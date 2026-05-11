@@ -421,7 +421,10 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
     terminateSession();
     if (savedSessionId != null) {
       try {
-        await _dio.post('${ApiConstants.interviewInit}/$savedSessionId/terminate');
+        await DioClient().dio.post(ApiConstants.interviewTerminate, data: {
+          'sessionId': savedSessionId,
+          'reason': 'USER_INITIATED'
+        });
       } catch (e) {
         debugPrint('REST terminate failed: $e');
       }
