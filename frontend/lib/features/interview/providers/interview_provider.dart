@@ -52,14 +52,27 @@ class InterviewProvider extends ChangeNotifier {
   bool isSessionEnded = false;
   int _silenceStrikes = 0;
   int get silenceStrikes => _silenceStrikes;
-
   WebSocketClient? _wsClient;
-  final SttService _sttService = SttService();
-  final TtsService _ttsService = TtsService();
+
+  final SttService _sttService;
+  final TtsService _ttsService;
+  final Dio _dio;
+  final FirebaseAuth _auth;
 
   StreamSubscription? _wsSubscription;
 
-  InterviewProvider();
+  final WebSocketClient Function(String url, String userId, String sessionId)? wsClientFactory;
+
+  InterviewProvider({
+    SttService? sttService,
+    TtsService? ttsService,
+    Dio? dio,
+    FirebaseAuth? auth,
+    this.wsClientFactory,
+  })  : _sttService = sttService ?? SttService(),
+        _ttsService = ttsService ?? TtsService(),
+        _dio = dio ?? DioClient().dio,
+        _auth = auth ?? FirebaseAuth.instance;
 
   void _initWebSocket() {
     if (_wsClient == null) return;
@@ -302,7 +315,7 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
 
       await _sttService.init();
       // Get the current user's Firebase ID token
-      final user = FirebaseAuth.instance.currentUser;
+      final user = _auth.currentUser;
       final idToken = await user?.getIdToken();
 
     if (user == null || idToken == null) {
@@ -314,7 +327,7 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
 
     // Load voice preference from auth provider if not already set
     try {
-      final authProvider = FirebaseAuth.instance.currentUser;
+      final authProvider = _auth.currentUser;
       if (authProvider != null) {
         // This would need to come from your auth/user model
         // For now, use default unless user has explicitly set it
@@ -325,7 +338,7 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
 
     // Create a backend session before opening the websocket.
     try {
-      final response = await DioClient().dio.post(ApiConstants.interviewInit, data: {
+      final response = await _dio.post(ApiConstants.interviewInit, data: {
         'moduleType': moduleType,
         'voiceId': _selectedVoiceId,
         'engine': _selectedEngine,
@@ -356,11 +369,19 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
       return;
     }
 
-    _wsClient = WebSocketClient(
-      url: ApiConstants.websocketUrl,
-      userId: user.uid,
-      sessionId: sessionId!,
-    );
+    if (wsClientFactory != null) {
+      _wsClient = wsClientFactory!(
+        ApiConstants.websocketUrl,
+        user.uid,
+        sessionId!,
+      );
+    } else {
+      _wsClient = WebSocketClient(
+        url: ApiConstants.websocketUrl,
+        userId: user.uid,
+        sessionId: sessionId!,
+      );
+    }
     _initWebSocket();
 
     try {
@@ -400,7 +421,7 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
     terminateSession();
     if (savedSessionId != null) {
       try {
-        await DioClient().dio.post('${ApiConstants.interviewInit}/$savedSessionId/terminate');
+        await _dio.post('${ApiConstants.interviewInit}/$savedSessionId/terminate');
       } catch (e) {
         debugPrint('REST terminate failed: $e');
       }

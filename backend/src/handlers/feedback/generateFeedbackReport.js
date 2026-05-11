@@ -26,7 +26,7 @@ exports.handler = async (event) => {
     console.info(`Generating qualitative feedback for session ${sessionId} using ${FEEDBACK_MODEL}`);
 
     // 1. Compute overall score using computeModuleScores internal handler logic
-    const computeModuleScores = require('../interview/computeModuleScores');
+    const computeModuleScores = require('./computeModuleScores');
     const scoreResult = await computeModuleScores.handler({ dimensionScores, moduleType });
     const overallScore = scoreResult.overallScore || 0;
     const finalDimensionScores = scoreResult.normalizedScores || dimensionScores;
