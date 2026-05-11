@@ -1492,6 +1492,7 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
 
   GetTranscriptFunction:

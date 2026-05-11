@@ -16,33 +16,12 @@ function getAiPersona(voiceId) {
   return VOICE_PERSONA_MAP[voiceId] || 'Alex';
 }
 
-// =============================================================================
-// RELEVANCE & EXIT CHECKING (Ported from Python)
-// =============================================================================
-const EXIT_INTENT_PATTERNS = [
-  /\bthank\s+(you|u)\b.*\b(interview|time|opportunity|chat|talk)\b/i,
-  /\bthat\'?s?\s+(it|all|everything)\b/i,
-  /\b(i\'?m?\s+)?done\b/i,
-  /\b(i\s+)?(have\s+)?(to\s+)?go\b/i,
-  /\bend\s+(the\s+)?interview\b/i,
-  /\bwrap\s+(it\s+)?up\b/i,
-  /\bno\s+(more\s+)?questions\b/i,
-  /\b(i\s+)?(think\s+)?(we\'?re?\s+)?(good|finished|complete)\b/i,
-  /\bappreciate\s+(your\s+)?time\b/i,
-  /\bhave\s+a\s+(good|great)\s+day\b/i,
-  /\bgoodbye\b/i,
-  /\bbye\b/i
-];
-
 const IRRELEVANT_PATTERNS = [
   /\b(weather|movie|game|sports|football|cricket|food|restaurant|hobby|pet|dog|cat)\b/i,
   /\b(let me tell you a joke|funny story|by the way|random thought)\b/i,
 ];
 
-function checkExitIntent(transcript) {
-  if (!transcript) return false;
-  return EXIT_INTENT_PATTERNS.some(pattern => pattern.test(transcript));
-}
+
 
 function analyzeResponseRelevance(transcript) {
   if (!transcript || transcript.trim() === '') return { isRelevant: true, issue: null };
@@ -121,19 +100,6 @@ function buildInterviewPrompt(resumeData, turnIndex, conversationHistory = [], a
   const historyText = formatConversationHistory(conversationHistory, aiName);
   const isFirstTurn = turnIndex === 0;
 
-  const wantsToExit = conversationHistory.length > 0 && checkExitIntent(conversationHistory[conversationHistory.length - 1].text);
-
-  if (wantsToExit) {
-    return `You are ${aiName}, a warm, professional interviewer from Qlue.
-<conversation_history>\n${historyText}\n</conversation_history>
-The candidate seems ready to end the interview. Wrap up warmly:
-- Thank them sincerely for their time.
-- Mention one specific thing you loved about the chat.
-- Keep it under 2 short sentences.
-- NEVER use emojis.
-Output exactly what you will say. No labels.`;
-  }
-
   let turnInstruction = isFirstTurn 
     ? `\n<turn_instruction>\nStart with an energetic greeting like "Hi, I'm ${aiName} from Qlue! I'm excited to chat with you today." followed by your first question.\n</turn_instruction>` 
     : '';
@@ -153,7 +119,8 @@ ${summary}
 <core_personality>
 - You are professional, highly realistic, warm, and approachable.
 - You listen actively and react naturally to what the candidate says.
-- You NEVER say generic filler like "thank you for sharing".
+- You NEVER say generic filler like "thank you for sharing", "thanks for that", or "that's happy to know about you".
+- You NEVER thank the candidate for their time until the very end of the interview (which is not now).
 - You NEVER use emojis.
 </core_personality>
 
@@ -186,7 +153,8 @@ ${websiteContent?.substring(0, 1500) || 'Content not available'}
 
 <core_personality>
 - You are encouraging, fun, and highly attentive.
-- You evaluate answers gently but clearly.
+- You react exactly like a real human tutor (e.g., "Exactly!" or "Not quite, but good try!").
+- You NEVER say generic filler like "thank you for sharing" or "thanks for your time".
 - You NEVER use emojis.
 </core_personality>
 
@@ -232,6 +200,7 @@ ${userData?.currentRole ? `Current Role: ${userData.currentRole}` : ''}
 <core_personality>
 - You are exceptionally friendly and put people at ease.
 - You react exactly like a real human HR person (e.g., "That sounds like a great experience!").
+- You NEVER say generic filler like "thank you for sharing" or "thanks for your time".
 - You NEVER use emojis.
 </core_personality>
 
@@ -258,6 +227,7 @@ function buildIntroPrompt(turnIndex, conversationHistory = [], aiName = 'Emma') 
 
 <core_personality>
 - You are incredibly supportive, constructive, and fun.
+- You NEVER say generic filler like "thank you for sharing" or "thanks for your time".
 - You NEVER use emojis.
 </core_personality>
 
