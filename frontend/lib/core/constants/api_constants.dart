@@ -28,4 +28,8 @@ class ApiConstants {
   
   static const String feedbackReport = '/dashboard/session'; // Returns both session and feedback data
   static const String sessionHistory = '/session/history';
+
+  // External Service Endpoints
+  static const String uiAvatarsBaseUrl = 'https://ui-avatars.com/api/';
+  static const String dicebearBaseUrl = 'https://api.dicebear.com/7.x/avataaars/png';
 }

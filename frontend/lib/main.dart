@@ -4,6 +4,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'core/env.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:provider/provider.dart';
 import 'app.dart';
 import 'context/auth_provider.dart';
@@ -64,6 +65,20 @@ class _RouterWrapperState extends State<RouterWrapper> {
     super.initState();
     // Build the router once and let GoRouter handle updates via refreshListenable
     _router = buildAppRouter(context.read<AuthProvider>());
+    
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      if (message.data['type'] == 'FEEDBACK_READY' && message.data['sessionId'] != null) {
+        _router.push('/feedback/${message.data['sessionId']}');
+      }
+    });
+    
+    FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) {
+      if (message != null && message.data['type'] == 'FEEDBACK_READY' && message.data['sessionId'] != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _router.push('/feedback/${message.data['sessionId']}');
+        });
+      }
+    });
   }
 
   @override

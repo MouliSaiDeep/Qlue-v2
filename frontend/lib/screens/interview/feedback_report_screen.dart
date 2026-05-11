@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:feather_icons/feather_icons.dart';
+import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/models/session_model.dart';
 import '../../core/models/feedback_report_model.dart';
@@ -11,6 +12,7 @@ import '../../core/network/dio_client.dart';
 import '../../core/constants/api_constants.dart';
 import '../../components/glass_card.dart';
 import '../../components/spectral_background.dart';
+import '../../context/dashboard_provider.dart';
 
 class FeedbackReportScreen extends StatefulWidget {
   final SessionModel? session;
@@ -61,7 +63,7 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
     });
   }
 
-  Future<void> _fetchReport({int retries = 40}) async {
+  Future<void> _fetchReport({int retries = 15}) async {
     final sId = widget.session?.sessionId ?? widget.sessionId;
     if (sId == null) {
       setState(() {
@@ -100,6 +102,10 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
             _report = FeedbackReportModel.fromJson(feedbackData);
             _isLoading = false;
           });
+          // Mark dashboard as stale so it re-fetches scores/radar when navigated back
+          if (mounted) {
+            context.read<DashboardProvider>().markStale();
+          }
         } else {
           if (retries > 0) {
             await Future.delayed(const Duration(seconds: 3));
@@ -400,9 +406,15 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
     if (_report != null && _report!.dimensionScores.isNotEmpty) {
       final entries = _report!.dimensionScores.entries.toList();
       if (entries.length >= 3) {
-        // Take first 3 entries
-        finalData = entries.take(3).map((e) => e.value / 100).toList();
-        finalLabels = entries.take(3).map((e) => e.key).toList();
+        // Show all entries, no longer hardcoded to 3
+        finalData = entries.map((e) => e.value / 100).toList();
+        finalLabels = entries.map((e) {
+          final str = e.key;
+          if (str.isEmpty) return str;
+          // Format camelCase to Title Case approximately
+          final formatted = str.replaceAll(RegExp(r'(?<=[a-z])(?=[A-Z])'), ' ');
+          return formatted[0].toUpperCase() + formatted.substring(1);
+        }).toList();
       } else {
         // Pad with default data if less than 3
         finalData = entries.map((e) => e.value / 100).toList();

@@ -15,6 +15,8 @@ import '../profile/help_support_screen.dart';
 import '../../components/glass_card.dart';
 import '../../components/avatar.dart';
 import '../../components/spectral_background.dart';
+import '../../core/constants/model_constants.dart';
+import '../../core/constants/api_constants.dart';
 
 
 class SettingRow extends StatelessWidget {
@@ -208,12 +210,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final t = AppThemeColors.of(context);
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final avatars = [
-      "https://api.dicebear.com/7.x/avataaars/png?seed=Felix&backgroundColor=b6e3f4",
-      "https://api.dicebear.com/7.x/avataaars/png?seed=Aneka&backgroundColor=ffdfbf",
-      "https://api.dicebear.com/7.x/avataaars/png?seed=Charlie&backgroundColor=c0aede",
-      "https://api.dicebear.com/7.x/avataaars/png?seed=George&backgroundColor=d1d4f9",
-      "https://api.dicebear.com/7.x/avataaars/png?seed=Sophie&backgroundColor=ffd5dc",
-      "https://api.dicebear.com/7.x/avataaars/png?seed=Oliver&backgroundColor=c1f4c1",
+      "${ApiConstants.dicebearBaseUrl}?seed=Felix&backgroundColor=b6e3f4",
+      "${ApiConstants.dicebearBaseUrl}?seed=Aneka&backgroundColor=ffdfbf",
+      "${ApiConstants.dicebearBaseUrl}?seed=Charlie&backgroundColor=c0aede",
+      "${ApiConstants.dicebearBaseUrl}?seed=George&backgroundColor=d1d4f9",
+      "${ApiConstants.dicebearBaseUrl}?seed=Sophie&backgroundColor=ffd5dc",
+      "${ApiConstants.dicebearBaseUrl}?seed=Oliver&backgroundColor=c1f4c1",
     ];
 
     showModalBottomSheet(
@@ -280,7 +282,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Notify.info(context, "Cloud profile sync is being prioritized. Using local preview.");
           }
           auth.updateUserProfile(
-            imageUrl: "https://ui-avatars.com/api/?name=${auth.displayName}&background=random",
+            imageUrl: "${ApiConstants.uiAvatarsBaseUrl}?name=${auth.displayName}&background=random",
           );
         } else if (file.path != null) {
           await auth.updateUserProfile(
@@ -315,13 +317,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _showVoiceSelectionSheet() {
     final t = AppThemeColors.of(context);
-    final voices = [
-      {'name': 'Tiffany', 'desc': 'Warm & Professional', 'gender': 'Female'},
-      {'name': 'Ruth', 'desc': 'Sophisticated & Clear', 'gender': 'Female'},
-      {'name': 'Joanna', 'desc': 'Calm & Articulate', 'gender': 'Female'},
-      {'name': 'Matthew', 'desc': 'Clear & Authoritative', 'gender': 'Male'},
-      {'name': 'Stephen', 'desc': 'Friendly & Natural', 'gender': 'Male'},
-    ];
+    final voices = ModelConstants.voiceModels;
 
     showModalBottomSheet(
       context: context,

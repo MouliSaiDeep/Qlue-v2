@@ -20,9 +20,9 @@ exports.handler = async (event) => {
             throw new Error("Internal Configuration Error: Missing Firebase API Key");
         }
 
-        // Call Firebase Secure Token API to refresh the Firebase token
+        const FIREBASE_TOKEN_BASE_URL = process.env.FIREBASE_TOKEN_BASE_URL || 'https://securetoken.googleapis.com/v1/token';
         const response = await axios.post(
-            `https://securetoken.googleapis.com/v1/token?key=${FIREBASE_API_KEY}`,
+            `${FIREBASE_TOKEN_BASE_URL}?key=${FIREBASE_API_KEY}`,
             {
                 grant_type: 'refresh_token',
                 refresh_token: incomingToken,

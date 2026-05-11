@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
+import '../core/constants/api_constants.dart';
 
 class Avatar extends StatelessWidget {
   final String? imageUrl;
@@ -70,7 +71,7 @@ class Avatar extends StatelessWidget {
       } else {
         // Web fallback
         imageWidget = Image.network(
-          "https://ui-avatars.com/api/?name=${name ?? 'User'}&background=random&color=fff&size=256",
+          "${ApiConstants.uiAvatarsBaseUrl}?name=${name ?? 'User'}&background=random&color=fff&size=256",
           fit: BoxFit.cover,
           width: size,
           height: size,
@@ -85,7 +86,7 @@ class Avatar extends StatelessWidget {
     } else {
       // Default: Dynamic Letter Avatar
       imageWidget = Image.network(
-        "https://ui-avatars.com/api/?name=${name ?? 'User'}&background=7C3AED&color=fff&size=256",
+        "${ApiConstants.uiAvatarsBaseUrl}?name=${name ?? 'User'}&background=7C3AED&color=fff&size=256",
         fit: BoxFit.cover,
         width: size,
         height: size,

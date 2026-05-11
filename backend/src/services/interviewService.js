@@ -12,7 +12,7 @@ function parseBedrockJSON(text) {
     if (!text) return {};
     try {
         // Find the first { and the last }
-        const match = text.match(/\{[\s\S]*?\}/);
+        const match = text.match(/\{[\s\S]*\}/);
         if (match) {
             return JSON.parse(match[0]);
         }
@@ -61,10 +61,10 @@ async function processUserTurn(sessionId, textTranscript, isSilence, currentConc
 
     // Scoring
     const dimensions = {
-        RESUME: ['technical accuracy', 'communication clarity', 'fluency', 'depth of knowledge', 'use of examples'],
-        WEBSITE: ['concept understanding', 'learning agility', 'application ability', 'fluency', 'comprehension accuracy'],
-        HR: ['STAR format adherence', 'teamwork demonstration', 'ethical thinking', 'cultural alignment', 'vocabulary'],
-        INTRO: ['clarity of message', 'confidence', 'structure', 'relevance of content', 'brevity']
+        RESUME: ['clarity', 'fluency', 'technicalVocabulary', 'useOfExamples'],
+        WEBSITE: ['comprehensionAccuracy', 'learningProgression', 'criticalThinking', 'responseClarity', 'conceptRetention'],
+        HR: ['teamwork', 'ethicalThinking', 'problemSolving', 'communicationClarity', 'selfAwareness'],
+        INTRO: ['clarity', 'structure', 'confidence', 'relevance']
     };
     const dims = dimensions[session.moduleType] || dimensions.RESUME;
     
@@ -91,7 +91,7 @@ async function processUserTurn(sessionId, textTranscript, isSilence, currentConc
 
     // Tutoring Logic
     if (session.moduleType === 'WEBSITE' && currentConceptId) {
-        const masteryScore = parseFloat(scores['concept understanding'] || 0);
+        const masteryScore = parseFloat(scores['comprehensionAccuracy'] || 0);
         const newState = masteryScore >= 70 ? CONCEPT_STATES.MASTERED : CONCEPT_STATES.TUTORED;
         await updateConceptState(sessionId, currentConceptId, newState, 1);
     }

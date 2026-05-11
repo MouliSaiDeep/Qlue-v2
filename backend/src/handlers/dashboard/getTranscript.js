@@ -4,7 +4,7 @@ const { DynamoDBDocumentClient, GetCommand } = require("@aws-sdk/lib-dynamodb");
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE_NAME || 'qlue-sessions';
+const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions';
 
 /**
  * AWS Lambda Handler: GET /dashboard/transcript/{sessionId}

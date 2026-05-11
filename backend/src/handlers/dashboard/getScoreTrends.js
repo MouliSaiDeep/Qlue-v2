@@ -4,7 +4,7 @@ const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const docClient = DynamoDBDocumentClient.from(client);
 
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE_NAME || 'qlue-sessions';
+const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions'; // BE-BUG #11 FIX
 
 function getCutoffDate(periodStr) {
     const now = new Date();
@@ -12,7 +12,7 @@ function getCutoffDate(periodStr) {
     else if (periodStr === '30d') now.setDate(now.getDate() - 30);
     else if (periodStr === '90d') now.setDate(now.getDate() - 90);
     else return null; 
-    return now.toISOString();
+    return now.getTime();
 }
 
 function calculateAggregateScore(scoresObj) {
@@ -36,13 +36,13 @@ exports.handler = async (event) => {
         const expVals = { ':uid': userId };
 
         if (cutoff) {
-            keyCond += ' AND startTime >= :cutoff';
+            keyCond += ' AND startedAt >= :cutoff'; // BE-BUG #11 FIX: was startTime
             expVals[':cutoff'] = cutoff;
         }
 
         const sessionCmd = new QueryCommand({
             TableName: SESSIONS_TABLE,
-            IndexName: 'UserDateIndex',
+            IndexName: 'GSI_UserIdStartedAt', // BE-BUG #11 FIX: was UserDateIndex
             KeyConditionExpression: keyCond,
             ExpressionAttributeValues: expVals
         });

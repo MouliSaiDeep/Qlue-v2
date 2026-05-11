@@ -1,7 +1,7 @@
 const { invokeModel } = require('../../lib/bedrock');
 
 // BE-BUG #24 FIX: Use BEDROCK_MODEL_ID env var — was hardcoded to wrong model
-const DEFAULT_BEDROCK_MODEL_ID = process.env.BEDROCK_MODEL_ID || 'nvidia.nemotron-super-3-120b';
+const DEFAULT_BEDROCK_MODEL_ID = process.env.BEDROCK_MODEL_ID;
 
 // BE-BUG #8 FIX: Map voice IDs to human-sounding persona names
 const VOICE_PERSONA_MAP = {

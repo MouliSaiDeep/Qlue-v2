@@ -14,7 +14,7 @@ async function createFeedbackReport(data) {
   const item = {
     feedbackId,
     ...data,
-    generatedAt: Date.now()
+    generatedAt: data.generatedAt || Date.now()
   };
 
   const result = await ddb.put(TABLE_NAME, item);
