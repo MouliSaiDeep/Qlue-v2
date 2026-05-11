@@ -6,6 +6,7 @@ class DashboardSummary {
   final int averageScore;
   final int bestScore;
   final Map<String, int> moduleBreakdown;
+  final Map<String, int> bestModuleScores;
   final List<String> strengths;
   final List<String> improvements;
   final String tip;
@@ -16,6 +17,7 @@ class DashboardSummary {
     required this.averageScore,
     required this.bestScore,
     required this.moduleBreakdown,
+    this.bestModuleScores = const {},
     this.strengths = const [],
     this.improvements = const [],
     this.tip = "",
@@ -30,6 +32,7 @@ class DashboardSummary {
       averageScore: summary['averageScore'] ?? 0,
       bestScore: summary['bestScore'] ?? 0,
       moduleBreakdown: Map<String, int>.from(summary['moduleBreakdown'] ?? {}),
+      bestModuleScores: Map<String, int>.from(summary['bestModuleScores'] ?? {}),
       strengths: feedback != null ? List<String>.from(feedback['strengths'] ?? []) : [],
       improvements: feedback != null ? List<String>.from(feedback['improvements'] ?? []) : [],
       tip: feedback != null ? (feedback['tip'] ?? "") : "",
@@ -81,11 +84,42 @@ class RadarData {
 
     Map<String, double> result = {};
     data[modKey]!.forEach((dim, score) {
-      // Dimensions from backend are usually like "Communication", "Technical"
-      // We map them to shorter keys for the Spider Chart UI
-      String key = dim.substring(0, math.min(dim.length, 4));
-      result[key] = score / 100.0;
+      // FE-BUG #7 FIX: Map technical backend keys to beautiful UI labels
+      String label = _mapToUILabel(dim);
+      result[label] = score / 100.0;
     });
     return result;
+  }
+
+  static String _mapToUILabel(String dim) {
+    final Map<String, String> mapping = {
+      // Resume
+      'clarity': 'Clarity',
+      'fluency': 'Fluency',
+      'technicalVocabulary': 'Tech Vocab',
+      'useOfExamples': 'Examples',
+      // HR
+      'teamwork': 'Teamwork',
+      'ethicalThinking': 'Ethics',
+      'problemSolving': 'Problem',
+      'communicationClarity': 'Comm',
+      'selfAwareness': 'Self',
+      // Website
+      'comprehensionAccuracy': 'Accuracy',
+      'learningProgression': 'Growth',
+      'criticalThinking': 'Logic',
+      'responseClarity': 'Comm',
+      'conceptRetention': 'Memory',
+      // Intro
+      'structure': 'Structure',
+      'confidence': 'Confidence',
+      'relevance': 'Relevance',
+    };
+
+    if (mapping.containsKey(dim)) return mapping[dim]!;
+    
+    // Fallback: Title Case
+    final formatted = dim.replaceAll(RegExp(r'(?<=[a-z])(?=[A-Z])'), ' ');
+    return formatted[0].toUpperCase() + formatted.substring(1);
   }
 }

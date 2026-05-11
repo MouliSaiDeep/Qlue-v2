@@ -8,15 +8,15 @@ const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'us-ea
 const REPORT_LAMBDA = process.env.GENERATE_REPORT_LAMBDA;
 
 const MODULE_DIMENSIONS = {
-  RESUME: ['Technical Accuracy', 'Clarity', 'Use of Examples'],
-  HR: ['Problem Solving', 'Communication', 'Self Awareness'],
-  WEBSITE: ['Comprehension', 'Critical Thinking', 'Concept Retention'],
-  INTRO: ['Clarity', 'Structure', 'Confidence'],
-  SELF_INTRO: ['Clarity', 'Structure', 'Confidence'] // Alias for backward compatibility
+  RESUME: ['clarity', 'fluency', 'technicalVocabulary', 'useOfExamples'],
+  HR: ['teamwork', 'ethicalThinking', 'problemSolving', 'communicationClarity', 'selfAwareness'],
+  WEBSITE: ['comprehensionAccuracy', 'learningProgression', 'criticalThinking', 'responseClarity', 'conceptRetention'],
+  INTRO: ['clarity', 'structure', 'confidence', 'relevance'],
+  SELF_INTRO: ['clarity', 'structure', 'confidence', 'relevance'] // Alias for backward compatibility
 };
 
 exports.handler = async (event) => {
-  const { sessionId, userId, moduleType, transcript, contextRef, metadata } = event;
+  const { sessionId, userId, moduleType, transcript, contextRef, accumulatedScores, metadata } = event;
 
   try {
     console.info(`Starting Bedrock analysis for session ${sessionId} (${moduleType})`);
@@ -24,20 +24,26 @@ exports.handler = async (event) => {
     // 1. Identify dimensions
     const dimensions = MODULE_DIMENSIONS[moduleType] || ['performance'];
     
-    // 2. Build scoring prompt and invoke Bedrock
-    const promptParams = buildScoringPrompt(moduleType, transcript, dimensions);
-    const bedrockResponse = await invokeModel(undefined, promptParams, { logTokens: true, retries: 3 });
-    
-    // 3. Parse and validate scores
-    // invokeModel returns { content: [{ text }], usage }
     let dimensionScores = {};
-    try {
-      const text = bedrockResponse.content?.[0]?.text || '';
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      dimensionScores = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
-    } catch (e) {
-      console.error('Failed to parse Bedrock score JSON:', e);
-      dimensionScores = dimensions.reduce((acc, d) => ({ ...acc, [d]: 50 }), {}); // Fallback
+    if (accumulatedScores && Object.keys(accumulatedScores).length > 0) {
+      console.info('Using accumulated running average scores from session (skipping Bedrock scoring)');
+      dimensionScores = accumulatedScores;
+    } else {
+      // 2. Build scoring prompt and invoke Bedrock (Fallback)
+      console.info('No accumulated scores found, running fallback scoring on recent transcript via Bedrock');
+      const recentTranscript = transcript.slice(-2000); // Prevent token overflow in fallback
+      const promptParams = buildScoringPrompt(moduleType, recentTranscript, dimensions);
+      const bedrockResponse = await invokeModel(undefined, promptParams, { logTokens: true, retries: 3 });
+      
+      // 3. Parse and validate scores
+      try {
+        const text = bedrockResponse.content?.[0]?.text || '';
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        dimensionScores = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+      } catch (e) {
+        console.error('Failed to parse Bedrock score JSON:', e);
+        dimensionScores = dimensions.reduce((acc, d) => ({ ...acc, [d]: 50 }), {}); // Fallback
+      }
     }
 
     // Ensure scores are in 0-100 range and mapped correctly

@@ -2,7 +2,13 @@
  * Lambda handler for storing feedback reports and triggering user notifications.
  */
 const { createFeedbackReport } = require('../../models/feedback');
+const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
+
+const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
+const docClient = DynamoDBDocumentClient.from(client);
+const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions';
 
 const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const NOTIFY_LAMBDA = process.env.SEND_NOTIFICATION_LAMBDA;
@@ -23,10 +29,28 @@ exports.handler = async (event) => {
     const { feedbackId } = result;
     console.info(`Feedback report stored with ID: ${feedbackId}`);
 
-    // 2. Update user stats in Users table
+    // 2. Update session record with the final scores for dashboard reflection
+    try {
+      console.info(`Updating session ${sessionId} with final scores...`);
+      const updateCmd = new UpdateCommand({
+        TableName: SESSIONS_TABLE,
+        Key: { sessionId },
+        UpdateExpression: "SET accumulatedScores = :scores, overallScore = :overall, updatedAt = :now",
+        ExpressionAttributeValues: {
+          ":scores": event.dimensionScores || {},
+          ":overall": overallScore,
+          ":now": new Date().toISOString()
+        }
+      });
+      await docClient.send(updateCmd);
+      console.info(`Session ${sessionId} updated successfully.`);
+    } catch (sessionErr) {
+      console.error(`Failed to update session ${sessionId}:`, sessionErr);
+      // Don't fail the whole request if only session update fails
+    }
+
+    // 3. Update user stats in Users table
     // [DEFERRED] Skip update for now as user.js/models/user.js is a placeholder.
-    // In production, this would be a TransactWrite to increment sessions and update avgScore.
-    console.info(`[DEFERRED] Updating user stats for userId: ${userId}`);
 
     // 3. Trigger notification asynchronously
     const notificationPayload = {

@@ -21,9 +21,9 @@ exports.handler = async (event) => {
             throw new Error("Internal Configuration Error: Missing Firebase API Key");
         }
 
-        // 1. Authenticate using the Firebase Identity Toolkit (Auth REST API)
+        const FIREBASE_AUTH_BASE_URL = process.env.FIREBASE_AUTH_BASE_URL || 'https://identitytoolkit.googleapis.com/v1/accounts';
         const response = await axios.post(
-            `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`,
+            `${FIREBASE_AUTH_BASE_URL}:signInWithPassword?key=${FIREBASE_API_KEY}`,
             {
                 email,
                 password,

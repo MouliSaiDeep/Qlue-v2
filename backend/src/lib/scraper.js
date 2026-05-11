@@ -69,8 +69,8 @@ async function fetchAndCleanContent(url) {
     throw new QlueError('Scraper API key not configured', ERROR_CODES.INTERNAL_ERROR, 500);
   }
 
-  const encodedTargetUrl = encodeURIComponent(url);
-  const scrapeApiUrl = `https://api.scrape.do?token=${apiKey}&url=${encodedTargetUrl}`;
+  const SCRAPER_BASE_URL = process.env.SCRAPER_BASE_URL || 'https://api.scrape.do';
+  const scrapeApiUrl = `${SCRAPER_BASE_URL}?token=${apiKey}&url=${encodedTargetUrl}`;
 
   try {
     // Native Node v18+ fetch

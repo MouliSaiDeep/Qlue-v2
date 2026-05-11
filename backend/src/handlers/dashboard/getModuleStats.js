@@ -4,7 +4,7 @@ const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const docClient = DynamoDBDocumentClient.from(client);
 
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE_NAME || 'Sessions';
+const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions'; // BE-BUG #11 FIX
 
 function getCutoffTimestamp(periodStr) {
     const now = new Date();
@@ -46,12 +46,13 @@ exports.handler = async (event) => {
         const dimensionsBreakdown = {
             RESUME: {},
             WEBSITE: {},
-            HR: {}
+            HR: {},
+            INTRO: {}
         };
-        const counts = { RESUME: {}, WEBSITE: {}, HR: {} };
+        const counts = { RESUME: {}, WEBSITE: {}, HR: {}, INTRO: {} };
 
         for (const session of sessions) {
-            const mod = session.moduleType;
+            const mod = (session.moduleType || "").toUpperCase();
             if (!mod || !dimensionsBreakdown[mod] || !session.accumulatedScores) continue;
 
             for (const [dim, scoreStr] of Object.entries(session.accumulatedScores)) {
@@ -63,12 +64,27 @@ exports.handler = async (event) => {
             }
         }
 
-        // Average the dimensions out
+        // Average the dimensions out per module
         for (const mod in dimensionsBreakdown) {
             for (const dim in dimensionsBreakdown[mod]) {
                 dimensionsBreakdown[mod][dim] = Math.round(dimensionsBreakdown[mod][dim] / counts[mod][dim]);
             }
         }
+
+        // Build OVERALL by averaging all non-empty module dimension scores
+        const overallScores = {};
+        const overallCounts = {};
+        for (const mod of ['RESUME', 'HR', 'WEBSITE', 'INTRO']) {
+            for (const [dim, score] of Object.entries(dimensionsBreakdown[mod])) {
+                overallScores[dim] = (overallScores[dim] || 0) + score;
+                overallCounts[dim] = (overallCounts[dim] || 0) + 1;
+            }
+        }
+        const overall = {};
+        for (const dim in overallScores) {
+            overall[dim] = Math.round(overallScores[dim] / overallCounts[dim]);
+        }
+        dimensionsBreakdown['OVERALL'] = overall;
 
         return {
             statusCode: 200,

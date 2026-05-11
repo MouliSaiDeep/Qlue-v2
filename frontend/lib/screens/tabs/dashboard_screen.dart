@@ -24,6 +24,17 @@ class _DashboardScreenState extends State<DashboardScreen>
     with TickerProviderStateMixin {
   String _selectedRadar = "overall";
   late AnimationController _flipEffectController;
+  DashboardProvider? _dashboardProvider;
+
+  void _onProviderUpdate() {
+    final provider = _dashboardProvider;
+    if (provider == null) return;
+    // When another screen calls markStale(), this fires and triggers a re-fetch
+    if (provider.isStale && !provider.isLoading) {
+      debugPrint('Dashboard: stale flag detected — refreshing dashboard data.');
+      provider.fetchDashboardData();
+    }
+  }
 
   @override
   void initState() {
@@ -34,7 +45,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<DashboardProvider>().fetchDashboardData();
+      if (!mounted) return;
+      _dashboardProvider = context.read<DashboardProvider>();
+      _dashboardProvider!.addListener(_onProviderUpdate);
+      _dashboardProvider!.fetchDashboardData();
       
       // Fix #28: Ensure any hanging interview sessions are terminated on dashboard entry
       final interviewProvider = context.read<InterviewProvider>();
@@ -47,6 +61,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   void dispose() {
+    _dashboardProvider?.removeListener(_onProviderUpdate);
     _flipEffectController.dispose();
     super.dispose();
   }
@@ -184,7 +199,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             FeatherIcons.fileText,
                             t.moduleResume,
                           ),
-                          back: _buildModuleStats(t, "Resume", "High: 92%"),
+                           back: _buildModuleStats(t, "Resume", "High: ${summary.bestModuleScores['RESUME'] ?? 0}%"),
                         ),
                         PremiumFlipCard(
                           onFlip: (isFront) => isFront
@@ -197,7 +212,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             FeatherIcons.users,
                             t.moduleHR,
                           ),
-                          back: _buildModuleStats(t, "HR", "High: 88%"),
+                          back: _buildModuleStats(t, "HR", "High: ${summary.bestModuleScores['HR'] ?? 0}%"),
                         ),
                         PremiumFlipCard(
                           onFlip: (isFront) => isFront
@@ -210,7 +225,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             FeatherIcons.globe,
                             t.moduleWeb,
                           ),
-                          back: _buildModuleStats(t, "Website", "High: 85%"),
+                          back: _buildModuleStats(t, "Website", "High: ${summary.bestModuleScores['WEBSITE'] ?? 0}%"),
                         ),
                         PremiumFlipCard(
                           onFlip: (isFront) => isFront
@@ -223,7 +238,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             FeatherIcons.mic,
                             t.accentGreen,
                           ),
-                          back: _buildModuleStats(t, "Intro", "High: 90%"),
+                          back: _buildModuleStats(t, "Intro", "High: ${summary.bestModuleScores['INTRO'] ?? 0}%"),
                         ),
                       ],
                     ),

@@ -15,7 +15,7 @@ const bedrockClient = new BedrockRuntimeClient({
 });
 
 // The required Model ID
-const DEFAULT_MODEL_ID = process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-sonnet-20240229-v1:0';
+const DEFAULT_MODEL_ID = process.env.BEDROCK_MODEL_ID;
 
 /**
  * Executes a Model Invocation using Converse API
