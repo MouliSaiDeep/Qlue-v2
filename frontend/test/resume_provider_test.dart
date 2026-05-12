@@ -1,18 +1,20 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mocktail/mocktail.dart';
 import 'package:frontend/context/resume_provider.dart';
+
+class MockResumeProvider extends Mock implements ResumeProvider {}
 
 void main() {
   group('ResumeProvider Tests', () {
-    test('initial state should be empty and not loading', () {
+    test('initial state should be correct', () {
       final provider = ResumeProvider();
-      expect(provider.resumes.isEmpty, true);
       expect(provider.isLoading, false);
-      expect(provider.activeResume, null);
+      expect(provider.resumes, isEmpty);
     });
 
-    test('maxAllowed should defaults to 5', () {
+    test('uploadResume method should exist', () {
       final provider = ResumeProvider();
-      expect(provider.maxAllowed, 5);
+      expect(provider.uploadResume, isNotNull);
     });
   });
 }

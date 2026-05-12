@@ -62,6 +62,8 @@ dev_dependencies:
     sdk: flutter
   envied_generator: ^0.5.4
   build_runner: ^2.4.9
+  mocktail: ^1.0.4
+  mockito: ^5.4.4
   flutter_launcher_icons: ^0.13.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
