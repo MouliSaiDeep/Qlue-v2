@@ -4,10 +4,7 @@ import '../core/models/session_model.dart';
 import '../core/services/dashboard_api_service.dart';
 
 class DashboardProvider extends ChangeNotifier {
-  final DashboardApiService _apiService;
-
-  DashboardProvider({DashboardApiService? apiService})
-      : _apiService = apiService ?? DashboardApiService();
+  final DashboardApiService _apiService = DashboardApiService();
 
   DashboardSummary _summary = DashboardSummary.initial();
   DashboardSummary get summary => _summary;

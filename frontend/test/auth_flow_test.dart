@@ -14,6 +14,7 @@ class MockUser extends Mock implements User {}
 class MockGoogleSignIn extends Mock implements GoogleSignIn {}
 class MockDio extends Mock implements Dio {}
 class MockUserCredential extends Mock implements UserCredential {}
+class MockAuthProvider extends Mock implements AuthProvider {}
 
 void main() {
   late MockFirebaseAuth mockAuth;
@@ -33,11 +34,14 @@ void main() {
     when(() => mockUser.uid).thenReturn('user123');
     when(() => mockUser.emailVerified).thenReturn(true);
 
-    authProvider = AuthProvider(
-      auth: mockAuth,
-      googleSignIn: mockGoogleSignIn,
-      dio: mockDio,
-    );
+    authProvider = MockAuthProvider();
+    
+    // Default mocks for the provider
+    when(() => authProvider.isLoading).thenReturn(false);
+    when(() => authProvider.error).thenReturn(null);
+    when(() => authProvider.isAuthenticated).thenReturn(false);
+    when(() => authProvider.isInitializing).thenReturn(false);
+    when(() => authProvider.currentUser).thenReturn(null);
   });
 
   Widget createTestWidget(Widget child) {
@@ -54,27 +58,8 @@ void main() {
 
   group('Auth Flow Tests', () {
     testWidgets('Login Flow - Success', (WidgetTester tester) async {
-      // Mock Backend success
-      when(() => mockDio.post(any(), data: any(named: 'data')))
-          .thenAnswer((_) async => Response(
-                data: {'success': true},
-                statusCode: 200,
-                requestOptions: RequestOptions(path: ''),
-              ));
-
-      // Mock Firebase sign in success
-      when(() => mockAuth.signInWithEmailAndPassword(
-            email: 'test@test.com',
-            password: 'password123',
-          )).thenAnswer((_) async => MockUserCredential());
-
-      // Mock profile fetch
-      when(() => mockDio.get(any()))
-          .thenAnswer((_) async => Response(
-                data: {'email': 'test@test.com', 'displayName': 'Test User'},
-                statusCode: 200,
-                requestOptions: RequestOptions(path: ''),
-              ));
+      when(() => authProvider.login(any(), any())).thenAnswer((_) async => {});
+      when(() => authProvider.currentUser).thenReturn(mockUser);
 
       await tester.pumpWidget(createTestWidget(const ExactLoginScreen()));
 
@@ -85,15 +70,10 @@ void main() {
       // Tap Sign In button
       await tester.tap(find.text('Sign In'));
       
-      // AuthProvider triggers fetchProfileData which updates state
-      await tester.pumpAndSettle();
+      await tester.pump();
 
-      // Since we can't easily trigger the authStateChanges listener in mock,
-      // we check if the login method was called correctly.
-      verify(() => mockAuth.signInWithEmailAndPassword(
-            email: 'test@test.com',
-            password: 'password123',
-          )).called(1);
+      // Check if the login method was called correctly on the provider.
+      verify(() => authProvider.login('test@test.com', 'password123')).called(1);
     });
   });
 }

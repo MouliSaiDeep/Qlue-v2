@@ -50,17 +50,11 @@ class AuthProvider extends ChangeNotifier {
     return _currentUser?.displayName ?? "User";
   }
 
-  final FirebaseAuth _auth;
-  final GoogleSignIn _googleSignIn;
-  final Dio _dio;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  // google_sign_in 7.x uses singleton instance
+  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 
-  AuthProvider({
-    FirebaseAuth? auth,
-    GoogleSignIn? googleSignIn,
-    Dio? dio,
-  })  : _auth = auth ?? FirebaseAuth.instance,
-        _googleSignIn = googleSignIn ?? GoogleSignIn.instance,
-        _dio = dio ?? DioClient().dio {
+  AuthProvider() {
     final startTime = DateTime.now();
     _auth.authStateChanges().listen((User? user) async {
       final wasNull = _currentUser == null;

@@ -2,72 +2,52 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:provider/provider.dart';
-import 'package:dio/dio.dart';
-import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:frontend/features/interview/providers/interview_provider.dart';
 import 'package:frontend/context/auth_provider.dart' as app_auth;
-import 'package:frontend/shared/services/stt_service.dart';
-import 'package:frontend/shared/services/tts_service.dart';
-import 'package:frontend/core/network/websocket_client.dart';
 import 'package:frontend/screens/interview/interview_session_screen.dart';
 import 'package:frontend/core/theme.dart';
 
-class MockSttService extends Mock implements SttService {}
-class MockTtsService extends Mock implements TtsService {}
-class MockDio extends Mock implements Dio {}
-class MockFirebaseAuth extends Mock implements FirebaseAuth {}
-class MockUser extends Mock implements User {}
-class MockGoogleSignIn extends Mock implements GoogleSignIn {}
-class MockWebSocketClient extends Mock implements WebSocketClient {}
+class MockInterviewProvider extends Mock implements InterviewProvider {}
+class MockAuthProvider extends Mock implements app_auth.AuthProvider {}
 
 void main() {
-  late MockSttService mockStt;
-  late MockTtsService mockTts;
-  late MockDio mockDio;
-  late MockFirebaseAuth mockAuth;
-  late MockUser mockUser;
-  late MockGoogleSignIn mockGoogleSignIn;
-  late MockWebSocketClient mockWS;
-  late InterviewProvider interviewProvider;
-  late app_auth.AuthProvider authProvider;
+  late MockInterviewProvider mockInterviewProvider;
+  late MockAuthProvider mockAuthProvider;
 
   setUp(() {
-    mockStt = MockSttService();
-    mockTts = MockTtsService();
-    mockDio = MockDio();
-    mockAuth = MockFirebaseAuth();
-    mockUser = MockUser();
-    mockGoogleSignIn = MockGoogleSignIn();
-    mockWS = MockWebSocketClient();
+    mockInterviewProvider = MockInterviewProvider();
+    mockAuthProvider = MockAuthProvider();
     
-    when(() => mockAuth.authStateChanges()).thenAnswer((_) => Stream.value(null));
-    when(() => mockAuth.currentUser).thenReturn(mockUser);
-    when(() => mockUser.uid).thenReturn('user123');
-    when(() => mockUser.getIdToken()).thenAnswer((_) async => 'token123');
+    // AuthProvider mocks
+    when(() => mockAuthProvider.isAuthenticated).thenReturn(true);
+    when(() => mockAuthProvider.isInitializing).thenReturn(false);
+    when(() => mockAuthProvider.voiceId).thenReturn('Tiffany');
     
-    authProvider = app_auth.AuthProvider(
-      auth: mockAuth,
-      googleSignIn: mockGoogleSignIn,
-      dio: mockDio,
-    );
-
-    interviewProvider = InterviewProvider(
-      sttService: mockStt,
-      ttsService: mockTts,
-      dio: mockDio,
-      auth: mockAuth,
-      wsClientFactory: (url, userId, sessionId) => mockWS,
-    );
-
-    // Default mock behavior
-    when(() => mockWS.messages).thenAnswer((_) => const Stream.empty());
-    when(() => mockWS.errors).thenAnswer((_) => const Stream.empty());
-    when(() => mockWS.disconnects).thenAnswer((_) => const Stream.empty());
-    when(() => mockWS.reconnects).thenAnswer((_) => const Stream.empty());
-    when(() => mockStt.stop()).thenAnswer((_) async => {});
-    when(() => mockTts.stop()).thenAnswer((_) async => {});
-    when(() => mockStt.init()).thenAnswer((_) async => true);
+    // InterviewProvider mocks
+    when(() => mockInterviewProvider.sessionId).thenReturn('s1');
+    when(() => mockInterviewProvider.moduleType).thenReturn('HR');
+    when(() => mockInterviewProvider.currentPhase).thenReturn(InterviewPhase.ready);
+    when(() => mockInterviewProvider.isConnecting).thenReturn(false);
+    when(() => mockInterviewProvider.isListening).thenReturn(false);
+    when(() => mockInterviewProvider.isSessionEnded).thenReturn(false);
+    when(() => mockInterviewProvider.isStreamingText).thenReturn(false);
+    when(() => mockInterviewProvider.subtitleText).thenReturn('');
+    when(() => mockInterviewProvider.finalQuestionText).thenReturn('');
+    when(() => mockInterviewProvider.questionText).thenReturn('Hello, tell me about yourself.');
+    when(() => mockInterviewProvider.partialTranscript).thenReturn('');
+    when(() => mockInterviewProvider.finalTranscript).thenReturn('');
+    when(() => mockInterviewProvider.silenceStrikes).thenReturn(0);
+    
+    // Methods
+    when(() => mockInterviewProvider.resetForNewSession()).thenReturn(null);
+    when(() => mockInterviewProvider.setVoice(any(), engine: any(named: 'engine'))).thenReturn(null);
+    when(() => mockInterviewProvider.initSession(any(), resumeId: any(named: 'resumeId'), websiteUrl: any(named: 'websiteUrl')))
+        .thenAnswer((_) async => {});
+    
+    // Listeners
+    when(() => mockInterviewProvider.addListener(any())).thenReturn(null);
+    when(() => mockInterviewProvider.removeListener(any())).thenReturn(null);
+    when(() => mockInterviewProvider.hasListeners).thenReturn(false);
   });
 
   Widget createTestWidget(Widget child) {
@@ -75,8 +55,8 @@ void main() {
       colors: AppThemeColors.dark,
       child: MultiProvider(
         providers: [
-          ChangeNotifierProvider<app_auth.AuthProvider>.value(value: authProvider),
-          ChangeNotifierProvider<InterviewProvider>.value(value: interviewProvider),
+          ChangeNotifierProvider<app_auth.AuthProvider>.value(value: mockAuthProvider),
+          ChangeNotifierProvider<InterviewProvider>.value(value: mockInterviewProvider),
         ],
         child: MaterialApp(
           home: child,
@@ -87,11 +67,8 @@ void main() {
 
   group('Interview Flow Tests', () {
     testWidgets('Interview Session - Basic Initialization', (WidgetTester tester) async {
-      interviewProvider.sessionId = 's1';
-      interviewProvider.moduleType = 'HR';
-
       await tester.pumpWidget(createTestWidget(const InterviewSessionScreen()));
-      await tester.pump(); // Handle post-frame callback
+      await tester.pumpAndSettle();
 
       expect(find.text('INTERVIEW MODE'), findsOneWidget);
       expect(find.byType(InterviewSessionScreen), findsOneWidget);

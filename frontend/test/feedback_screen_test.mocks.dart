@@ -80,7 +80,7 @@ class MockFeedbackProvider extends _i1.Mock implements _i3.FeedbackProvider {
   @override
   _i4.Future<void> fetchReport(
     String? sessionId, {
-    int? retries = 3,
+    int? retries = 10,
   }) =>
       (super.noSuchMethod(
         Invocation.method(
