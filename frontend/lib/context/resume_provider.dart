@@ -9,7 +9,12 @@ import '../core/models/resume_model.dart';
 import '../core/services/resume_api_service.dart';
 
 class ResumeProvider extends ChangeNotifier {
-  final ResumeApiService _apiService = ResumeApiService();
+  final ResumeApiService _apiService;
+  final Dio? _s3Dio; // Injected for testing S3 uploads
+
+  ResumeProvider({ResumeApiService? apiService, Dio? s3Dio})
+      : _apiService = apiService ?? ResumeApiService(),
+        _s3Dio = s3Dio;
   
   List<ResumeModel> _resumes = [];
   List<ResumeModel> get resumes => _resumes;
@@ -132,7 +137,7 @@ class ResumeProvider extends ChangeNotifier {
 
       // 3. S3 PUT — send raw bytes with strict headers matching the signature.
       // We use Uri.parse to ensure Dio doesn't re-encode the already signed URL.
-      final s3Dio = Dio();
+      final s3Dio = _s3Dio ?? Dio();
       try {
         final response = await s3Dio.putUri(
           Uri.parse(uploadUrl),

@@ -54,12 +54,23 @@ class InterviewProvider extends ChangeNotifier {
   int get silenceStrikes => _silenceStrikes;
 
   WebSocketClient? _wsClient;
-  final SttService _sttService = SttService();
-  final TtsService _ttsService = TtsService();
+  final SttService _sttService;
+  final TtsService _ttsService;
+  final Dio _dio;
+  final FirebaseAuth _auth;
+  final WebSocketClient Function(String url, String userId, String sessionId)? _wsClientFactory;
 
-  StreamSubscription? _wsSubscription;
-
-  InterviewProvider();
+  InterviewProvider({
+    SttService? sttService,
+    TtsService? ttsService,
+    Dio? dio,
+    FirebaseAuth? auth,
+    WebSocketClient Function(String url, String userId, String sessionId)? wsClientFactory,
+  })  : _sttService = sttService ?? SttService(),
+        _ttsService = ttsService ?? TtsService(),
+        _dio = dio ?? DioClient().dio,
+        _auth = auth ?? FirebaseAuth.instance,
+        _wsClientFactory = wsClientFactory;
 
   void _initWebSocket() {
     if (_wsClient == null) return;
@@ -314,8 +325,8 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
 
     // Load voice preference from auth provider if not already set
     try {
-      final authProvider = FirebaseAuth.instance.currentUser;
-      if (authProvider != null) {
+      final currentUser = _auth.currentUser;
+      if (currentUser != null) {
         // This would need to come from your auth/user model
         // For now, use default unless user has explicitly set it
       }
@@ -325,7 +336,7 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
 
     // Create a backend session before opening the websocket.
     try {
-      final response = await DioClient().dio.post(ApiConstants.interviewInit, data: {
+      final response = await _dio.post(ApiConstants.interviewInit, data: {
         'moduleType': moduleType,
         'voiceId': _selectedVoiceId,
         'engine': _selectedEngine,
@@ -356,11 +367,13 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
       return;
     }
 
-    _wsClient = WebSocketClient(
-      url: ApiConstants.websocketUrl,
-      userId: user.uid,
-      sessionId: sessionId!,
-    );
+    _wsClient = _wsClientFactory != null 
+      ? _wsClientFactory!(ApiConstants.websocketUrl, user.uid, sessionId!)
+      : WebSocketClient(
+          url: ApiConstants.websocketUrl,
+          userId: user.uid,
+          sessionId: sessionId!,
+        );
     _initWebSocket();
 
     try {
@@ -400,7 +413,7 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
     terminateSession();
     if (savedSessionId != null) {
       try {
-        await DioClient().dio.post('${ApiConstants.interviewInit}/$savedSessionId/terminate');
+        await _dio.post('${ApiConstants.interviewInit}/$savedSessionId/terminate');
       } catch (e) {
         debugPrint('REST terminate failed: $e');
       }
