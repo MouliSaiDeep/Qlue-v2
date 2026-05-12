@@ -50,6 +50,12 @@ class SessionModel {
       if (value is num) {
         total += value.toInt();
         count++;
+      } else if (value is String) {
+        final parsed = int.tryParse(value);
+        if (parsed != null) {
+          total += parsed;
+          count++;
+        }
       }
     });
     return count > 0 ? (total / count).round() : 0;

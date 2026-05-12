@@ -184,7 +184,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             FeatherIcons.fileText,
                             t.moduleResume,
                           ),
-                          back: _buildModuleStats(t, "Resume", "High: 92%"),
+                          back: _buildModuleStats(t, "Resume", "High: ${summary.bestScoreByModule['RESUME'] ?? 0}%"),
                         ),
                         PremiumFlipCard(
                           onFlip: (isFront) => isFront
@@ -197,7 +197,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             FeatherIcons.users,
                             t.moduleHR,
                           ),
-                          back: _buildModuleStats(t, "HR", "High: 88%"),
+                          back: _buildModuleStats(t, "HR", "High: ${summary.bestScoreByModule['HR'] ?? 0}%"),
                         ),
                         PremiumFlipCard(
                           onFlip: (isFront) => isFront
@@ -210,7 +210,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             FeatherIcons.globe,
                             t.moduleWeb,
                           ),
-                          back: _buildModuleStats(t, "Website", "High: 85%"),
+                          back: _buildModuleStats(t, "Website", "High: ${summary.bestScoreByModule['WEBSITE'] ?? 0}%"),
                         ),
                         PremiumFlipCard(
                           onFlip: (isFront) => isFront
@@ -223,7 +223,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             FeatherIcons.mic,
                             t.accentGreen,
                           ),
-                          back: _buildModuleStats(t, "Intro", "High: 90%"),
+                          back: _buildModuleStats(t, "Intro", "High: ${summary.bestScoreByModule['INTRO'] ?? 0}%"),
                         ),
                       ],
                     ),

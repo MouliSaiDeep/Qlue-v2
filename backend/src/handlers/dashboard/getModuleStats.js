@@ -4,7 +4,7 @@ const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const docClient = DynamoDBDocumentClient.from(client);
 
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE_NAME || 'Sessions';
+const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions';
 
 function getCutoffTimestamp(periodStr) {
     const now = new Date();
@@ -44,11 +44,13 @@ exports.handler = async (event) => {
 
         // Radar Chart Data aggregation
         const dimensionsBreakdown = {
+            OVERALL: {},
             RESUME: {},
             WEBSITE: {},
-            HR: {}
+            HR: {},
+            INTRO: {}
         };
-        const counts = { RESUME: {}, WEBSITE: {}, HR: {} };
+        const counts = { OVERALL: {}, RESUME: {}, WEBSITE: {}, HR: {}, INTRO: {} };
 
         for (const session of sessions) {
             const mod = session.moduleType;
@@ -60,6 +62,10 @@ exports.handler = async (event) => {
 
                 dimensionsBreakdown[mod][dim] = (dimensionsBreakdown[mod][dim] || 0) + score;
                 counts[mod][dim] = (counts[mod][dim] || 0) + 1;
+
+                // Also aggregate into OVERALL
+                dimensionsBreakdown['OVERALL'][dim] = (dimensionsBreakdown['OVERALL'][dim] || 0) + score;
+                counts['OVERALL'][dim] = (counts['OVERALL'][dim] || 0) + 1;
             }
         }
 
