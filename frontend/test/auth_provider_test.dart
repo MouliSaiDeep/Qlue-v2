@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+<<<<<<< HEAD
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:dio/dio.dart';
@@ -10,6 +11,11 @@ class MockUser extends Mock implements User {}
 class MockGoogleSignIn extends Mock implements GoogleSignIn {}
 class MockDio extends Mock implements Dio {}
 class MockResponse extends Mock implements Response {}
+=======
+import 'package:frontend/context/auth_provider.dart';
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
+
+class MockAuthProvider extends Mock implements AuthProvider {}
 
 void main() {
   late MockFirebaseAuth mockAuth;
@@ -31,6 +37,7 @@ void main() {
   });
 
   group('AuthProvider Tests', () {
+<<<<<<< HEAD
     test('initial state should be unauthenticated and initializing', () async {
       final authProvider = local.AuthProvider(
         auth: mockAuth,
@@ -38,6 +45,10 @@ void main() {
         dio: mockDio,
       );
       
+=======
+    test('initial state should be unauthenticated', () {
+      final authProvider = AuthProvider();
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
       expect(authProvider.isAuthenticated, false);
       expect(authProvider.isInitializing, true);
       
@@ -46,6 +57,7 @@ void main() {
       expect(authProvider.isInitializing, false);
     });
 
+<<<<<<< HEAD
     test('login should succeed if backend and firebase succeed', () async {
       final authProvider = local.AuthProvider(
         auth: mockAuth,
@@ -108,6 +120,11 @@ void main() {
       verify(() => mockAuth.signOut()).called(1);
       verify(() => mockGoogleSignIn.signOut()).called(1);
       expect(authProvider.isAuthenticated, false);
+=======
+    test('login method should exist', () {
+      final authProvider = AuthProvider();
+      expect(authProvider.login, isNotNull);
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
     });
   });
 }

@@ -43,8 +43,13 @@ void main() {
       final radar = RadarData.fromJson(json);
       final mapped = radar.getDimensionsForModule('RESUME');
 
+<<<<<<< HEAD
       expect(mapped['Clarity'], 0.8);
       expect(mapped['Fluency'], 0.7);
+=======
+      expect(mapped['clar'], 0.8);
+      expect(mapped['flue'], 0.7);
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
     });
 
     test('SessionModel.fromJson should parse correctly', () {
@@ -53,13 +58,25 @@ void main() {
         'userId': 'u1',
         'moduleType': 'HR',
         'startedAt': 123456789,
+<<<<<<< HEAD
         'overallScore': 85.5
+=======
+        'accumulatedScores': {
+          'Communication': 80,
+          'Technical': 90,
+          'Behavioral': 87
+        }
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
       };
 
       final session = SessionModel.fromJson(json);
 
       expect(session.sessionId, 's1');
+<<<<<<< HEAD
       expect(session.score, 86); // Rounded
+=======
+      expect(session.score, 86); // (80+90+87)/3 = 85.66 -> 86 rounded
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
       expect(session.topic, 'Behavioral Skills');
     });
 
@@ -86,7 +103,14 @@ void main() {
         'sessionId': 'f1',
         'overallScore': 88.0,
         'strengths': ['S1'],
+<<<<<<< HEAD
         'weaknesses': ['W1']
+=======
+        'weaknesses': ['W1'],
+        'dimensionScores': {'Comm': 85.0},
+        'recommendations': ['R1'],
+        'executiveSummary': 'Good performance.'
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
       };
 
       final report = FeedbackReportModel.fromJson(json);
@@ -94,6 +118,10 @@ void main() {
       expect(report.sessionId, 'f1');
       expect(report.overallScore, 88.0);
       expect(report.strengths, contains('S1'));
+<<<<<<< HEAD
+=======
+      expect(report.executiveSummary, 'Good performance.');
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
     });
   });
 }

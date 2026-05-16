@@ -4,7 +4,11 @@ class DashboardSummary {
   final int averageScore;
   final int bestScore;
   final Map<String, int> moduleBreakdown;
+<<<<<<< HEAD
   final Map<String, int> bestModuleScores;
+=======
+  final Map<String, int> bestScoreByModule;
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
   final List<String> strengths;
   final List<String> improvements;
   final String tip;
@@ -15,7 +19,11 @@ class DashboardSummary {
     required this.averageScore,
     required this.bestScore,
     required this.moduleBreakdown,
+<<<<<<< HEAD
     this.bestModuleScores = const {},
+=======
+    required this.bestScoreByModule,
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
     this.strengths = const [],
     this.improvements = const [],
     this.tip = "",
@@ -30,7 +38,11 @@ class DashboardSummary {
       averageScore: summary['averageScore'] ?? 0,
       bestScore: summary['bestScore'] ?? 0,
       moduleBreakdown: Map<String, int>.from(summary['moduleBreakdown'] ?? {}),
+<<<<<<< HEAD
       bestModuleScores: Map<String, int>.from(summary['bestModuleScores'] ?? {}),
+=======
+      bestScoreByModule: Map<String, int>.from(summary['bestScoreByModule'] ?? {}),
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
       strengths: feedback != null ? List<String>.from(feedback['strengths'] ?? []) : [],
       improvements: feedback != null ? List<String>.from(feedback['improvements'] ?? []) : [],
       tip: feedback != null ? (feedback['tip'] ?? "") : "",
@@ -44,6 +56,7 @@ class DashboardSummary {
       averageScore: 0,
       bestScore: 0,
       moduleBreakdown: {'RESUME': 0, 'HR': 0, 'WEBSITE': 0, 'INTRO': 0},
+      bestScoreByModule: {'RESUME': 0, 'HR': 0, 'WEBSITE': 0, 'INTRO': 0},
     );
   }
 }

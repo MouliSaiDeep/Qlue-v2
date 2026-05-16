@@ -18,6 +18,7 @@ describe('getDashboardSummary handler', () => {
 
     expect(result.statusCode).toBe(401);
   });
+<<<<<<< HEAD
 
   it('should calculate dashboard summary correctly', async () => {
     const userId = 'user123';
@@ -43,6 +44,31 @@ describe('getDashboardSummary handler', () => {
       Items: mockFeedback
     });
 
+=======
+
+  it('should calculate dashboard summary correctly', async () => {
+    const userId = 'user123';
+    const event = {
+      requestContext: { authorizer: { uid: userId } }
+    };
+
+    const mockSessions = [
+      { userId, moduleType: 'RESUME', accumulatedScores: { technical: 80, communication: 90 } },
+      { userId, moduleType: 'HR', accumulatedScores: { culture: 70 } }
+    ];
+    const mockFeedback = [
+      { userId, strengths: ['Java'], weaknesses: ['Python'], executiveSummary: 'Good' }
+    ];
+
+    ddbMock.on(QueryCommand, { TableName: 'qlue-sessions' }).resolves({
+      Items: mockSessions
+    });
+
+    ddbMock.on(QueryCommand, { TableName: 'qlue-feedback' }).resolves({
+      Items: mockFeedback
+    });
+
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
     const result = await handler(event);
 
     expect(result.statusCode).toBe(200);

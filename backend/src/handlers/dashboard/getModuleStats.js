@@ -4,7 +4,11 @@ const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const docClient = DynamoDBDocumentClient.from(client);
 
+<<<<<<< HEAD
 const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions'; // BE-BUG #11 FIX
+=======
+const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions';
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
 
 function getCutoffTimestamp(periodStr) {
     const now = new Date();
@@ -44,12 +48,17 @@ exports.handler = async (event) => {
 
         // Radar Chart Data aggregation
         const dimensionsBreakdown = {
+            OVERALL: {},
             RESUME: {},
             WEBSITE: {},
             HR: {},
             INTRO: {}
         };
+<<<<<<< HEAD
         const counts = { RESUME: {}, WEBSITE: {}, HR: {}, INTRO: {} };
+=======
+        const counts = { OVERALL: {}, RESUME: {}, WEBSITE: {}, HR: {}, INTRO: {} };
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
 
         for (const session of sessions) {
             const mod = (session.moduleType || "").toUpperCase();
@@ -61,6 +70,10 @@ exports.handler = async (event) => {
 
                 dimensionsBreakdown[mod][dim] = (dimensionsBreakdown[mod][dim] || 0) + score;
                 counts[mod][dim] = (counts[mod][dim] || 0) + 1;
+
+                // Also aggregate into OVERALL
+                dimensionsBreakdown['OVERALL'][dim] = (dimensionsBreakdown['OVERALL'][dim] || 0) + score;
+                counts['OVERALL'][dim] = (counts['OVERALL'][dim] || 0) + 1;
             }
         }
 

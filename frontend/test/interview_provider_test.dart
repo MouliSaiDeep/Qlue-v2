@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+<<<<<<< HEAD
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:dio/dio.dart';
+=======
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
 import 'package:frontend/features/interview/providers/interview_provider.dart';
 import 'package:frontend/shared/services/stt_service.dart';
 import 'package:frontend/shared/services/tts_service.dart';
@@ -15,6 +18,8 @@ class MockFirebaseAuth extends Mock implements FirebaseAuth {}
 class MockUser extends Mock implements User {}
 class MockWebSocketClient extends Mock implements WebSocketClient {}
 class MockResponse extends Mock implements Response {}
+
+class MockInterviewProvider extends Mock implements InterviewProvider {}
 
 void main() {
   late MockSttService mockStt;
@@ -44,6 +49,7 @@ void main() {
   });
 
   group('InterviewProvider Tests', () {
+<<<<<<< HEAD
     test('initSession should setup session and connect websocket', () async {
       final provider = InterviewProvider(
         sttService: mockStt,
@@ -104,6 +110,18 @@ void main() {
       expect(provider.isSessionEnded, true);
       verify(() => mockWs.sendMessage(any(that: predicate((m) => (m as Map)['type'] == 'terminate_session')))).called(1);
       verify(() => mockWs.disconnect()).called(1);
+=======
+    test('initial state should be correct', () {
+      final provider = InterviewProvider();
+      expect(provider.sessionId, isNull);
+      expect(provider.isConnecting, false);
+      expect(provider.isSessionEnded, false);
+    });
+
+    test('initSession should exist', () {
+      final provider = InterviewProvider();
+      expect(provider.initSession, isNotNull);
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
     });
   });
 }

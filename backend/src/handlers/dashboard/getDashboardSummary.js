@@ -1,4 +1,4 @@
-const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, QueryCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
@@ -6,6 +6,10 @@ const docClient = DynamoDBDocumentClient.from(client);
 
 const FEEDBACK_TABLE = process.env.FEEDBACK_TABLE || 'qlue-feedback';
 const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions';
+<<<<<<< HEAD
+=======
+const USERS_TABLE = process.env.USERS_TABLE || 'qlue-users';
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
 
 /**
  * Calculates a unified integer score from the accumulatedScores object.
@@ -45,28 +49,29 @@ exports.handler = async (event) => {
             }
         });
 
-        const feedbackCmd = new QueryCommand({
-            TableName: FEEDBACK_TABLE,
-            IndexName: 'GSI_UserIdGeneratedAt',
-            KeyConditionExpression: 'userId = :uid',
-            ExpressionAttributeValues: { ':uid': userId },
-            ScanIndexForward: false, // Latest first
-            Limit: 1
+        const userCmd = new GetCommand({
+            TableName: USERS_TABLE,
+            Key: { userId: userId }
         });
 
         // Execute Queries Concurrently
-        const [sessionData, feedbackData] = await Promise.all([
+        const [sessionData, userData] = await Promise.all([
             docClient.send(sessionCmd),
-            docClient.send(feedbackCmd)
+            docClient.send(userCmd)
         ]);
 
         const sessions = sessionData.Items || [];
-        const latestFeedback = feedbackData.Items?.[0] || null;
+        const userProfile = userData.Item || null;
+        const globalInsights = userProfile?.globalInsights || null;
 
         // Metrics Accumulators
         let totalSessions = sessions.length;
         let moduleBreakdown = { RESUME: 0, HR: 0, WEBSITE: 0, INTRO: 0 };
+<<<<<<< HEAD
         let bestModuleScores = { RESUME: 0, HR: 0, WEBSITE: 0, INTRO: 0 };
+=======
+        let bestScoreByModule = { RESUME: 0, HR: 0, WEBSITE: 0, INTRO: 0 };
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
         let scoresArray = [];
         let completedSessions = 0;
 
@@ -89,11 +94,18 @@ exports.handler = async (event) => {
             if (aggrScore > 0) {
                 scoresArray.push(aggrScore);
                 completedSessions++;
+<<<<<<< HEAD
 
                 // Track best per module
                 if (mod && bestModuleScores[mod] !== undefined) {
                     if (aggrScore > bestModuleScores[mod]) {
                         bestModuleScores[mod] = aggrScore;
+=======
+                
+                if (session.moduleType && bestScoreByModule[session.moduleType] !== undefined) {
+                    if (aggrScore > bestScoreByModule[session.moduleType]) {
+                        bestScoreByModule[session.moduleType] = aggrScore;
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
                     }
                 }
             }
@@ -117,12 +129,20 @@ exports.handler = async (event) => {
                     completedSessions,
                     averageScore,
                     bestScore,
+                    bestScoreByModule,
                     moduleBreakdown,
+<<<<<<< HEAD
                     bestModuleScores,
                     latestFeedback: latestFeedback ? {
                         strengths: latestFeedback.strengths || [],
                         improvements: latestFeedback.weaknesses || latestFeedback.improvements || [],
                         tip: latestFeedback.executiveSummary || latestFeedback.summary || ""
+=======
+                    latestFeedback: globalInsights ? {
+                        strengths: globalInsights.strengths || [],
+                        improvements: globalInsights.improvements || [],
+                        tip: globalInsights.tip || ""
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
                     } : null
                 }
             })

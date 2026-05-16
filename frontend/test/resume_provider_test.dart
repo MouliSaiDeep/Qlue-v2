@@ -1,7 +1,10 @@
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+<<<<<<< HEAD
 import 'package:dio/dio.dart';
+=======
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
 import 'package:frontend/context/resume_provider.dart';
 import 'package:frontend/core/services/resume_api_service.dart';
 import 'package:frontend/core/models/resume_model.dart';
@@ -9,6 +12,8 @@ import 'package:frontend/core/models/resume_model.dart';
 class MockResumeApiService extends Mock implements ResumeApiService {}
 class MockDio extends Mock implements Dio {}
 class MockResponse extends Mock implements Response {}
+
+class MockResumeProvider extends Mock implements ResumeProvider {}
 
 void main() {
   late MockResumeApiService mockApi;
@@ -25,6 +30,7 @@ void main() {
   });
 
   group('ResumeProvider Tests', () {
+<<<<<<< HEAD
     test('fetchResumes should update state on success', () async {
       final provider = ResumeProvider(apiService: mockApi);
       final mockResumes = [
@@ -93,6 +99,17 @@ void main() {
 
       verify(() => mockApi.setActiveResume('res-123')).called(1);
       verify(() => mockApi.getResumeList()).called(1);
+=======
+    test('initial state should be correct', () {
+      final provider = ResumeProvider();
+      expect(provider.isLoading, false);
+      expect(provider.resumes, isEmpty);
+    });
+
+    test('uploadResume method should exist', () {
+      final provider = ResumeProvider();
+      expect(provider.uploadResume, isNotNull);
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
     });
   });
 }

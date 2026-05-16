@@ -181,6 +181,8 @@ Resources:
           AttributeType: S
         - AttributeName: generatedAt
           AttributeType: N
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
       KeySchema:
         - AttributeName: feedbackId
           KeyType: HASH
@@ -1441,6 +1443,7 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
+<<<<<<< HEAD
         - Statement:
             - Effect: Allow
               Action: ['dynamodb:Query']
@@ -1448,6 +1451,9 @@ Resources:
                 - !Sub "${SessionsTable.Arn}/index/*"
                 - !Sub "${FeedbackTable.Arn}/index/*"
                 - !Sub "${TranscriptsTable.Arn}/index/*"
+=======
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
   GetScoreTrendsFunction:
     Type: AWS::Serverless::Function
@@ -1482,7 +1488,7 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
 
   GetSessionHistoryFunction:
@@ -1507,6 +1513,35 @@ Resources:
               Resource:
                 - !Sub "${SessionsTable.Arn}/index/*"
         - AWSSecretsManagerGetSecretValuePolicy: { SecretArn: !Ref FirebaseServiceAccountSecret }
+
+  UpdateGlobalProfileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/dashboard/updateGlobalProfile.handler
+      CodeUri: src/
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          NEMOTRON_MODEL_ID: 'nvidia.nemotron-super-3-120b'
+      Events:
+        FeedbackStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt FeedbackTable.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 1
+            FilterCriteria: 
+              Filters: 
+                - Pattern: "{\"eventName\": [\"INSERT\"]}"
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: "*"
 
   GetSessionDetailFunction:
     Type: AWS::Serverless::Function

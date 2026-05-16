@@ -5,13 +5,17 @@ const { createFeedbackReport } = require('../../models/feedback');
 const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const docClient = DynamoDBDocumentClient.from(client);
 const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions';
 
 const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'us-east-1' });
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' }));
 const NOTIFY_LAMBDA = process.env.SEND_NOTIFICATION_LAMBDA;
+const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions';
 
 exports.handler = async (event) => {
   const { userId, sessionId, overallScore, moduleType } = event;
@@ -51,6 +55,21 @@ exports.handler = async (event) => {
 
     // 3. Update user stats in Users table
     // [DEFERRED] Skip update for now as user.js/models/user.js is a placeholder.
+
+    // Update the Session with accumulatedScores so Dashboard and History APIs see it
+    if (event.dimensionScores) {
+      console.info(`Updating session ${sessionId} with accumulatedScores...`);
+      const updateCmd = new UpdateCommand({
+        TableName: SESSIONS_TABLE,
+        Key: { sessionId },
+        UpdateExpression: "SET accumulatedScores = :as",
+        ExpressionAttributeValues: {
+          ":as": event.dimensionScores
+        }
+      });
+      await docClient.send(updateCmd);
+      console.info(`Session ${sessionId} updated successfully.`);
+    }
 
     // 3. Trigger notification asynchronously
     const notificationPayload = {

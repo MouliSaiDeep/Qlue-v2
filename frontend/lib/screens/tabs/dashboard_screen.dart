@@ -199,7 +199,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                             FeatherIcons.fileText,
                             t.moduleResume,
                           ),
+<<<<<<< HEAD
                            back: _buildModuleStats(t, "Resume", "High: ${summary.bestModuleScores['RESUME'] ?? 0}%"),
+=======
+                          back: _buildModuleStats(t, "Resume", "High: ${summary.bestScoreByModule['RESUME'] ?? 0}%"),
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
                         ),
                         PremiumFlipCard(
                           onFlip: (isFront) => isFront
@@ -212,7 +216,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                             FeatherIcons.users,
                             t.moduleHR,
                           ),
+<<<<<<< HEAD
                           back: _buildModuleStats(t, "HR", "High: ${summary.bestModuleScores['HR'] ?? 0}%"),
+=======
+                          back: _buildModuleStats(t, "HR", "High: ${summary.bestScoreByModule['HR'] ?? 0}%"),
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
                         ),
                         PremiumFlipCard(
                           onFlip: (isFront) => isFront
@@ -225,7 +233,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                             FeatherIcons.globe,
                             t.moduleWeb,
                           ),
+<<<<<<< HEAD
                           back: _buildModuleStats(t, "Website", "High: ${summary.bestModuleScores['WEBSITE'] ?? 0}%"),
+=======
+                          back: _buildModuleStats(t, "Website", "High: ${summary.bestScoreByModule['WEBSITE'] ?? 0}%"),
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
                         ),
                         PremiumFlipCard(
                           onFlip: (isFront) => isFront
@@ -238,7 +250,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                             FeatherIcons.mic,
                             t.accentGreen,
                           ),
+<<<<<<< HEAD
                           back: _buildModuleStats(t, "Intro", "High: ${summary.bestModuleScores['INTRO'] ?? 0}%"),
+=======
+                          back: _buildModuleStats(t, "Intro", "High: ${summary.bestScoreByModule['INTRO'] ?? 0}%"),
+>>>>>>> 1e8157a87ed96695a80b02d223aec303f3216a66
                         ),
                       ],
                     ),
