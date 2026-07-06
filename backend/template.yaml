@@ -973,8 +973,11 @@ Resources:
     Properties:
       Handler: handlers/interview/generateQuestion.handler
       CodeUri: src/
-      MemorySize: 512
-      Timeout: 30
+      # PERF-FIX #8: Lambda CPU scales with memory; LLM-orchestrating functions
+      # run faster (and often cheaper) at 1024MB. Timeout raised above the 45s
+      # Bedrock TTFT guard in lib/bedrock.js so the SDK abort fires first.
+      MemorySize: 1024
+      Timeout: 55
       Events:
         Api:
           Type: Api
@@ -1171,7 +1174,8 @@ Resources:
     Properties:
       Handler: handlers/websocket/sendTextHandler.handler
       CodeUri: src/
-      MemorySize: 256
+      # PERF-FIX #8: on the critical path of every spoken turn (WS -> SQS).
+      MemorySize: 512
       Timeout: 10
       Environment:
         Variables:

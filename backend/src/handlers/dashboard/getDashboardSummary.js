@@ -37,13 +37,18 @@ exports.handler = async (event) => {
         }
 
         // Prepare Query Commands
+        // PERF-FIX #9: Project only the two attributes the aggregation needs.
+        // Session items carry itemData (resume summaries, scraped website
+        // content, etc.), so an unprojected query transferred kilobytes per
+        // session that were immediately discarded.
         const sessionCmd = new QueryCommand({
             TableName: SESSIONS_TABLE,
             IndexName: 'GSI_UserIdStartedAt',
             KeyConditionExpression: 'userId = :uid',
             ExpressionAttributeValues: {
                 ':uid': userId
-            }
+            },
+            ProjectionExpression: 'moduleType, accumulatedScores'
         });
 
         const userCmd = new GetCommand({
