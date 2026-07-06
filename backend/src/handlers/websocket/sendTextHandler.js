@@ -2,7 +2,10 @@ const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 const { UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const { getSession, getSessionById, updateSessionState, INTERVIEW_STATES } = require('../../models/session');
 const { getTranscriptBySession, getLatestTranscripts } = require('../../models/transcript');
-const { deregisterConnection } = require('../../lib/websocket');
+// BUG FIX: postToConnection was used throughout this handler but never
+// imported, so every pong / turn_error / reconnect reply threw a silent
+// ReferenceError inside try/catch blocks and never reached the client.
+const { postToConnection, deregisterConnection } = require('../../lib/websocket');
 const { docClient } = require('../../lib/dynamodb');
 
 const sqsClient = new SQSClient({ region: process.env.AWS_REGION || 'us-east-1' });
