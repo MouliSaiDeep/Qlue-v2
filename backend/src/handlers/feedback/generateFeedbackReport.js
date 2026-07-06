@@ -44,7 +44,9 @@ exports.handler = async (event) => {
     }
 
     // 3. Compute overall score (Average of dimensions as fallback for computeModuleScores)
-    const scores = Object.values(dimensionScores);
+    // BUG FIX: guard against missing dimensionScores — the previous code threw
+    // TypeError here, crashing the exact path meant to degrade gracefully.
+    const scores = Object.values(dimensionScores || {});
     const overallScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
 
     // 4. Prepare complete report payload
@@ -53,7 +55,7 @@ exports.handler = async (event) => {
       userId,
       moduleType,
       overallScore: Math.round(overallScore * 10) / 10, // 1 decimal place
-      dimensionScores,
+      dimensionScores: dimensionScores || {},
       strengths: feedbackData.strengths || [],
       weaknesses: feedbackData.improvements || feedbackData.weaknesses || [],
       recommendations: feedbackData.recommendations || [],
