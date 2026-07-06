@@ -4,6 +4,7 @@ import 'package:frontend/components/glass_card.dart';
 import 'package:frontend/components/premium_flip_card.dart';
 import 'package:frontend/components/spectral_background.dart';
 import 'package:frontend/components/spider_chart.dart';
+import 'package:frontend/components/detail_flash_card.dart';
 import 'package:provider/provider.dart';
 import 'package:feather_icons/feather_icons.dart';
 import 'package:go_router/go_router.dart';
@@ -685,54 +686,83 @@ class _DashboardScreenState extends State<DashboardScreen>
     IconData icon,
     Color color,
   ) {
-    return GlassCard(
-      hasMetallicBorder: true,
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: color),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: t.text,
+    final heroTag = "hero_$title";
+    
+    return Hero(
+      tag: heroTag,
+      child: Material(
+        color: Colors.transparent,
+        child: GlassCard(
+          onTap: () {
+            Navigator.of(context).push(
+              PageRouteBuilder(
+                opaque: false,
+                barrierDismissible: true,
+                pageBuilder: (context, _, __) => DetailFlashCard(
+                  title: title,
+                  items: items,
+                  icon: icon,
+                  color: color,
+                  heroTag: heroTag,
                 ),
+                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ...items.map(
-            (it) => Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Row(
+            );
+          },
+          hasMetallicBorder: true,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Container(
-                    width: 4,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: t.textTertiary,
-                    ),
-                  ),
+                  Icon(icon, size: 16, color: color),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      it,
-                      style: TextStyle(fontSize: 11, color: t.textSecondary),
-                      maxLines: 1,
+                      title,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: t.text,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 12),
+              ...items.take(3).map(
+                (it) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: t.textTertiary,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          it,
+                          style: TextStyle(fontSize: 11, color: t.textSecondary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
