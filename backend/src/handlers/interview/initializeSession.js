@@ -58,6 +58,25 @@ exports.handler = async (event) => {
         if (body.websiteUrl) itemData.websiteUrl = body.websiteUrl;
         itemData.engine = body.engine || 'generative';
 
+        // PERF-FIX #5: Snapshot per-turn LLM context onto the session once at
+        // init, so the async worker does not re-read the resume and user items
+        // from DynamoDB on every single turn.
+        if (user?.name) itemData.userName = user.name;
+        if (user?.currentRole) itemData.userCurrentRole = user.currentRole;
+        if (moduleType === 'RESUME' && body.resumeId) {
+            try {
+                const { getResumeById } = require('../../models/resume');
+                const { extractResumeSummary } = require('./generateQuestion');
+                const resume = await getResumeById(body.resumeId);
+                if (resume) {
+                    itemData.resumeSummary = extractResumeSummary(resume.parsedData || resume);
+                }
+            } catch (snapshotErr) {
+                // Non-fatal: the worker falls back to per-turn resume fetches.
+                console.warn(`Resume snapshot failed for session init (${body.resumeId}):`, snapshotErr.message);
+            }
+        }
+
         console.info(`Creating new session ${sessionId} for ${userId} (Module: ${moduleType})`);
         await createSession(sessionId, userId, moduleType, itemData);
 
