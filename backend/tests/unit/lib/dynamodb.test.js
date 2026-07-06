@@ -1,18 +1,17 @@
 const { docClient, get, put, update, query, scan, transactWrite } = require('../../../src/lib/dynamodb');
 const { GetCommand, PutCommand, UpdateCommand, QueryCommand, ScanCommand, TransactWriteCommand } = require('@aws-sdk/lib-dynamodb');
 
-jest.mock('../../../src/lib/dynamodb', () => {
-    const original = jest.requireActual('../../../src/lib/dynamodb');
-    return {
-        ...original,
-        docClient: {
-            send: jest.fn()
-        }
-    };
-});
-
+// PERF-FIX #1: The previous jest.mock factory replaced docClient only on the
+// mocked exports object, so the lib's internal send() never saw the mock and
+// every test hit real AWS credentials. Stubbing send on the actual exported
+// client instance works because the lib routes all calls through
+// module.exports.docClient.send.
 describe('dynamodb lib', () => {
     beforeEach(() => {
+        docClient.send = jest.fn();
+    });
+
+    afterEach(() => {
         jest.clearAllMocks();
     });
 
