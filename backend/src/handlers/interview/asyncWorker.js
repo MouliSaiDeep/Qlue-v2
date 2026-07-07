@@ -119,8 +119,8 @@ async function generateAtomicTurn({
   const startTime = Date.now();
   
   try {
-    const voiceId = requestedVoiceId || session.voiceId || 'Tiffany';
-    const engine = requestedEngine || session.engine || 'generative';
+    const voiceId = requestedVoiceId || session.voiceId || 'Ruth'; // COST-FIX: Ruth supports the cheaper neural engine (Tiffany is generative-only)
+    const engine = requestedEngine || session.engine || 'neural';
     
     console.log(`[AtomicTurn] Session ${sessionId} | Turn ${session.turnCount || 0} | Voice: ${voiceId} | Engine: ${engine}`);
 

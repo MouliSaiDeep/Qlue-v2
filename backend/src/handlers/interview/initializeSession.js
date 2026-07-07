@@ -56,7 +56,7 @@ exports.handler = async (event) => {
         const itemData = { voiceId };
         if (body.resumeId) itemData.resumeId = body.resumeId;
         if (body.websiteUrl) itemData.websiteUrl = body.websiteUrl;
-        itemData.engine = body.engine || 'generative';
+        itemData.engine = body.engine || 'neural';
 
         // PERF-FIX #5: Snapshot per-turn LLM context onto the session once at
         // init, so the async worker does not re-read the resume and user items

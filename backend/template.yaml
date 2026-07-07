@@ -28,6 +28,11 @@ Globals:
         WEBSOCKET_ENDPOINT: !Sub "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
         BEDROCK_MODEL_ID: 'nvidia.nemotron-super-3-120b'
         ALLOWED_VOICES: "Tiffany,Ruth,Joanna,Matthew,Stephen"
+        # COST-FIX: neural is $16/1M chars with 1M chars/month free (12 mo);
+        # generative is $30/1M with only 100K free. Set POLLY_ALLOW_GENERATIVE
+        # to 'true' to permit generative voices (e.g. Tiffany) at extra cost.
+        POLLY_DEFAULT_ENGINE: 'neural'
+        POLLY_ALLOW_GENERATIVE: 'false'
 
 Resources:
   # ==============================================================================
@@ -337,8 +342,23 @@ Resources:
   AudioBucket:
     Type: AWS::S3::Bucket
     Properties:
+      # COST-FIX: versioning suspended (turn audio is throwaway; old versions
+      # accumulated storage forever) and lifecycle rules added so synthesized
+      # audio self-deletes after 1 day and failed uploads don't linger.
       VersioningConfiguration:
-        Status: Enabled
+        Status: Suspended
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireTurnAudio
+            Status: Enabled
+            Prefix: audio/
+            ExpirationInDays: 1
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: AbortIncompleteUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true

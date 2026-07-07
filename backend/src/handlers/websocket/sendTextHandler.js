@@ -78,8 +78,10 @@ async function handleSessionInit(connectionId, body, userId) {
     const allowedVoices = (process.env.ALLOWED_VOICES || 'Tiffany,Ruth,Joanna,Matthew,Stephen').split(',');
     const finalVoiceId = allowedVoices.includes(voiceId) ? voiceId : (session.voiceId || 'Tiffany');
     
-    // Force generative engine universally
-    const finalEngine = 'generative';
+    // COST-FIX: was hard-coded to 'generative' ($30/1M chars, 100K free);
+    // default to neural ($16/1M, 1M chars/month free) — lib/polly.js still
+    // validates voice/engine compatibility.
+    const finalEngine = process.env.POLLY_DEFAULT_ENGINE || 'neural';
     // Do not advance session state here; asyncWorker owns session initialization state transitions.
 
     // BUG-4 FIX: Use UpdateCommand with attribute_not_exists to prevent overwrite race
@@ -173,8 +175,8 @@ async function handleTurnSubmit(connectionId, body, userId) {
     const allowedVoices = (process.env.ALLOWED_VOICES || 'Tiffany,Ruth,Joanna,Matthew,Stephen').split(',');
     const finalVoiceId = allowedVoices.includes(voiceId) ? voiceId : (session.voiceId || 'Tiffany');
     
-    // Force generative engine universally
-    const finalEngine = 'generative';
+    // COST-FIX: see session_init note above.
+    const finalEngine = process.env.POLLY_DEFAULT_ENGINE || 'neural';
 
     console.log(`[turn_submit] Session ${sessionId} | Voice: ${finalVoiceId} | Engine: ${finalEngine}`);
 
