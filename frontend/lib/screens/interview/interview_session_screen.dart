@@ -105,14 +105,13 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
     };
     _provider.addListener(_providerListener);
 
-    // CRITICAL: Reset + init deferred to post-frame so notifyListeners() is
-    // never called while the widget tree is still being built (avoids the
-    // "setState() called during build" assertion).
+    // Reset provider immediately to prevent redirect from old session state in the first build
+    _provider.resetForNewSession();
+
+    // Init deferred to post-frame to ensure any async side-effects or further notifications 
+    // happen safely after the initial build.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-
-      // Reset provider to prevent redirect from old session state
-      _provider.resetForNewSession();
 
       final type = widget.moduleType ?? (widget.resumeId != null ? 'RESUME' : (widget.websiteUrl != null ? 'WEBSITE' : 'HR'));
       if (!(type == 'RESUME' || type == 'HR' || type == 'WEBSITE' || type == 'INTRO')) {

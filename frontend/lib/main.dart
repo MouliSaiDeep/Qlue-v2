@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -14,6 +15,9 @@ import 'core/theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Disable runtime fetching to use local bundled fonts
+  GoogleFonts.config.allowRuntimeFetching = false;
   
   await Firebase.initializeApp(
     options: FirebaseOptions(

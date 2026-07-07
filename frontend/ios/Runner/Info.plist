@@ -65,6 +65,7 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Mic is for voice interview responses</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

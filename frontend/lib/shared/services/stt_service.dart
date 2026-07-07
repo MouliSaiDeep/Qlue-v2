@@ -1,37 +1,52 @@
 import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
 
 class SttService {
   final SpeechToText _speech = SpeechToText();
   bool _isInitialized = false;
 
-  Future<bool> init() async {
+  Function(SpeechRecognitionError)? _onError;
+  Function(String)? _onStatus;
+
+  Future<bool> init({Function(SpeechRecognitionError)? onError, Function(String)? onStatus}) async {
     if (_isInitialized) return true;
+    _onError = onError;
+    _onStatus = onStatus;
 
     _isInitialized = await _speech.initialize(
       onError: (error) {
-        debugPrint('STT Error: $error'); // FE-BUG #12 FIX: use debugPrint not print
-        if (error.errorMsg == 'no_match' || error.errorMsg == 'busy') {
-          debugPrint('STT: Recoverable error, continuing...');
-        }
+        debugPrint('STT Global Error: $error');
+        _onError?.call(error);
       },
       onStatus: (status) {
-        debugPrint('STT Status: $status');
-        if (status == 'done') {
-          debugPrint('STT: Listening done (may have timed out)');
-        }
+        debugPrint('STT Global Status: $status');
+        _onStatus?.call(status);
       },
     );
 
     return _isInitialized;
   }
 
+  Future<void> reInitialize() async {
+    _isInitialized = false;
+    await _speech.stop();
+    await init();
+  }
+
   void startListening({
     required Function(String) onPartial,
     required Function(String) onFinal,
+    Function(SpeechRecognitionError)? onError,
+    Function(String)? onStatus,
   }) {
-    if (!_isInitialized) return;
+    if (!_isInitialized) {
+      debugPrint('STT: Not initialized, attempting to start anyway...');
+    }
+
+    _onError = onError;
+    _onStatus = onStatus;
 
     _speech.listen(
       onResult: (SpeechRecognitionResult result) {

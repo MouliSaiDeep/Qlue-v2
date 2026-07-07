@@ -52,6 +52,7 @@ class InterviewProvider extends ChangeNotifier {
   bool isSessionEnded = false;
   int _silenceStrikes = 0;
   int get silenceStrikes => _silenceStrikes;
+  int _sttRetryCount = 0;
 
   WebSocketClient? _wsClient;
   final SttService _sttService = SttService();
@@ -201,7 +202,7 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
   Timer? _safetyTimer;
   
   void _startListening() {
-    if (isListening) return;
+    if (isListening && _sttService.isListening) return;
     
     // Cancel any pending safety timer from previous turn
     _safetyTimer?.cancel();
@@ -215,6 +216,7 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
       onFinal: (text) {
         finalTranscript = text;
         isListening = false;
+        _sttRetryCount = 0; // Reset on success
         _safetyTimer?.cancel(); // Cancel safety timer on successful completion
         if (text.isEmpty) {
           _silenceStrikes++;
@@ -224,18 +226,54 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
         _submitResponse(text);
         _safeNotify();
       },
+      onError: (error) {
+        debugPrint('Provider STT Error: ${error.errorMsg}');
+        _handleSttFailure();
+      },
+      onStatus: (status) {
+        if (status == 'done' && isListening) {
+          // If native engine stopped but we haven't received a final result yet
+          debugPrint('Provider STT status: done (still in listening phase)');
+          _handleSttFailure();
+        }
+      },
     );
 
-    // Safety timeout - force submit if onFinal never fires
-    _safetyTimer = Timer(const Duration(seconds: 35), () {
-      if (isListening && !_sttService.isListening) {
-        // STT stopped without calling onFinal — force submit
-        debugPrint('STT timeout: forcing submit after silence');
+    // Safety timeout - force submit if onFinal never fires and retry logic fails
+    _safetyTimer = Timer(const Duration(seconds: 40), () {
+      if (isListening) {
+        debugPrint('STT Absolute timeout: forcing submit');
         isListening = false;
-        _submitResponse('');
+        _submitResponse(partialTranscript);
         _safeNotify();
       }
     });
+  }
+
+  void _handleSttFailure() async {
+    if (!isListening) return;
+
+    if (_sttRetryCount < 2) {
+      _sttRetryCount++;
+      debugPrint('Retrying STT (Attempt $_sttRetryCount)...');
+      
+      // Briefly stop and wait before retrying to let engine clear
+      _sttService.stop();
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // If first retry failed, try re-initializing
+      if (_sttRetryCount == 2) {
+        await _sttService.reInitialize();
+      }
+      
+      _startListening();
+    } else {
+      debugPrint('STT failed after retries, submitting partial or empty response.');
+      isListening = false;
+      _sttRetryCount = 0;
+      _submitResponse(partialTranscript);
+      _safeNotify();
+    }
   }
 
   void _submitResponse(String text) {
