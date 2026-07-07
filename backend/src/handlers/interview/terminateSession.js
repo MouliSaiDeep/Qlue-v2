@@ -2,7 +2,6 @@ const { getSessionById, updateSessionState, INTERVIEW_STATES } = require('../../
 const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
 
 const snsClient = new SNSClient({ region: process.env.AWS_REGION || 'us-east-1' });
-const FEEDBACK_TOPIC_ARN = process.env.FEEDBACK_TOPIC_ARN;
 
 exports.handler = async (event) => {
   try {
@@ -35,7 +34,10 @@ exports.handler = async (event) => {
       terminationReason: reason
     });
 
-    // Trigger feedback generation via SNS
+    // Trigger feedback generation via SNS.
+    // Read the env var lazily so runtime configuration (and tests) that set it
+    // after module load are honoured.
+    const FEEDBACK_TOPIC_ARN = process.env.FEEDBACK_TOPIC_ARN;
     if (FEEDBACK_TOPIC_ARN) {
       await snsClient.send(new PublishCommand({
         TopicArn: FEEDBACK_TOPIC_ARN,

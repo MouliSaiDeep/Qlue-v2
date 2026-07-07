@@ -27,7 +27,7 @@ async function createSession(sessionId, userId, moduleType, itemData = {}) {
         moduleType,
         itemData,
         voiceId: itemData.voiceId || 'Tiffany',
-        engine: itemData.engine || 'generative',
+        engine: itemData.engine || 'neural',
         currentState: INTERVIEW_STATES.INITIALIZING,
         turnCount: 0,
         startedAt: nowMs,     // Numeric — matches GSI_UserIdStartedAt type N

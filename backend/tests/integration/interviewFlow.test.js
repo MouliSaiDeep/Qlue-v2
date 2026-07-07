@@ -3,10 +3,14 @@ const { handler: processUserInput } = require('../../src/handlers/interview/proc
 const { handler: generateFeedbackReport } = require('../../src/handlers/feedback/generateFeedbackReport');
 const { DynamoDBDocumentClient, PutCommand, GetCommand, UpdateCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
+const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 const { mockClient } = require('aws-sdk-client-mock');
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
 const bedrockMock = mockClient(BedrockRuntimeClient);
+// generateFeedbackReport chains to the store lambda; without this mock the
+// test hit the real AWS SDK and failed on credentials.
+const lambdaMock = mockClient(LambdaClient);
 
 describe('Interview Flow Integration Test', () => {
     const userId = 'user-integration-123';
@@ -16,6 +20,8 @@ describe('Interview Flow Integration Test', () => {
     beforeEach(() => {
         ddbMock.reset();
         bedrockMock.reset();
+        lambdaMock.reset();
+        lambdaMock.on(InvokeCommand).resolves({});
         mockStore = {};
 
         // Mock DDB behavior to use mockStore

@@ -2,7 +2,10 @@ const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 const { UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const { getSession, getSessionById, updateSessionState, INTERVIEW_STATES } = require('../../models/session');
 const { getTranscriptBySession, getLatestTranscripts } = require('../../models/transcript');
-const { deregisterConnection } = require('../../lib/websocket');
+// BUG FIX: postToConnection was used throughout this handler but never
+// imported, so every pong / turn_error / reconnect reply threw a silent
+// ReferenceError inside try/catch blocks and never reached the client.
+const { postToConnection, deregisterConnection } = require('../../lib/websocket');
 const { docClient } = require('../../lib/dynamodb');
 
 const sqsClient = new SQSClient({ region: process.env.AWS_REGION || 'us-east-1' });
@@ -75,8 +78,10 @@ async function handleSessionInit(connectionId, body, userId) {
     const allowedVoices = (process.env.ALLOWED_VOICES || 'Tiffany,Ruth,Joanna,Matthew,Stephen').split(',');
     const finalVoiceId = allowedVoices.includes(voiceId) ? voiceId : (session.voiceId || 'Tiffany');
     
-    // Force generative engine universally
-    const finalEngine = 'generative';
+    // COST-FIX: was hard-coded to 'generative' ($30/1M chars, 100K free);
+    // default to neural ($16/1M, 1M chars/month free) — lib/polly.js still
+    // validates voice/engine compatibility.
+    const finalEngine = process.env.POLLY_DEFAULT_ENGINE || 'neural';
     // Do not advance session state here; asyncWorker owns session initialization state transitions.
 
     // BUG-4 FIX: Use UpdateCommand with attribute_not_exists to prevent overwrite race
@@ -170,8 +175,8 @@ async function handleTurnSubmit(connectionId, body, userId) {
     const allowedVoices = (process.env.ALLOWED_VOICES || 'Tiffany,Ruth,Joanna,Matthew,Stephen').split(',');
     const finalVoiceId = allowedVoices.includes(voiceId) ? voiceId : (session.voiceId || 'Tiffany');
     
-    // Force generative engine universally
-    const finalEngine = 'generative';
+    // COST-FIX: see session_init note above.
+    const finalEngine = process.env.POLLY_DEFAULT_ENGINE || 'neural';
 
     console.log(`[turn_submit] Session ${sessionId} | Voice: ${finalVoiceId} | Engine: ${finalEngine}`);
 

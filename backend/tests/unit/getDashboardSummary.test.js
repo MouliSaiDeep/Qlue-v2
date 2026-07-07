@@ -1,4 +1,4 @@
-const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, QueryCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
 const { mockClient } = require("aws-sdk-client-mock");
 const { handler } = require('../../src/handlers/dashboard/getDashboardSummary');
 
@@ -37,8 +37,11 @@ describe('getDashboardSummary handler', () => {
       Items: mockSessions
     });
 
-    ddbMock.on(QueryCommand, { TableName: 'qlue-feedback' }).resolves({
-      Items: mockFeedback
+    // The handler reads latestFeedback from globalInsights on the USER item
+    // (GetCommand), not from the feedback table. The original stub targeted a
+    // query that never runs, leaving GetCommand unmocked (resolved undefined).
+    ddbMock.on(GetCommand, { TableName: 'qlue-users' }).resolves({
+      Item: { userId, globalInsights: { strengths: mockFeedback[0].strengths, improvements: ['Python'], tip: 'Keep practicing' } }
     });
 
     const result = await handler(event);

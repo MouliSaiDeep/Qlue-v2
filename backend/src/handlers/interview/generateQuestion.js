@@ -16,22 +16,18 @@ function getAiPersona(voiceId) {
   return VOICE_PERSONA_MAP[voiceId] || 'Alex';
 }
 
-const IRRELEVANT_PATTERNS = [
-  /\b(weather|movie|game|sports|football|cricket|food|restaurant|hobby|pet|dog|cat)\b/i,
-  /\b(let me tell you a joke|funny story|by the way|random thought)\b/i,
-];
-
+// PERF-FIX #2: Removed keyword-blocklist relevance detection. The old regex
+// flagged legitimate answers as off-topic (e.g. "I built a sports analytics
+// dashboard", or a game developer describing their work), and any answer under
+// 5 words (e.g. "Yes, exactly right") was marked irrelevant. Topic-steering is
+// now delegated to the LLM via a standing rule inside each prompt, which can
+// judge context instead of keywords. We keep a minimal length heuristic only
+// to nudge for elaboration on extremely short answers.
 function analyzeResponseRelevance(transcript) {
   if (!transcript || transcript.trim() === '') return { isRelevant: true, issue: null };
-  
-  const wordCount = transcript.trim().split(/\s+/).length;
-  if (wordCount < 5) return { isRelevant: false, issue: 'too_short' };
 
-  for (const pattern of IRRELEVANT_PATTERNS) {
-    if (pattern.test(transcript)) {
-      return { isRelevant: false, issue: 'irrelevant_topic' };
-    }
-  }
+  const wordCount = transcript.trim().split(/\s+/).length;
+  if (wordCount < 3) return { isRelevant: false, issue: 'too_short' };
 
   return { isRelevant: true, issue: null };
 }
@@ -41,6 +37,9 @@ function analyzeResponseRelevance(transcript) {
 // =============================================================================
 function extractResumeSummary(resumeData) {
   if (!resumeData) return 'No resume data available.';
+  // PERF-FIX #5: sessions now snapshot a pre-extracted summary string at
+  // initialization; pass it through untouched.
+  if (typeof resumeData === 'string') return resumeData;
   const r = resumeData.parsedData || resumeData;
 
   const name = r.name || r.fullName || 'Candidate';
@@ -137,6 +136,7 @@ ${summary}
 5. NEVER ask multiple questions at once.
 6. NEVER repeat questions from the history.
 7. Keep your total response maximum 3 short sentences to ensure natural spoken pacing.
+8. If the candidate's last answer drifted away from professional/interview topics, use your acknowledgment to politely steer them back before asking your question.
 </response_rules>
 
 <conversation_history>
@@ -226,6 +226,7 @@ ${userData?.currentRole ? `Current Role: ${userData.currentRole}` : ''}
 3. Ask exactly ONE engaging behavioral or situational question (teamwork, culture fit, conflict resolution, leadership, handling pressure).
 4. Base your follow-up heavily on their previous answer.
 5. Keep your total response maximum 3 short sentences.
+6. If the candidate's last answer drifted off-topic, use your reaction to politely steer them back before asking your question.
 </response_rules>
 
 <conversation_history>
