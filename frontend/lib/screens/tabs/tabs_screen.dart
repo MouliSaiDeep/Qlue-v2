@@ -2,8 +2,10 @@
 import 'package:flutter/material.dart';
 import 'package:feather_icons/feather_icons.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../components/glass_card.dart';
+import '../../context/dashboard_provider.dart';
 
 class TabsScreen extends StatefulWidget {
   final Widget child;
@@ -25,7 +27,53 @@ class TabsScreen extends StatefulWidget {
   State<TabsScreen> createState() => _TabsScreenState();
 }
 
-class _TabsScreenState extends State<TabsScreen> {
+class _TabsScreenState extends State<TabsScreen> with WidgetsBindingObserver {
+  // REALTIME REFRESH: which tab currently drives the auto-refresh loop.
+  // Tabs 0 (Performance) and 2 (Previous) display dashboard data.
+  int? _lastManagedIndex;
+
+  static bool _isDataTab(int index) => index == 0 || index == 2;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // Stop polling when the tab shell leaves the tree (e.g. logout).
+    context.read<DashboardProvider>().stopAutoRefresh();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final dashboard = context.read<DashboardProvider>();
+    if (state == AppLifecycleState.resumed) {
+      if (_isDataTab(TabsScreen.currentIndex)) {
+        dashboard.refreshNow(); // catch up instantly on return
+        dashboard.startAutoRefresh();
+      }
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      // No polling in the background: saves battery and AWS requests.
+      dashboard.stopAutoRefresh();
+    }
+  }
+
+  void _manageAutoRefresh(int index) {
+    if (_lastManagedIndex == index) return;
+    _lastManagedIndex = index;
+    final dashboard = context.read<DashboardProvider>();
+    if (_isDataTab(index)) {
+      dashboard.refreshNow(); // instant update the moment a data tab opens
+      dashboard.startAutoRefresh();
+    } else {
+      dashboard.stopAutoRefresh();
+    }
+  }
 
   int _calculateIndex(String location) {
     int newIndex = 0;
@@ -42,6 +90,9 @@ class _TabsScreenState extends State<TabsScreen> {
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
     final int currentIndex = _calculateIndex(location);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _manageAutoRefresh(currentIndex);
+    });
     final t = AppThemeColors.of(context);
     return Scaffold(
       extendBody: true, // Allows body to flow underneath the transparent nav bar
