@@ -80,57 +80,16 @@ class _DashboardScreenState extends State<DashboardScreen>
         backgroundColor: Colors.transparent,
         body: CustomScrollView(
           slivers: [
-            // APP BAR / HEADER
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.only(
-                  top: topPadding + 16,
-                  bottom: 24,
-                  left: 24,
-                  right: 24,
-                ),
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () => context.push('/profile'),
-                      child: Avatar(
-                        imageUrl: auth.profileImageUrl,
-                        size: 44,
-                        isCircle: true,
-                        border: Border.all(color: t.metallicBorder.withOpacity(0.5), width: 1.5),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _getGreetingText(),
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: t.textTertiary,
-                              letterSpacing: 1.0,
-                            ),
-                          ),
-                          Text(
-                            auth.displayName,
-                            style: TextStyle(
-                              fontSize: 20,
-                              color: t.text,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            _buildHeader(t, topPadding, auth),
 
+            // EMPTY STATE: new users see a prompt instead of blank stats.
+            // Once at least one interview exists, the original design renders.
+            if (!dashboard.isLoading && total == 0)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _buildEmptyState(t, bottomPadding),
+              )
+            else ...[
             // OVERALL PERFORMANCE & MINI STATS
             SliverToBoxAdapter(
               child: Padding(
@@ -386,7 +345,125 @@ class _DashboardScreenState extends State<DashboardScreen>
                 }, childCount: math.min(sessions.length, 3)),
               ),
             ),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(AppThemeColors t, double topPadding, AuthProvider auth) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: EdgeInsets.only(
+          top: topPadding + 16,
+          bottom: 24,
+          left: 24,
+          right: 24,
+        ),
+        child: Row(
+          children: [
+            GestureDetector(
+              onTap: () => context.push('/profile'),
+              child: Avatar(
+                imageUrl: auth.profileImageUrl,
+                size: 44,
+                isCircle: true,
+                border: Border.all(color: t.metallicBorder.withOpacity(0.5), width: 1.5),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _getGreetingText(),
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: t.textTertiary,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                  Text(
+                    auth.displayName,
+                    style: TextStyle(
+                      fontSize: 20,
+                      color: t.text,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(AppThemeColors t, double bottomPadding) {
+    return Padding(
+      padding: EdgeInsets.only(left: 24, right: 24, bottom: bottomPadding + 100),
+      child: Center(
+        child: GlassCard(
+          hasMetallicBorder: true,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: t.primary.withValues(alpha: 0.1),
+                  border: Border.all(color: t.primary.withValues(alpha: 0.25)),
+                ),
+                child: Center(child: Icon(FeatherIcons.barChart2, size: 30, color: t.primary)),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                "No Stats Yet",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: t.text,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                "Attend an interview to view your\nperformance stats here.",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: t.textSecondary, height: 1.5),
+              ),
+              const SizedBox(height: 28),
+              GestureDetector(
+                onTap: () => context.go('/practice'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: t.primaryGradient),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: t.primaryGradient.last.withValues(alpha: 0.35),
+                        blurRadius: 18,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: const Text(
+                    "Start an Interview",
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
