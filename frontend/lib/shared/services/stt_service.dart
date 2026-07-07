@@ -30,9 +30,15 @@ class SttService {
   }
 
   Future<void> reInitialize() async {
+    // BUG FIX: init() assigns _onError/_onStatus from its parameters, so
+    // calling it bare wiped both callbacks to null on every re-init — after
+    // the first STT recovery, error/status handling went silently dead.
+    // Capture them first and pass them back through.
+    final preservedOnError = _onError;
+    final preservedOnStatus = _onStatus;
     _isInitialized = false;
     await _speech.stop();
-    await init();
+    await init(onError: preservedOnError, onStatus: preservedOnStatus);
   }
 
   void startListening({
