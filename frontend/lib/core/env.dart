@@ -1,30 +1,33 @@
-import 'package:envied/envied.dart';
-
-part 'env.g.dart';
-
-@Envied(path: '.env', obfuscate: true)
+/// Compile-time environment configuration.
+///
+/// Values are injected at BUILD time via --dart-define-from-file:
+///
+///   flutter run   --dart-define-from-file=env.json
+///   flutter build apk --release --dart-define-from-file=env.json
+///
+/// Copy env.example.json to env.json (gitignored) and fill in your values.
+/// Unlike the previous envied setup, there is NO generated file and NO
+/// build_runner step: the file is read fresh on every build, so editing
+/// env.json and rebuilding is always enough for changes to take effect.
 abstract class Env {
-  @EnviedField(varName: 'API_BASE_URL')
-  static final String apiBaseUrl = _Env.apiBaseUrl;
+  static const String apiBaseUrl = String.fromEnvironment('API_BASE_URL');
+  static const String websocketUrl = String.fromEnvironment('WEBSOCKET_URL');
+  static const String firebaseApiKey = String.fromEnvironment('FIREBASE_API_KEY');
+  static const String firebaseAppId = String.fromEnvironment('FIREBASE_APP_ID');
+  static const String messagingSenderId = String.fromEnvironment('MESSAGING_SENDER_ID');
+  static const String firebaseProjectId = String.fromEnvironment('FIREBASE_PROJECT_ID');
+  static const String measurementId = String.fromEnvironment('MEASUREMENT_ID');
+  static const String googleClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
 
-  @EnviedField(varName: 'WEBSOCKET_URL')
-  static final String websocketUrl = _Env.websocketUrl;
-
-  @EnviedField(varName: 'FIREBASE_API_KEY')
-  static final String firebaseApiKey = _Env.firebaseApiKey;
-
-  @EnviedField(varName: 'FIREBASE_APP_ID')
-  static final String firebaseAppId = _Env.firebaseAppId;
-
-  @EnviedField(varName: 'MESSAGING_SENDER_ID')
-  static final String messagingSenderId = _Env.messagingSenderId;
-
-  @EnviedField(varName: 'FIREBASE_PROJECT_ID')
-  static final String firebaseProjectId = _Env.firebaseProjectId;
-
-  @EnviedField(varName: 'MEASUREMENT_ID')
-  static final String measurementId = _Env.measurementId;
-
-  @EnviedField(varName: 'GOOGLE_CLIENT_ID')
-  static final String googleClientId = _Env.googleClientId;
+  /// Fails fast with a clear message if the build was made without
+  /// --dart-define-from-file (all values would silently be empty strings,
+  /// producing confusing network/auth errors at runtime instead).
+  static void validate() {
+    if (apiBaseUrl.isEmpty || websocketUrl.isEmpty || firebaseApiKey.isEmpty) {
+      throw StateError(
+        'Environment not configured. Build/run the app with '
+        '--dart-define-from-file=env.json (copy env.example.json first).',
+      );
+    }
+  }
 }

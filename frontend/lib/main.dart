@@ -16,6 +16,9 @@ import 'core/theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Fail fast if the build is missing --dart-define-from-file=env.json.
+  Env.validate();
+
   // Disable runtime fetching to use local bundled fonts
   GoogleFonts.config.allowRuntimeFetching = false;
   
