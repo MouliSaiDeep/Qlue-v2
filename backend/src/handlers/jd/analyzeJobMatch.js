@@ -24,15 +24,23 @@ exports.handler = async (event) => {
       return unauthorized('Unauthorized. User ID required.');
     }
 
-    const { jobUrl, resumeId } = body;
-    if (!jobUrl || !resumeId) {
-      return badRequest('jobUrl and resumeId are required');
+    const { jobUrl, jobText, resumeId } = body;
+    if (!resumeId) {
+      return badRequest('resumeId is required');
     }
-
-    try {
-      new URL(jobUrl);
-    } catch (e) {
-      return badRequest('Invalid job posting URL format');
+    // Either a URL to scrape OR pasted job-description text. The pasted-text
+    // path is the guaranteed fallback for sites that block scrapers
+    // (LinkedIn, some Indeed pages, login-walled boards).
+    const hasPastedText = typeof jobText === 'string' && jobText.trim().length >= 100;
+    if (!jobUrl && !hasPastedText) {
+      return badRequest('Provide either a job posting URL or paste the job description (at least 100 characters).');
+    }
+    if (jobUrl) {
+      try {
+        new URL(jobUrl);
+      } catch (e) {
+        return badRequest('Invalid job posting URL format');
+      }
     }
 
     // 1. Resume (with ownership check)
@@ -43,17 +51,24 @@ exports.handler = async (event) => {
     }
     const resumeSummary = extractResumeSummary(resume.parsedData || resume);
 
-    // 2. Scrape the job posting
+    // 2. Obtain the job description: pasted text wins (100% reliable); else scrape.
     let jdContent;
-    try {
-      const scraped = await fetchAndCleanContent(jobUrl);
-      jdContent = scraped.content;
-    } catch (scrapeErr) {
-      console.error('JD scrape failed:', scrapeErr);
-      return success({
-        analyzed: false,
-        reason: 'Could not read the job posting. Some platforms block automated access — try the direct company careers page link instead.'
-      });
+    if (hasPastedText) {
+      jdContent = jobText.trim();
+    } else {
+      try {
+        const scraped = await fetchAndCleanContent(jobUrl);
+        jdContent = scraped.content;
+      } catch (scrapeErr) {
+        console.error('JD scrape failed:', scrapeErr);
+        return success({
+          analyzed: false,
+          canPasteText: true, // signal the client to offer the paste fallback
+          reason: scrapeErr.message && scrapeErr.message.includes('Paste')
+            ? scrapeErr.message
+            : 'Could not read this job posting — some sites (like LinkedIn) block automated access. Paste the job description text instead.'
+        });
+      }
     }
 
     // 3. LLM comparison
@@ -99,7 +114,7 @@ Score honestly: 80+ only for strong overlap of core requirements, 50-79 for part
 
     // 4. Persist for initializeSession (JD module) to pick up
     await saveJdAnalysis(userId, {
-      jobUrl,
+      jobUrl: jobUrl || '(pasted text)',
       resumeId,
       roleTitle: analysis.roleTitle || 'Unknown Role',
       matchScore,

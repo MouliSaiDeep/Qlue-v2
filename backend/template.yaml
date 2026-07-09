@@ -1561,7 +1561,9 @@ Resources:
       Handler: handlers/jd/analyzeJobMatch.handler
       CodeUri: src/
       MemorySize: 1024
-      Timeout: 45
+      # JS-rendering + residential-proxy scrape tiers can take 30s+; give the
+      # scrape escalation and the LLM comparison enough headroom.
+      Timeout: 90
       Events:
         Api:
           Type: Api

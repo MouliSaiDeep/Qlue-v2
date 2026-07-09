@@ -78,10 +78,28 @@ describe('analyzeJobMatch handler', () => {
     fetchAndCleanContent.mockRejectedValue(new Error('blocked'));
     const body = JSON.parse((await handler(authedEvent({ jobUrl: 'https://x.com/j', resumeId: 'r1' }))).body);
     expect(body.data.analyzed).toBe(false);
-    expect(body.data.reason).toContain('Could not read');
+    expect(body.data.canPasteText).toBe(true);
   });
 
-  it('requires jobUrl and resumeId', async () => {
+  it('analyzes pasted job text without scraping (fallback path)', async () => {
+    invokeModel.mockResolvedValue(llmReply({
+      isJobPosting: true, matchScore: 71, roleTitle: 'SDE',
+      matchedSkills: ['Node.js'], missingSkills: [], verdict: 'Good.', jdSummary: 'SDE role.'
+    }));
+    const longJd = 'We are hiring a backend engineer. '.repeat(10);
+    const res = await handler(authedEvent({ jobText: longJd, resumeId: 'r1' }));
+    const body = JSON.parse(res.body);
+    expect(res.statusCode).toBe(200);
+    expect(body.data.analyzed).toBe(true);
+    expect(fetchAndCleanContent).not.toHaveBeenCalled();
+  });
+
+  it('rejects when neither URL nor sufficient pasted text is given', async () => {
+    const res = await handler(authedEvent({ resumeId: 'r1', jobText: 'too short' }));
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('requires resumeId', async () => {
     const res = await handler(authedEvent({ jobUrl: 'https://x.com/j' }));
     expect(res.statusCode).toBe(400);
   });

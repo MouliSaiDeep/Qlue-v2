@@ -438,16 +438,18 @@ class _AIModulesScreenState extends State<AIModulesScreen>
     );
   }
 
-  Future<void> _analyzeJobMatch() async {
+  Future<void> _analyzeJobMatch({String? pastedText}) async {
     final url = _jdUrlController.text.trim();
-    if (url.isEmpty) {
-      Notify.error(context, "Paste a job posting link first");
-      return;
-    }
-    final uri = Uri.tryParse(url);
-    if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
-      Notify.error(context, "Invalid URL format.");
-      return;
+    if (pastedText == null) {
+      if (url.isEmpty) {
+        Notify.error(context, "Paste a job posting link first");
+        return;
+      }
+      final uri = Uri.tryParse(url);
+      if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
+        Notify.error(context, "Invalid URL format.");
+        return;
+      }
     }
     final resumes = context.read<ResumeProvider>().resumes;
     if (resumes.isEmpty) {
@@ -466,7 +468,9 @@ class _AIModulesScreenState extends State<AIModulesScreen>
     try {
       final response = await DioClient().dio.post(
         ApiConstants.jdAnalyze,
-        data: {'jobUrl': url, 'resumeId': _selectedResume!.resumeId},
+        data: pastedText != null
+            ? {'jobText': pastedText, 'resumeId': _selectedResume!.resumeId}
+            : {'jobUrl': url, 'resumeId': _selectedResume!.resumeId},
       );
 
       final result = (response.data is Map && response.data['data'] is Map)
@@ -475,7 +479,11 @@ class _AIModulesScreenState extends State<AIModulesScreen>
 
       if (result['analyzed'] != true) {
         if (mounted) {
-          Notify.error(context, result['reason'] ?? "Could not analyze this job posting.");
+          if (result['canPasteText'] == true) {
+            _showPasteJdDialog(result['reason']);
+          } else {
+            Notify.error(context, result['reason'] ?? "Could not analyze this job posting.");
+          }
         }
         return;
       }
@@ -485,6 +493,65 @@ class _AIModulesScreenState extends State<AIModulesScreen>
     } finally {
       if (mounted) setState(() => _isAnalyzingJd = false);
     }
+  }
+
+  void _showPasteJdDialog(String? reason) {
+    final t = AppThemeColors.of(context);
+    final pasteController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: t.bgSecondary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text("Paste the job description",
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: t.text)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              reason ?? "This site blocks automated reading. Copy the job description and paste it here.",
+              style: TextStyle(fontSize: 12.5, color: t.textSecondary, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: pasteController,
+              maxLines: 8,
+              style: TextStyle(color: t.text, fontSize: 13),
+              decoration: InputDecoration(
+                hintText: "Paste the full job description here...",
+                hintStyle: TextStyle(color: t.textTertiary, fontSize: 12.5),
+                filled: true,
+                fillColor: t.bg.withValues(alpha: 0.4),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.all(14),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text("Cancel", style: TextStyle(color: t.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () {
+              final text = pasteController.text.trim();
+              if (text.length < 100) {
+                Notify.error(context, "Please paste the full description (at least 100 characters).");
+                return;
+              }
+              Navigator.of(ctx).pop();
+              _analyzeJobMatch(pastedText: text);
+            },
+            child: Text("Analyze", style: TextStyle(color: t.primary, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showJdResultDialog(dynamic result) {
