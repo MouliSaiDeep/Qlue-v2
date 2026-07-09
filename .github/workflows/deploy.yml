@@ -4,6 +4,17 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deploy target'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, prod]
 
 permissions:
   id-token: write
@@ -13,12 +24,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: backend/package.json
+          cache-dependency-path: backend/package-lock.json
       - name: Install dependencies
         working-directory: backend
         run: npm ci
@@ -26,64 +37,56 @@ jobs:
         working-directory: backend
         run: npm run test -- --coverage --passWithNoTests
 
-  build:
+  # Build and deploy in ONE job: the previous split relied on
+  # upload-artifact, which silently excludes hidden directories like
+  # .aws-sam by default — the deploy job was downloading an empty artifact.
+  deploy-dev:
+    if: github.event_name == 'push' || inputs.environment == 'dev'
     needs: [test]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: aws-actions/setup-sam@v2
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-deploy-role
+          # Must match samconfig.toml and where the SSM parameters live.
+          aws-region: us-east-1
       - name: SAM Build
         working-directory: backend
         run: sam build
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: sam-build
-          path: backend/.aws-sam/
-
-  deploy-dev:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-deploy-role
-          aws-region: ap-south-1
-      - uses: aws-actions/setup-sam@v2
-      - name: Download Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: sam-build
-          path: backend/.aws-sam/
-      - name: SAM Deploy to Dev
+      - name: SAM Deploy (dev / default stack)
         working-directory: backend
-        run: sam deploy --config-env dev --no-confirm-changeset --no-fail-on-empty-changeset
+        # samconfig.toml has [default] and [prod] environments; there is no
+        # [dev], so the default environment IS dev (stack qlue-dev).
+        run: sam deploy --no-confirm-changeset --no-fail-on-empty-changeset
 
+  # Prod deploys are MANUAL ONLY (Actions tab -> Run workflow -> prod).
+  # Note: the DynamoDB tables use fixed names, so dev and prod stacks
+  # cannot coexist in the same account/region — only run this if the
+  # prod stack is the one that owns the tables.
   deploy-prod:
-    needs: deploy-dev
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'prod'
+    needs: [test]
     runs-on: ubuntu-latest
     environment:
       name: production
-      url: https://api.qlue.app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - uses: aws-actions/setup-sam@v2
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-deploy-role
-          aws-region: ap-south-1
-      - uses: aws-actions/setup-sam@v2
-      - name: Download Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: sam-build
-          path: backend/.aws-sam/
+          aws-region: us-east-1
+      - name: SAM Build
+        working-directory: backend
+        run: sam build
       - name: SAM Deploy to Prod
         working-directory: backend
-        run: sam deploy --stack-name qlue-season8-prod --resolve-s3 --config-env prod --no-confirm-changeset --no-fail-on-empty-changeset --capabilities CAPABILITY_IAM
+        run: sam deploy --config-env prod --no-confirm-changeset --no-fail-on-empty-changeset
 
   notify:
-    needs: [deploy-dev, deploy-prod]
+    needs: [deploy-dev]
     if: failure()
     runs-on: ubuntu-latest
     steps:
