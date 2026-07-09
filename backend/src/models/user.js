@@ -46,8 +46,26 @@ async function setActiveResumeId(userId, resumeId) {
     return res.data;
 }
 
+/**
+ * Stores the user's most recent job-description match analysis so the JD
+ * interview module can load it at session init without re-scraping.
+ */
+async function saveJdAnalysis(userId, analysis) {
+    const res = await update(
+        USERS_TABLE,
+        { userId },
+        'SET latestJdAnalysis = :jd',
+        { ':jd': { ...analysis, analyzedAt: new Date().toISOString() } }
+    );
+    if (!res.success) {
+        throw new Error(`Failed to save JD analysis: ${res.error?.message || 'Unknown error'}`);
+    }
+    return res.data;
+}
+
 module.exports = {
     saveUser,
     getUserById,
-    setActiveResumeId
+    setActiveResumeId,
+    saveJdAnalysis
 };

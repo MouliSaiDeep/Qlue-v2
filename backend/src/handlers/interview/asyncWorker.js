@@ -80,14 +80,18 @@ async function resolveTurnContext(session, moduleType) {
   let userData = null;
   let websiteContent = null;
   let targetConcept = null;
+  let jdSummary = null;
 
-  if (moduleType === 'RESUME') {
+  if (moduleType === 'RESUME' || moduleType === 'JD') {
     if (session.itemData?.resumeSummary) {
       resumeData = session.itemData.resumeSummary; // pre-extracted at init
     } else if (session.itemData?.resumeId) {
       const resume = await getResumeById(session.itemData.resumeId);
       resumeData = resume?.parsedData || resume;
     }
+  }
+  if (moduleType === 'JD') {
+    jdSummary = session.itemData?.jdSummary || null;
   }
   if (moduleType === 'WEBSITE') {
     websiteContent = session.itemData?.scrapedSummary || 'no website content';
@@ -103,7 +107,7 @@ async function resolveTurnContext(session, moduleType) {
     userData = await getUserById(session.userId);
   }
 
-  return { resumeData, userData, websiteContent, targetConcept };
+  return { resumeData, userData, websiteContent, targetConcept, jdSummary };
 }
 
 async function generateAtomicTurn({ 
@@ -140,7 +144,7 @@ async function generateAtomicTurn({
 
     let aiText = preGeneratedText;
     if (!aiText) {
-      const { resumeData, userData, websiteContent, targetConcept } = await resolveTurnContext(session, moduleType);
+      const { resumeData, userData, websiteContent, targetConcept, jdSummary } = await resolveTurnContext(session, moduleType);
 
       // Stream text to the frontend while generating
       let accumulatedText = "";
@@ -152,6 +156,7 @@ async function generateAtomicTurn({
           userData,
           websiteContent,
           targetConcept,
+          jdSummary,
           turnIndex: session.turnCount || 0,
           conversationHistory,
           voiceId,

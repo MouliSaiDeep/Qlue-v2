@@ -58,12 +58,27 @@ exports.handler = async (event) => {
         if (body.websiteUrl) itemData.websiteUrl = body.websiteUrl;
         itemData.engine = body.engine || 'neural';
 
+        // JD MODULE: requires a resume and a prior job-match analysis
+        // (stored by /jd/analyze on the user record).
+        if (moduleType === 'JD') {
+            if (!body.resumeId) {
+                return { statusCode: 400, body: JSON.stringify({ error: 'JD module requires a resumeId.' }) };
+            }
+            const jd = user?.latestJdAnalysis;
+            if (!jd?.jdSummary) {
+                return { statusCode: 400, body: JSON.stringify({ error: 'No job match analysis found. Analyze a job posting first.' }) };
+            }
+            itemData.jdSummary = jd.jdSummary;
+            itemData.jdRoleTitle = jd.roleTitle || 'the role';
+            itemData.jdMatchScore = jd.matchScore;
+        }
+
         // PERF-FIX #5: Snapshot per-turn LLM context onto the session once at
         // init, so the async worker does not re-read the resume and user items
         // from DynamoDB on every single turn.
         if (user?.name) itemData.userName = user.name;
         if (user?.currentRole) itemData.userCurrentRole = user.currentRole;
-        if (moduleType === 'RESUME' && body.resumeId) {
+        if ((moduleType === 'RESUME' || moduleType === 'JD') && body.resumeId) {
             try {
                 const { getResumeById } = require('../../models/resume');
                 const { extractResumeSummary } = require('./generateQuestion');

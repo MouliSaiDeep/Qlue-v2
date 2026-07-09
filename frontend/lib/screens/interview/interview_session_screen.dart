@@ -114,13 +114,13 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
       if (!mounted) return;
 
       final type = widget.moduleType ?? (widget.resumeId != null ? 'RESUME' : (widget.websiteUrl != null ? 'WEBSITE' : 'HR'));
-      if (!(type == 'RESUME' || type == 'HR' || type == 'WEBSITE' || type == 'INTRO')) {
+      if (!(type == 'RESUME' || type == 'HR' || type == 'WEBSITE' || type == 'INTRO' || type == 'JD')) {
         throw ArgumentError('Invalid moduleType');
       }
 
       // Fetch the auth provider to get the selected voice
       final authProvider = context.read<AuthProvider>();
-      _provider.setVoice(authProvider.voiceId, engine: 'generative');
+      _provider.setVoice(authProvider.voiceId, engine: 'neural'); // COST-FIX: matches backend neural default
 
       _provider.initSession(
         type,

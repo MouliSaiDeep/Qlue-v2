@@ -1555,6 +1555,26 @@ Resources:
         - S3CrudPolicy: { BucketName: !Ref ScrapedContentBucket }
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
 
+  AnalyzeJobMatchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/jd/analyzeJobMatch.handler
+      CodeUri: src/
+      MemorySize: 1024
+      Timeout: 45
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /jd/analyze
+            Method: post
+            RestApiId: !Ref RestApi
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref ResumesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        - SSMParameterReadPolicy: { ParameterName: qlue/* }
+
   ValidateWebsiteFunction:
     Type: AWS::Serverless::Function
     Properties:

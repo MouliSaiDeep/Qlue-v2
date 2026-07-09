@@ -191,6 +191,66 @@ Respond with ONLY what ${aiName} says using the || format.`;
  * AI acts as an HR interviewer asking situational and behavioral questions.
  * Warm but professional, focused on culture fit and teamwork.
  */
+function buildJdPrompt(resumeData, jdSummary, turnIndex, conversationHistory = [], aiName = 'Emma', relevance = null) {
+  const resumeSummary = extractResumeSummary(resumeData);
+  const historyText = conversationHistory.length > 0
+    ? conversationHistory.map(t => `${t.speaker}: ${t.text}`).join('\n')
+    : 'No previous conversation.';
+
+  let relevanceNote = '';
+  if (relevance && !relevance.isRelevant && relevance.issue === 'too_short') {
+    relevanceNote = '\nNOTE: The candidate\'s last answer was very brief. Gently encourage them to elaborate before moving on.';
+  }
+
+  if (turnIndex === 0) {
+    return `You are ${aiName}, a professional interviewer screening a candidate for a specific job opening.
+
+<job_description>
+${jdSummary || 'A technical role.'}
+</job_description>
+
+<candidate_resume>
+${resumeSummary}
+</candidate_resume>
+
+<task>
+Greet the candidate warmly by role (do not use their name), mention the position you are interviewing them for in one short phrase, and ask ONE opening question that connects their background to a core requirement of this job.
+</task>
+
+<response_rules>
+1. Format your response EXACTLY as: [Greeting] || [Question]
+2. Keep your total response maximum 3 short sentences for natural spoken pacing.
+3. Speak plainly and conversationally; no markdown, lists, or stage directions.
+</response_rules>`;
+  }
+
+  return `You are ${aiName}, a professional interviewer screening a candidate for a specific job opening.
+
+<job_description>
+${jdSummary || 'A technical role.'}
+</job_description>
+
+<candidate_resume>
+${resumeSummary}
+</candidate_resume>
+
+<conversation_history>
+${historyText}
+</conversation_history>
+${relevanceNote}
+<task>
+Acknowledge the candidate's last answer in one short sentence, then ask ONE follow-up question. Prioritize probing the job's core requirements — especially areas where the resume and job description differ — over generic questions.
+</task>
+
+<response_rules>
+1. Format your response EXACTLY as: [Acknowledgment] || [Question]
+2. Base your follow-up on their previous answer and the job requirements.
+3. NEVER repeat questions from the history.
+4. Keep your total response maximum 3 short sentences.
+5. If the candidate's last answer drifted off-topic, use your acknowledgment to politely steer them back before asking your question.
+</response_rules>`;
+}
+
 function buildHrPrompt(userData, turnIndex, conversationHistory = [], aiName = 'Emma', relevance = null) {
   const historyText = formatConversationHistory(conversationHistory, aiName);
   const isFirstTurn = turnIndex === 0;
@@ -318,7 +378,7 @@ function cleanAIResponse(rawText) {
 exports.handler = async (event) => {
   try {
     const body = typeof event.body === 'string' ? JSON.parse(event.body || '{}') : (event.body || {});
-    const { sessionId, moduleType, resumeData, websiteContent, targetConcept, userData, turnIndex, conversationHistory, voiceId, currentDimension } = body;
+    const { sessionId, moduleType, resumeData, jdSummary, websiteContent, targetConcept, userData, turnIndex, conversationHistory, voiceId, currentDimension } = body;
 
     const aiName = getAiPersona(voiceId);
 
@@ -337,6 +397,9 @@ exports.handler = async (event) => {
         break;
       case 'HR':
         prompt = buildHrPrompt(userData, turnIndex, conversationHistory, aiName, relevance);
+        break;
+      case 'JD':
+        prompt = buildJdPrompt(resumeData, jdSummary, turnIndex, conversationHistory, aiName, relevance);
         break;
       case 'INTRO':
         prompt = buildIntroPrompt(turnIndex, conversationHistory, aiName);
@@ -386,6 +449,7 @@ exports.handler = async (event) => {
 module.exports = {
   handler: exports.handler,
   buildInterviewPrompt,
+  buildJdPrompt,
   buildWebsiteTeachPrompt,
   buildHrPrompt,
   buildIntroPrompt,

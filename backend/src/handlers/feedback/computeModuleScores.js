@@ -6,6 +6,9 @@
 // Adjusted weights to heavily favor substance and problem-solving over surface-level fluency
 const MODULE_WEIGHTS = {
   RESUME: { clarity: 0.15, fluency: 0.10, technicalVocabulary: 0.35, useOfExamples: 0.40 },
+  // JD interviews weigh concrete evidence highest: the goal is proving fit
+  // against specific job requirements.
+  JD: { clarity: 0.15, fluency: 0.10, technicalVocabulary: 0.30, useOfExamples: 0.45 },
   HR: { teamwork: 0.20, ethicalThinking: 0.25, problemSolving: 0.25, communicationClarity: 0.15, selfAwareness: 0.15 },
   WEBSITE: { comprehensionAccuracy: 0.30, learningProgression: 0.15, criticalThinking: 0.25, responseClarity: 0.10, conceptRetention: 0.20 },
   INTRO: { clarity: 0.25, structure: 0.35, confidence: 0.15, relevance: 0.25 },
