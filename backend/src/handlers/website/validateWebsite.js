@@ -1,6 +1,9 @@
 const { fetchAndCleanContent } = require('../../lib/scraper');
 const { invokeModel } = require('../../lib/bedrock');
-const { success, error } = require('../../lib/response');
+// BUG FIX: this lib exports badRequest/notFound/etc., not 'error' — the
+// previous import left error() undefined, so the URL-validation failure
+// paths threw TypeError instead of returning 400s.
+const { success, badRequest } = require('../../lib/response');
 
 /**
  * Validates if the given URL contains educational/professional content.
@@ -8,24 +11,19 @@ const { success, error } = require('../../lib/response');
 exports.handler = async (event) => {
     try {
         const { websiteUrl } = JSON.parse(event.body || '{}');
-        if (!websiteUrl) return error('URL required', 400);
+        if (!websiteUrl) return badRequest('URL required');
 
         let urlObj;
         try {
             urlObj = new URL(websiteUrl);
         } catch (e) {
-            return error('Invalid URL format', 400);
+            return badRequest('Invalid URL format');
         }
 
-        const hostname = urlObj.hostname.toLowerCase();
-        const isAllowedDomain = hostname.includes('w3') || hostname.includes('geeksgeek') || hostname.includes('geeksforgeeks');
-
-        if (!isAllowedDomain) {
-            return success({
-                isEducational: false,
-                reason: "For now, only w3schools and geeksforgeeks domains are supported for AI Tutor scraping."
-            });
-        }
+        // BUG FIX: removed the hard-coded w3schools/geeksforgeeks allowlist —
+        // it rejected every other site before the actual content audit below
+        // ever ran. The LLM audit already accepts tutorials/docs/articles and
+        // rejects only adult content or spam, which is the real safety check.
 
         // 1. Scrape content to verify it exists and is readable
         const { content } = await fetchAndCleanContent(websiteUrl);
@@ -49,7 +47,8 @@ Format your output strictly as a JSON object: {"isEducational": boolean, "reason
         const responseText = bedrockResult.content?.[0]?.text || '';
         if (responseText) {
             try {
-                analysis = JSON.parse(responseText);
+                // Strip markdown code fences some models wrap JSON in
+                analysis = JSON.parse(responseText.replace(/```json|```/g, '').trim());
             } catch (e) {
                 // Handle non-JSON output if any
                 analysis = { isEducational: responseText.toLowerCase().includes('true'), reason: 'Parsed from text' };
