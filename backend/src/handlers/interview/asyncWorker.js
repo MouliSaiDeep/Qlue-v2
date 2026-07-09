@@ -15,6 +15,16 @@ const AUDIO_BUCKET = process.env.AUDIO_BUCKET;
 // BE-BUG #6 FIX: Max context messages for truncation (was dead code, now applied)
 const MAX_CONTEXT_MESSAGES = 20;
 
+// INTERVIEW FLOW: interviews wrap up naturally instead of running forever.
+// turnCount counts completed AI turns; at the cap the AI delivers a closing
+// statement and the session terminates with INTERVIEW_COMPLETE.
+const MAX_INTERVIEW_TURNS = parseInt(process.env.MAX_INTERVIEW_TURNS || '8', 10);
+
+// 3-STRIKE SYSTEM: the LLM prefixes [OFFTOPIC] when the candidate's answer is
+// completely unrelated; each strike carries a spoken warning, and the third
+// ends the session.
+const MAX_OFFTOPIC_STRIKES = 3;
+
 // Maximum characters of AI speech per turn (keeps spoken pacing natural).
 const MAX_AI_TEXT_LENGTH = 300;
 
@@ -142,6 +152,10 @@ async function generateAtomicTurn({
     // with the remaining generation instead of running them sequentially.
     let earlyTts = null;
 
+    const currentTurn = session.turnCount || 0;
+    const isFinalTurn = ['RESUME', 'HR', 'JD', 'WEBSITE'].includes(moduleType)
+      && currentTurn >= MAX_INTERVIEW_TURNS - 1;
+
     let aiText = preGeneratedText;
     if (!aiText) {
       const { resumeData, userData, websiteContent, targetConcept, jdSummary } = await resolveTurnContext(session, moduleType);
@@ -160,6 +174,7 @@ async function generateAtomicTurn({
           turnIndex: session.turnCount || 0,
           conversationHistory,
           voiceId,
+          isFinalTurn,
           onToken: async (token) => {
              accumulatedText += token;
 
@@ -192,12 +207,43 @@ async function generateAtomicTurn({
       
       const promptBody = JSON.parse(promptResult.body);
       aiText = promptBody.question;
+
+      // RELIABILITY FIX: the LLM occasionally returns empty (throttle/timeout).
+      // Retry once (non-streaming) before falling back to the apology line the
+      // user complained about.
+      if (!aiText || cleanAIResponse(aiText).length < 5) {
+        console.warn('[AtomicTurn] Empty LLM output; retrying once');
+        try {
+          const retryResult = await generateQuestion({
+            body: {
+              sessionId, moduleType, resumeData, userData, websiteContent,
+              targetConcept, jdSummary,
+              turnIndex: session.turnCount || 0,
+              conversationHistory, voiceId, isFinalTurn
+            }
+          });
+          aiText = JSON.parse(retryResult.body).question || aiText;
+        } catch (retryErr) {
+          console.error('[AtomicTurn] Retry also failed:', retryErr.message);
+        }
+      }
+    }
+
+    // 3-STRIKE SYSTEM: detect and strip the off-topic marker before TTS.
+    let offTopicFlagged = false;
+    if (aiText && aiText.includes('[OFFTOPIC]')) {
+      offTopicFlagged = true;
+      aiText = aiText.replace(/\[OFFTOPIC\]/g, ' ').trim();
     }
 
     aiText = cleanAIResponse(aiText);
     if (!aiText || aiText.length < 5) {
       aiText = "I'm sorry, could you tell me more about your experience?";
     }
+
+    const previousStrikes = session.itemData?.offTopicStrikes || 0;
+    const strikes = offTopicFlagged ? previousStrikes + 1 : previousStrikes;
+    const strikeLimitReached = offTopicFlagged && strikes >= MAX_OFFTOPIC_STRIKES;
 
     if (aiText.length > MAX_AI_TEXT_LENGTH) {
       console.warn(`[AtomicTurn] Truncating long response (${aiText.length} chars) at sentence boundary`);
@@ -208,6 +254,7 @@ async function generateAtomicTurn({
     // streaming and still prefixes the final text, only the remainder needs
     // synthesis now; the two MP3 segments are concatenated.
     let audioBase64 = '';
+    if (offTopicFlagged) earlyTts = null; // marker was stripped; pre-synth no longer prefixes
     if (earlyTts && aiText.startsWith(earlyTts.text)) {
       const remainder = aiText.slice(earlyTts.text.length).trim();
       const [ackAudio, restAudio] = await Promise.all([
@@ -258,7 +305,8 @@ async function generateAtomicTurn({
     await updateSessionState(sessionId, INTERVIEW_STATES.AI_SPEAKING, null, {
       questionText: aiText,
       voiceId: voiceId,
-      engine: engine
+      engine: engine,
+      offTopicStrikes: strikes
     });
 
     const responsePayload = {
@@ -285,8 +333,27 @@ async function generateAtomicTurn({
       return { success: true, terminated: true };
     }
 
-    // Auto-terminate Self-Intro module after the AI provides its feedback (turn 1)
-    if ((moduleType === 'INTRO' || moduleType === 'SELF_INTRO') && (session.turnCount || 0) >= 1) {
+    // INTERVIEW FLOW: end the session after the closing statement (turn cap)
+    // or when the off-topic strike limit is hit (the spoken warning was the
+    // third strike). The user hears the final audio, then termination fires.
+    if (isFinalTurn || strikeLimitReached) {
+       const reason = strikeLimitReached ? 'OFF_TOPIC_LIMIT' : 'INTERVIEW_COMPLETE';
+       console.log(`[AtomicTurn] Ending session ${sessionId}: ${reason}`);
+       const terminateSession = require('./terminateSession');
+       await terminateSession.handler({
+         requestContext: { authorizer: { uid: session.userId } },
+         body: JSON.stringify({ sessionId, reason })
+       });
+       await postToConnection(connectionId, {
+         type: 'termination',
+         payload: { sessionId, reason, timestamp: Date.now() }
+       });
+       return { success: true, terminated: true };
+    }
+
+    // Self-Intro (tutor mode) ends after stage 3: ask (0) -> verbal feedback +
+    // retry request (1) -> closing after the improved attempt (2).
+    if ((moduleType === 'INTRO' || moduleType === 'SELF_INTRO') && (session.turnCount || 0) >= 2) {
        console.log(`[AtomicTurn] Auto-terminating Self-Intro session ${sessionId} after providing feedback.`);
        const terminateSession = require('./terminateSession');
        await terminateSession.handler({

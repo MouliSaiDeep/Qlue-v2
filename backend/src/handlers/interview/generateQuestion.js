@@ -327,10 +327,10 @@ ${historyText || '(This is the beginning of the session)'}
 
 <turn_instruction>
 ${isFirstTurn 
-  ? 'Directly ask the candidate: "Tell me about yourself." No small talk, no casual greetings, no filler.' 
+  ? 'Directly ask the candidate: \"Tell me about yourself.\" No small talk, no casual greetings, no filler.' 
   : (turnIndex === 1 
-      ? 'Analyze their introduction carefully. Give ONE highly specific, constructive tip on what they should include or improve (e.g., "Add your years of experience", "Mention a key achievement with metrics", "Connect your background to the target role"). Then ask ONE follow-up question to help them refine their intro.' 
-      : 'Continue coaching. Dig deeper into a specific aspect of their introduction. Either suggest another missing element, ask them to rephrase a weak part, or have them practice a specific component (e.g., opening hook, closing statement).')}
+      ? 'STAGE 2 - VERBAL FEEDBACK: Analyze their introduction carefully. Give your feedback OUT LOUD right now: name the strongest part of their intro, then the 1-2 most important things to ADD or improve (e.g., \"Add your years of experience\", \"Mention a key achievement with metrics\", \"Connect your background to the target role\"). Then ask them to deliver their improved introduction incorporating your feedback.' 
+      : 'STAGE 3 - CLOSING: They have just delivered their improved introduction. In one sentence, tell them the most noticeable improvement compared to their first attempt. Then close warmly: tell them the session is complete and their detailed score and report are being prepared. Do NOT ask another question.')}
 </turn_instruction>
 
 Respond with ONLY what ${aiName} says using the || format.`;

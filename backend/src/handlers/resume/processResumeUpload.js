@@ -147,6 +147,37 @@ async function processAsync(resumeId, userId, s3Key) {
 
         // Update final result in DynamoDB
         await updateResumeParsingResult(resumeId, 'PARSED', parsedData);
+
+        // PROFILE AUTO-FILL: populate the user's profession and skills from
+        // the parsed resume when they haven't set them manually, so the
+        // profile screen isn't empty for new users.
+        try {
+            const { getUserById } = require('../../models/user');
+            const { update } = require('../../lib/dynamodb');
+            const USERS_TABLE = process.env.USERS_TABLE || 'qlue-users';
+            const user = await getUserById(userId);
+            const sets = [];
+            const values = {};
+            const latestRole = parsedData?.workExperience?.[0]?.role;
+            if (latestRole && !user?.profession) {
+                sets.push('profession = :profession');
+                values[':profession'] = latestRole;
+            }
+            const parsedSkills = Array.isArray(parsedData?.skills)
+                ? parsedData.skills.filter(x => typeof x === 'string' && x.trim()).slice(0, 15)
+                : [];
+            if (parsedSkills.length > 0 && (!Array.isArray(user?.skills) || user.skills.length === 0)) {
+                sets.push('skills = :skills');
+                values[':skills'] = parsedSkills;
+            }
+            if (sets.length > 0) {
+                await update(USERS_TABLE, { userId }, `SET ${sets.join(', ')}`, values);
+                console.log(`Profile auto-filled from resume for ${userId}: ${sets.join(', ')}`);
+            }
+        } catch (autofillErr) {
+            // Non-fatal: profile auto-fill must never break resume parsing.
+            console.warn('Profile auto-fill skipped:', autofillErr.message);
+        }
         console.info(`Successfully parsed resume ${resumeId}`);
 
         const allResumes = await getResumesByUserId(userId);

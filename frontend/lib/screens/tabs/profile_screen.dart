@@ -313,11 +313,109 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  void _showChangePasswordDialog() {
+    final t = AppThemeColors.of(context);
+    final currentCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    bool busy = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: t.bgSecondary,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: Text("Change Password",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: t.text)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _passwordField(t, currentCtrl, "Current password"),
+              const SizedBox(height: 12),
+              _passwordField(t, newCtrl, "New password (min 8, letters + numbers)"),
+              const SizedBox(height: 12),
+              _passwordField(t, confirmCtrl, "Confirm new password"),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: busy ? null : () => Navigator.of(ctx).pop(),
+              child: Text("Cancel", style: TextStyle(color: t.textSecondary)),
+            ),
+            TextButton(
+              onPressed: busy
+                  ? null
+                  : () async {
+                      final current = currentCtrl.text;
+                      final fresh = newCtrl.text;
+                      if (fresh.length < 8 ||
+                          !RegExp(r'[A-Za-z]').hasMatch(fresh) ||
+                          !RegExp(r'[0-9]').hasMatch(fresh)) {
+                        Notify.error(context,
+                            "New password must be 8+ characters with letters and numbers.");
+                        return;
+                      }
+                      if (fresh != confirmCtrl.text) {
+                        Notify.error(context, "New passwords do not match.");
+                        return;
+                      }
+                      if (fresh == current) {
+                        Notify.error(context, "New password must differ from the current one.");
+                        return;
+                      }
+                      setDialogState(() => busy = true);
+                      final err = await context
+                          .read<AuthProvider>()
+                          .changePassword(current, fresh);
+                      if (!ctx.mounted) return;
+                      setDialogState(() => busy = false);
+                      if (err == null) {
+                        Navigator.of(ctx).pop();
+                        Notify.success(context, "Password updated successfully.");
+                      } else {
+                        Notify.error(context, err);
+                      }
+                    },
+              child: busy
+                  ? SizedBox(
+                      width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: t.primary))
+                  : Text("Update",
+                      style: TextStyle(color: t.primary, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _passwordField(AppThemeColors t, TextEditingController ctrl, String hint) {
+    return TextField(
+      controller: ctrl,
+      obscureText: true,
+      autocorrect: false,
+      enableSuggestions: false,
+      style: TextStyle(color: t.text, fontSize: 13.5),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(color: t.textTertiary, fontSize: 12.5),
+        filled: true,
+        fillColor: t.bg.withValues(alpha: 0.4),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      ),
+    );
+  }
+
   void _showVoiceSelectionSheet() {
     final t = AppThemeColors.of(context);
     final voices = [
-      {'name': 'Tiffany', 'desc': 'Warm & Professional', 'gender': 'Female'},
-      {'name': 'Ruth', 'desc': 'Sophisticated & Clear', 'gender': 'Female'},
+      // Neural-engine voices only (natural quality, free-tier friendly)
+      {'name': 'Ruth', 'desc': 'Warm & Professional', 'gender': 'Female'},
       {'name': 'Joanna', 'desc': 'Calm & Articulate', 'gender': 'Female'},
       {'name': 'Matthew', 'desc': 'Clear & Authoritative', 'gender': 'Male'},
       {'name': 'Stephen', 'desc': 'Friendly & Natural', 'gender': 'Male'},
@@ -984,7 +1082,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         label: 'Change Password',
                         iconColor: t.warning,
                         iconBg: t.warning.withValues(alpha: 0.15),
-                        onPress: () => Notify.info(context, 'Opening secure password session...'),
+                        onPress: _showChangePasswordDialog,
                       ),
                     ],
                   ),

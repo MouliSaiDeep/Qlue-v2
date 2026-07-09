@@ -7,6 +7,12 @@ class SttService {
   final SpeechToText _speech = SpeechToText();
   bool _isInitialized = false;
 
+  // STT ACCURACY FIX: recognition was hard-coded to en_US, so Indian-accented
+  // English was decoded by an American model ("text" -> "tax", "Flutter STT"
+  // -> "flitter std"). Prefer the device's own English locale, defaulting to
+  // Indian English.
+  String _localeId = 'en_IN';
+
   Function(SpeechRecognitionError)? _onError;
   Function(String)? _onStatus;
 
@@ -25,6 +31,19 @@ class SttService {
         _onStatus?.call(status);
       },
     );
+
+    if (_isInitialized) {
+      try {
+        final system = await _speech.systemLocale();
+        final id = system?.localeId ?? '';
+        if (id.toLowerCase().startsWith('en')) {
+          _localeId = id; // e.g. en_IN, en_US, en_GB — trust the device
+        }
+        debugPrint('STT locale: $_localeId');
+      } catch (_) {
+        // keep en_IN default
+      }
+    }
 
     return _isInitialized;
   }
@@ -65,7 +84,7 @@ class SttService {
       listenFor: const Duration(seconds: 120),
       pauseFor: const Duration(seconds: 30), // FE-BUG #13 FIX: was 15s, too short for interview thinking time
       partialResults: true,
-      localeId: 'en_US',
+      localeId: _localeId,
       listenMode: ListenMode.dictation,
     );
   }

@@ -14,7 +14,7 @@ class AuthProvider extends ChangeNotifier {
   String _email = "";
   String _profession = "";
   List<String> _skills = [];
-  String _voiceId = "Tiffany";
+  String _voiceId = "Ruth"; // neural-capable default (Tiffany is generative-only)
   String _photoUrl = "";
   String _displayName = "";
 
@@ -51,6 +51,48 @@ class AuthProvider extends ChangeNotifier {
   }
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  /// SECURITY FIX: Change Password previously showed a toast and did nothing.
+  /// Firebase requires a recent login before updatePassword, so we
+  /// reauthenticate with the CURRENT password first — which also means nobody
+  /// with a stolen unlocked phone can silently change the password.
+  /// Returns null on success, or a user-friendly error message.
+  Future<String?> changePassword(String currentPassword, String newPassword) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null || user.email == null) {
+        return 'No signed-in account found. Please log in again.';
+      }
+      final hasPasswordProvider =
+          user.providerData.any((p) => p.providerId == 'password');
+      if (!hasPasswordProvider) {
+        return 'This account signs in with Google and has no password to change.';
+      }
+      final credential = EmailAuthProvider.credential(
+        email: user.email!,
+        password: currentPassword,
+      );
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(newPassword);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        return 'Current password is incorrect.';
+      }
+      if (e.code == 'weak-password') {
+        return 'The new password is too weak.';
+      }
+      if (e.code == 'too-many-requests') {
+        return 'Too many attempts. Please try again in a few minutes.';
+      }
+      if (e.code == 'requires-recent-login') {
+        return 'For security, please log out and log back in, then retry.';
+      }
+      return 'Password change failed: ' + (e.message ?? e.code);
+    } catch (e) {
+      return 'Password change failed. Please try again.';
+    }
+  }
   // google_sign_in 7.x uses singleton instance
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 

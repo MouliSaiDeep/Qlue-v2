@@ -222,7 +222,10 @@ function buildScoringPrompt(moduleType, latestResponse, dimensions) {
 Dimensions: ${dimensions.join(', ')}.
 Rules:
 - Score each dimension 1-100 based ONLY on the latest response.
-- 3+ sentences with examples = 70-100. 1-2 sentences = 30-60. Short or irrelevant = 1-30.
+- Score QUALITY, not length: correctness, specificity, relevance to the question, and concrete evidence (examples, metrics, technologies).
+- A concise answer that fully and accurately addresses the question deserves 70-100. Do NOT penalize brevity when the content is strong.
+- Vague, generic, or padded answers score 30-60 regardless of length. Irrelevant or empty answers score 1-30.
+- The transcript comes from speech-to-text and may contain mis-transcribed technical terms (e.g. "flitter" for "Flutter", "tax" for "text"); infer the intended words and never penalize transcription artifacts.
 - Return ONLY a raw JSON object with dimension names as keys and numeric scores as values. 
 - Do NOT use markdown code blocks (\`\`\`json). Do NOT include any conversational text.`,
     messages: [
@@ -240,8 +243,10 @@ Rules:
 function buildFeedbackPrompt(moduleType, transcript, scores) {
   return {
     system: `You are an AI Interview coach providing actionable feedback.
-Provide 3 key strengths and 3 areas for improvement. 
-Format ONLY as a raw JSON object: {"strengths": [], "improvements": []}
+Provide 3 key strengths, 3 areas for improvement, and a 2-sentence summary.
+Judge the quality of what was demonstrated — a short session with strong answers is a strong session; never criticize the candidate for session length or number of questions answered.
+The transcript comes from speech-to-text and may contain mis-transcribed technical terms; infer intended meaning and never list transcription artifacts as weaknesses.
+Format ONLY as a raw JSON object: {"strengths": [], "improvements": [], "summary": ""}
 Do NOT use markdown code blocks.`,
     messages: [
       {
