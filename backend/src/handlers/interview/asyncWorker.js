@@ -241,7 +241,7 @@ async function generateAtomicTurn({
       aiText = "I'm sorry, could you tell me more about your experience?";
     }
 
-    const previousStrikes = session.itemData?.offTopicStrikes || 0;
+    const previousStrikes = session.offTopicStrikes || 0; // stored top-level by updateSessionState
     const strikes = offTopicFlagged ? previousStrikes + 1 : previousStrikes;
     const strikeLimitReached = offTopicFlagged && strikes >= MAX_OFFTOPIC_STRIKES;
 

@@ -246,7 +246,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
             // EMPTY STATE: new users see a prompt instead of a blank
             // timeline. With interview data, the original design renders.
-            if (!dashboard.isLoading && dashboard.history.isEmpty)
+            if (!dashboard.hasLoadedOnce)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: CircularProgressIndicator(strokeWidth: 2.5, color: t.primary),
+                ),
+              )
+            else if (dashboard.history.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: _buildEmptyState(t),

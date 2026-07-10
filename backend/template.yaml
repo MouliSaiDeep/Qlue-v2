@@ -31,8 +31,8 @@ Globals:
         # COST-FIX: neural is $16/1M chars with 1M chars/month free (12 mo);
         # generative is $30/1M with only 100K free. Set POLLY_ALLOW_GENERATIVE
         # to 'true' to permit generative voices (e.g. Tiffany) at extra cost.
-        POLLY_DEFAULT_ENGINE: 'neural'
-        POLLY_ALLOW_GENERATIVE: 'false'
+        POLLY_DEFAULT_ENGINE: 'generative'
+        POLLY_ALLOW_GENERATIVE: 'true'  # user preference: natural generative voices (funded by credits)
 
 Resources:
   # ==============================================================================

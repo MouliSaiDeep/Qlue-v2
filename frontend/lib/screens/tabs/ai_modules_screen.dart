@@ -25,9 +25,7 @@ class _AIModulesScreenState extends State<AIModulesScreen>
   late TabController _tabController;
   ResumeModel? _selectedResume;
   final TextEditingController _urlController = TextEditingController();
-  final TextEditingController _jdUrlController = TextEditingController();
   bool _isValidatingUrl = false;
-  bool _isAnalyzingJd = false;
 
   @override
   void initState() {
@@ -46,7 +44,6 @@ class _AIModulesScreenState extends State<AIModulesScreen>
   void dispose() {
     _tabController.dispose();
     _urlController.dispose();
-    _jdUrlController.dispose();
     super.dispose();
   }
 
@@ -404,333 +401,11 @@ class _AIModulesScreenState extends State<AIModulesScreen>
         _buildModuleCard(
           t,
           "Job Match",
-          "Paste a job posting link to get a profile match score, then practice an interview tailored to that exact role.",
-          _selectedResume != null
-              ? "Resume: ${_selectedResume!.fileName}"
-              : "Select a resume",
+          "Get a profile match score for any job posting, then practice an interview tailored to that exact role.",
+          "Link or pasted JD + your resume",
           "JD",
           "assets/images/Resume.png",
-          onFeatureTap: _showResumePopup,
-          featureWidget: Container(
-            height: 52,
-            margin: const EdgeInsets.only(top: 12),
-            child: TextField(
-              controller: _jdUrlController,
-              style: TextStyle(color: t.text, fontSize: 13),
-              decoration: InputDecoration(
-                hintText: "https://company.com/careers/job-id",
-                hintStyle: TextStyle(color: t.textTertiary, fontSize: 13),
-                filled: true,
-                fillColor: t.bgSecondary.withValues(alpha: 0.4),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                prefixIcon: Icon(FeatherIcons.briefcase, size: 14, color: t.primary),
-              ),
-            ),
-          ),
-          isLoading: _isAnalyzingJd,
-          onStartTap: _isAnalyzingJd ? null : _analyzeJobMatch,
-        ),
-      ],
-    );
-  }
-
-  Future<void> _analyzeJobMatch({String? pastedText}) async {
-    final url = _jdUrlController.text.trim();
-    if (pastedText == null) {
-      if (url.isEmpty) {
-        Notify.error(context, "Paste a job posting link first");
-        return;
-      }
-      final uri = Uri.tryParse(url);
-      if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
-        Notify.error(context, "Invalid URL format.");
-        return;
-      }
-    }
-    final resumes = context.read<ResumeProvider>().resumes;
-    if (resumes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please upload a resume first")),
-      );
-      context.push('/resume/upload');
-      return;
-    }
-    if (_selectedResume == null) {
-      _showResumePopup();
-      return;
-    }
-
-    setState(() => _isAnalyzingJd = true);
-    try {
-      final response = await DioClient().dio.post(
-        ApiConstants.jdAnalyze,
-        data: pastedText != null
-            ? {'jobText': pastedText, 'resumeId': _selectedResume!.resumeId}
-            : {'jobUrl': url, 'resumeId': _selectedResume!.resumeId},
-      );
-
-      final result = (response.data is Map && response.data['data'] is Map)
-          ? response.data['data']
-          : response.data;
-
-      if (result['analyzed'] != true) {
-        if (mounted) {
-          if (result['canPasteText'] == true) {
-            _showPasteJdDialog(result['reason']);
-          } else {
-            Notify.error(context, result['reason'] ?? "Could not analyze this job posting.");
-          }
-        }
-        return;
-      }
-      if (mounted) _showJdResultDialog(result);
-    } catch (e) {
-      if (mounted) Notify.error(context, "Network error during job match analysis.");
-    } finally {
-      if (mounted) setState(() => _isAnalyzingJd = false);
-    }
-  }
-
-  void _showPasteJdDialog(String? reason) {
-    final t = AppThemeColors.of(context);
-    final pasteController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: t.bgSecondary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Text("Paste the job description",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: t.text)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              reason ?? "This site blocks automated reading. Copy the job description and paste it here.",
-              style: TextStyle(fontSize: 12.5, color: t.textSecondary, height: 1.4),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: pasteController,
-              maxLines: 8,
-              style: TextStyle(color: t.text, fontSize: 13),
-              decoration: InputDecoration(
-                hintText: "Paste the full job description here...",
-                hintStyle: TextStyle(color: t.textTertiary, fontSize: 12.5),
-                filled: true,
-                fillColor: t.bg.withValues(alpha: 0.4),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.all(14),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text("Cancel", style: TextStyle(color: t.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () {
-              final text = pasteController.text.trim();
-              if (text.length < 100) {
-                Notify.error(context, "Please paste the full description (at least 100 characters).");
-                return;
-              }
-              Navigator.of(ctx).pop();
-              _analyzeJobMatch(pastedText: text);
-            },
-            child: Text("Analyze", style: TextStyle(color: t.primary, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showJdResultDialog(dynamic result) {
-    final t = AppThemeColors.of(context);
-    final int score = (result['matchScore'] as num?)?.toInt() ?? 0;
-    final int threshold = (result['threshold'] as num?)?.toInt() ?? 60;
-    final bool eligible = result['eligible'] == true;
-    final String roleTitle = result['roleTitle'] ?? 'Unknown Role';
-    final List matched = (result['matchedSkills'] as List?) ?? [];
-    final List missing = (result['missingSkills'] as List?) ?? [];
-    final String verdict = result['verdict'] ?? '';
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: t.bgSecondary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Column(
-          children: [
-            Text(
-              "$score%",
-              style: TextStyle(
-                fontSize: 44,
-                fontWeight: FontWeight.w900,
-                color: eligible ? t.primary : Colors.orangeAccent,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              "Profile Match — $roleTitle",
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: t.text),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (verdict.isNotEmpty) ...[
-                Text(verdict, style: TextStyle(fontSize: 13, color: t.textSecondary, height: 1.4)),
-                const SizedBox(height: 16),
-              ],
-              if (matched.isNotEmpty) ...[
-                Text("YOU MATCH", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: t.primary, letterSpacing: 1)),
-                const SizedBox(height: 6),
-                ...matched.map((m) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(children: [
-                    Icon(FeatherIcons.check, size: 13, color: t.primary),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text("$m", style: TextStyle(fontSize: 12.5, color: t.text))),
-                  ]),
-                )),
-                const SizedBox(height: 12),
-              ],
-              if (missing.isNotEmpty) ...[
-                Text("GAPS TO PREPARE FOR", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orangeAccent, letterSpacing: 1)),
-                const SizedBox(height: 6),
-                ...missing.map((m) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(children: [
-                    Icon(FeatherIcons.alertCircle, size: 13, color: Colors.orangeAccent),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text("$m", style: TextStyle(fontSize: 12.5, color: t.text))),
-                  ]),
-                )),
-                const SizedBox(height: 8),
-              ],
-              if (!eligible)
-                Text(
-                  "A match of $threshold% or higher unlocks the practice interview for this role. Strengthen the gaps above or try a closer-fitting posting.",
-                  style: TextStyle(fontSize: 12, color: t.textTertiary, height: 1.4),
-                ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text("Close", style: TextStyle(color: t.textSecondary)),
-          ),
-          if (eligible)
-            TextButton(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                context.push('/interview/session/new?moduleType=JD&resumeId=${_selectedResume!.resumeId}');
-              },
-              child: Text("Start Interview", style: TextStyle(color: t.primary, fontWeight: FontWeight.bold)),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTutorList(AppThemeColors t) {
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        _buildModuleCard(
-          t,
-          "Website",
-          "Learn from educational URL content.",
-          "Enter link below",
-          "Website",
-          "assets/images/website.png",
-          featureWidget: Container(
-            height: 52,
-            margin: const EdgeInsets.only(top: 12),
-            child: TextField(
-              controller: _urlController,
-              style: TextStyle(color: t.text, fontSize: 13),
-              decoration: InputDecoration(
-                hintText: "https://example.com/topic",
-                hintStyle: TextStyle(color: t.textTertiary, fontSize: 13),
-                filled: true,
-                fillColor: t.bgSecondary.withValues(alpha: 0.4),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                prefixIcon: Icon(FeatherIcons.link, size: 14, color: t.primary),
-              ),
-            ),
-          ),
-          onFeatureTap: () {}, // Handled by text field
-          isLoading: _isValidatingUrl,
-          onStartTap: _isValidatingUrl ? null : () async {
-            final url = _urlController.text.trim();
-            if (url.isEmpty) {
-              Notify.error(context, "Please enter a website URL first");
-              return;
-            }
-
-            final uri = Uri.tryParse(url);
-            if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
-              Notify.error(context, "Invalid URL format.");
-              return;
-            }
-
-            setState(() => _isValidatingUrl = true);
-            try {
-              final response = await DioClient().dio.post(
-                ApiConstants.websiteValidate,
-                data: {'websiteUrl': url},
-              );
-
-              // Backend wraps payloads as { success, data: {...} }
-              final result = (response.data is Map && response.data['data'] is Map)
-                  ? response.data['data']
-                  : response.data;
-
-              if (result['isEducational'] == true) {
-                if (mounted) {
-                  context.push('/interview/session/new?moduleType=WEBSITE&websiteUrl=${Uri.encodeComponent(url)}');
-                }
-              } else {
-                if (mounted) {
-                  Notify.error(context, result['reason'] ?? "This website does not contain educational content.");
-                }
-              }
-            } catch (e) {
-              if (mounted) Notify.error(context, "Network error during URL validation.");
-            } finally {
-              if (mounted) setState(() => _isValidatingUrl = false);
-            }
-          },
-        ),
-        const SizedBox(height: 24),
-        _buildModuleCard(
-          t,
-          "Self-Intro",
-          "Record your professional introduction.",
-          "Evaluate clarity and delivery.",
-          "Intro",
-          "assets/images/SelfIntro.png",
-          onStartTap: () => context.push('/interview/session/new?moduleType=INTRO'),
+          onStartTap: () => context.push('/job-match'),
         ),
       ],
     );
@@ -747,6 +422,7 @@ class _AIModulesScreenState extends State<AIModulesScreen>
     VoidCallback? onStartTap,
     Widget? featureWidget,
     bool isLoading = false,
+    double height = 168, // compact default (was 220) so all cards fit on screen
   }) {
     Color glowColor;
     switch (tag.toLowerCase()) {
@@ -769,11 +445,11 @@ class _AIModulesScreenState extends State<AIModulesScreen>
     return GlassCard(
       hasMetallicBorder: true,
       glowColor: glowColor,
-      glowRadius: 50,
-      padding: const EdgeInsets.all(24),
-      margin: const EdgeInsets.only(bottom: 20),
+      glowRadius: 40,
+      padding: const EdgeInsets.all(18),
+      margin: const EdgeInsets.only(bottom: 14),
       child: SizedBox(
-        height: 220, // Fixed internal height for synchronization
+        height: height,
         child: Row(
           children: [
             Expanded(
@@ -789,7 +465,7 @@ class _AIModulesScreenState extends State<AIModulesScreen>
                       Text(
                         title,
                         style: TextStyle(
-                          fontSize: 26,
+                          fontSize: 22,
                           fontWeight: FontWeight.bold,
                           color: t.text,
                           letterSpacing: -0.8,

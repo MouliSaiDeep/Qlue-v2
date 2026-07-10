@@ -1,4 +1,5 @@
 const { getSessionById, updateSessionState, INTERVIEW_STATES } = require('../../models/session');
+const { getLatestTranscripts } = require('../../models/transcript');
 const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
 
 const snsClient = new SNSClient({ region: process.env.AWS_REGION || 'us-east-1' });
@@ -27,6 +28,41 @@ exports.handler = async (event) => {
     // Allow termination from any state except already terminated
     if (session.currentState === INTERVIEW_STATES.TERMINATED) {
       return { statusCode: 200, body: JSON.stringify({ message: 'Already terminated' }) };
+    }
+
+    // DISCARD FIX: if the candidate never actually answered anything (e.g.
+    // opened a session by accident and ended it immediately), there is
+    // nothing to score. Generating feedback from an empty transcript produced
+    // hallucinated scores (users saw 80/100 for saying nothing). Such
+    // sessions are terminated as discarded: no feedback pipeline, excluded
+    // from dashboard stats and history.
+    let hasUserAnswer = false;
+    try {
+      const recent = await getLatestTranscripts(sessionId, 20);
+      hasUserAnswer = recent.some(t =>
+        t.speaker === 'USER' && typeof t.text === 'string' && t.text.trim().length > 0
+      );
+    } catch (txErr) {
+      console.warn('[TerminateSession] Transcript check failed; assuming answerable session:', txErr.message);
+      hasUserAnswer = true;
+    }
+
+    if (!hasUserAnswer) {
+      console.log(`[TerminateSession] Session ${sessionId} has no user answers; discarding.`);
+      await updateSessionState(sessionId, INTERVIEW_STATES.TERMINATED, null, {
+        terminatedAt: Date.now(),
+        terminationReason: 'DISCARDED_EMPTY',
+        discarded: true
+      });
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          sessionId,
+          state: INTERVIEW_STATES.TERMINATED,
+          reason: 'DISCARDED_EMPTY',
+          discarded: true
+        })
+      };
     }
 
     await updateSessionState(sessionId, INTERVIEW_STATES.GENERATING_FEEDBACK, null, {

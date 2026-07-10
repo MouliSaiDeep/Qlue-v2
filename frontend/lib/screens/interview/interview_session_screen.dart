@@ -120,7 +120,7 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
 
       // Fetch the auth provider to get the selected voice
       final authProvider = context.read<AuthProvider>();
-      _provider.setVoice(authProvider.voiceId, engine: 'neural'); // COST-FIX: matches backend neural default
+      _provider.setVoice(authProvider.voiceId, engine: 'generative'); // user preference: most natural voice (credit-funded)
 
       _provider.initSession(
         type,

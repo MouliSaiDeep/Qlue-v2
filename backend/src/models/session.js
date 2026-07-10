@@ -151,6 +151,19 @@ async function updateSessionState(sessionId, newState, expectedCurrentState = nu
     updateExpression += ", updatedAt = :updatedAt";
     expressionAttributeValues[":updatedAt"] = new Date().toISOString();
     
+    // 3-STRIKE SYSTEM: persist the off-topic counter (updateSessionState is
+    // whitelist-based; without this entry the count silently never advanced).
+    if (updates.offTopicStrikes !== undefined) {
+        updateExpression += ", offTopicStrikes = :offTopicStrikes";
+        expressionAttributeValues[":offTopicStrikes"] = updates.offTopicStrikes;
+    }
+
+    // DISCARD FIX: flag sessions ended with zero user answers.
+    if (updates.discarded !== undefined) {
+        updateExpression += ", discarded = :discarded";
+        expressionAttributeValues[":discarded"] = updates.discarded;
+    }
+
     if (updates.silenceRetries !== undefined) {
         updateExpression += ", silenceRetries = :silenceRetries";
         expressionAttributeValues[":silenceRetries"] = updates.silenceRetries;

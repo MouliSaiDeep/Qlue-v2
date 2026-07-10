@@ -51,7 +51,7 @@ exports.handler = async (event) => {
         return {
             statusCode: 200,
             body: JSON.stringify({
-                sessions: result.Items || [],
+                sessions: (result.Items || []).filter(x => !x.discarded), // hide accidental empty sessions
                 lastEvaluatedKey: result.LastEvaluatedKey || null
             })
         };

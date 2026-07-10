@@ -84,7 +84,15 @@ class _DashboardScreenState extends State<DashboardScreen>
 
             // EMPTY STATE: new users see a prompt instead of blank stats.
             // Once at least one interview exists, the original design renders.
-            if (!dashboard.isLoading && total == 0)
+            if (!dashboard.hasLoadedOnce)
+              // First load: spinner only, so default-value cards never flash.
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: CircularProgressIndicator(strokeWidth: 2.5, color: t.primary),
+                ),
+              )
+            else if (total == 0)
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: _buildEmptyState(t, bottomPadding),
@@ -775,6 +783,13 @@ class _DashboardScreenState extends State<DashboardScreen>
               PageRouteBuilder(
                 opaque: false,
                 barrierDismissible: true,
+                // GLITCH FIX: without a barrier color the dashboard stayed
+                // fully visible behind the hero flight, making the expansion
+                // look broken; a dimmed barrier + tuned timing reads as an
+                // intentional zoom.
+                barrierColor: Colors.black54,
+                transitionDuration: const Duration(milliseconds: 260),
+                reverseTransitionDuration: const Duration(milliseconds: 220),
                 pageBuilder: (context, _, __) => DetailFlashCard(
                   title: title,
                   items: items,

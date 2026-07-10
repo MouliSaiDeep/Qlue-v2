@@ -414,7 +414,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _showVoiceSelectionSheet() {
     final t = AppThemeColors.of(context);
     final voices = [
-      // Neural-engine voices only (natural quality, free-tier friendly)
+      {'name': 'Tiffany', 'desc': 'Most Natural (Generative)', 'gender': 'Female'},
       {'name': 'Ruth', 'desc': 'Warm & Professional', 'gender': 'Female'},
       {'name': 'Joanna', 'desc': 'Calm & Articulate', 'gender': 'Female'},
       {'name': 'Matthew', 'desc': 'Clear & Authoritative', 'gender': 'Male'},

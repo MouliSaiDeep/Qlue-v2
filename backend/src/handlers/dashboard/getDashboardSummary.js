@@ -48,7 +48,7 @@ exports.handler = async (event) => {
             ExpressionAttributeValues: {
                 ':uid': userId
             },
-            ProjectionExpression: 'moduleType, accumulatedScores'
+            ProjectionExpression: 'moduleType, accumulatedScores, discarded'
         });
 
         const userCmd = new GetCommand({
@@ -62,7 +62,7 @@ exports.handler = async (event) => {
             docClient.send(userCmd)
         ]);
 
-        const sessions = sessionData.Items || [];
+        const sessions = (sessionData.Items || []).filter(x => !x.discarded); // discarded sessions never count
         const userProfile = userData.Item || null;
         const globalInsights = userProfile?.globalInsights || null;
 

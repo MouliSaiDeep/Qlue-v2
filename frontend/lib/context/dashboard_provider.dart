@@ -20,6 +20,12 @@ class DashboardProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
+  // STARTUP FLASH FIX: before the first fetch completes, neither the stat
+  // cards nor the empty state should render (defaults flashed for a moment
+  // and vanished). Screens gate on this instead of guessing.
+  bool _hasLoadedOnce = false;
+  bool get hasLoadedOnce => _hasLoadedOnce;
+
   String? _error;
   String? get error => _error;
 
@@ -59,6 +65,7 @@ class DashboardProvider extends ChangeNotifier {
       _radarData = results[1] as RadarData;
       _history = results[2] as List<SessionModel>;
       _lastFetchedAt = DateTime.now();
+      _hasLoadedOnce = true;
       _error = null;
 
       if (silent) notifyListeners(); // non-silent path notifies via _setLoading

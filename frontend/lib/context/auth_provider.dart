@@ -14,7 +14,7 @@ class AuthProvider extends ChangeNotifier {
   String _email = "";
   String _profession = "";
   List<String> _skills = [];
-  String _voiceId = "Ruth"; // neural-capable default (Tiffany is generative-only)
+  String _voiceId = "Tiffany"; // generative default — most natural voice
   String _photoUrl = "";
   String _displayName = "";
 

@@ -186,9 +186,29 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
     }
   }
 
+  // GLITCH FIX (self-intro cutoff): the server sends 'termination' right
+  // after the final turn's audio starts playing. Cleaning up immediately
+  // stopped the player, so the closing message appeared as text but was
+  // never spoken. If audio is playing, defer finalization until playback
+  // completes (the playback .then always routes through _startListening,
+  // which finalizes below); a 30s safety timer guarantees we never hang.
+  bool _pendingTermination = false;
+
   void _handleTermination() {
     _isEnding = true;
     _sttService.stop();
+    if (_currentPhase == InterviewPhase.speaking) {
+      _pendingTermination = true;
+      Future.delayed(const Duration(seconds: 30), () {
+        if (_pendingTermination) _finalizeTermination();
+      });
+      return;
+    }
+    _finalizeTermination();
+  }
+
+  void _finalizeTermination() {
+    _pendingTermination = false;
     isSessionEnded = true;
     _currentPhase = InterviewPhase.ready;
     _cleanup();
@@ -213,6 +233,7 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
   void _startListening() {
     if (_isEnding || isSessionEnded) {
       debugPrint('STT: session ending/ended — refusing to start listening');
+      if (_pendingTermination) _finalizeTermination(); // closing audio just finished
       return;
     }
     if (isListening && _sttService.isListening) return;
