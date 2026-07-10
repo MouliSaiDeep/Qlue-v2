@@ -92,6 +92,16 @@ class _DashboardScreenState extends State<DashboardScreen>
                   child: CircularProgressIndicator(strokeWidth: 2.5, color: t.primary),
                 ),
               )
+            else if (dashboard.isLoading)
+              // A refresh is still in flight (e.g. cached zero-summary while
+              // the real data loads) — keep the spinner rather than flashing
+              // the empty state for returning users.
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: CircularProgressIndicator(strokeWidth: 2.5, color: t.primary),
+                ),
+              )
             else if (total == 0)
               SliverFillRemaining(
                 hasScrollBody: false,
@@ -111,7 +121,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       Expanded(
                         child: _buildMiniStatCard(
                           t,
-                          "Best Score",
+                          _bestScoreLabel(summary),
                           summary.bestScore > 0 ? "${summary.bestScore}%" : "—",
                           FeatherIcons.target,
                           t.accentGreen,
@@ -541,6 +551,21 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  /// "Best Score" plus the module it was earned in, e.g. "Best Score - Website".
+  String _bestScoreLabel(DashboardSummary summary) {
+    if (summary.bestScore <= 0) return "Best Score";
+    String? bestModule;
+    int best = 0;
+    const names = {'RESUME': 'Resume', 'HR': 'HR', 'WEBSITE': 'Website', 'INTRO': 'Intro', 'JD': 'Job Match'};
+    summary.bestScoreByModule.forEach((k, v) {
+      if (v > best) {
+        best = v;
+        bestModule = names[k] ?? k;
+      }
+    });
+    return bestModule == null ? "Best Score" : "Best Score - $bestModule";
+  }
+
   Widget _buildMiniStatCard(
     AppThemeColors t,
     String label,
@@ -555,17 +580,24 @@ class _DashboardScreenState extends State<DashboardScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, size: 18, color: color),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Text(
             val,
             style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
+              // Matches the Avg Score display weight/scale so the two cards
+              // no longer look mismatched.
+              fontSize: 30,
+              fontWeight: FontWeight.w900,
               color: t.text,
+              letterSpacing: -1,
+              height: 1.0,
             ),
           ),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(fontSize: 11, color: t.textTertiary)),
+          const SizedBox(height: 4),
+          Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11, color: t.textTertiary)),
         ],
       ),
     );
@@ -860,7 +892,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Widget _buildActivityItem(AppThemeColors t, SessionModel s) {
-    return Container(
+    return GestureDetector(
+      onTap: () => context.push('/feedback/${s.sessionId}'),
+      child: Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -916,6 +950,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           ),
         ],
+      ),
       ),
     );
   }

@@ -361,7 +361,9 @@ class _AIModulesScreenState extends State<AIModulesScreen>
 
   Widget _buildInterviewList(AppThemeColors t) {
     return ListView(
-      padding: const EdgeInsets.all(24),
+      // Bottom inset clears the floating nav bar so the last module's
+      // Start Practice button is always tappable.
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 140),
       children: [
         _buildModuleCard(
           t,
@@ -510,7 +512,7 @@ class _AIModulesScreenState extends State<AIModulesScreen>
     VoidCallback? onStartTap,
     Widget? featureWidget,
     bool isLoading = false,
-    double height = 168, // compact default (was 220) so all cards fit on screen
+    double height = 220,
   }) {
     Color glowColor;
     switch (tag.toLowerCase()) {
@@ -533,9 +535,9 @@ class _AIModulesScreenState extends State<AIModulesScreen>
     return GlassCard(
       hasMetallicBorder: true,
       glowColor: glowColor,
-      glowRadius: 40,
-      padding: const EdgeInsets.all(18),
-      margin: const EdgeInsets.only(bottom: 14),
+      glowRadius: 50,
+      padding: const EdgeInsets.all(24),
+      margin: const EdgeInsets.only(bottom: 20),
       child: SizedBox(
         height: height,
         child: Row(
@@ -553,7 +555,7 @@ class _AIModulesScreenState extends State<AIModulesScreen>
                       Text(
                         title,
                         style: TextStyle(
-                          fontSize: 22,
+                          fontSize: 26,
                           fontWeight: FontWeight.bold,
                           color: t.text,
                           letterSpacing: -0.8,
