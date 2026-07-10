@@ -187,6 +187,8 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
   }
 
   void _handleTermination() {
+    _isEnding = true;
+    _sttService.stop();
     isSessionEnded = true;
     _currentPhase = InterviewPhase.ready;
     _cleanup();
@@ -201,7 +203,18 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
 
   Timer? _safetyTimer;
   
+  // FE-BUG FIX (mic after end): when the user ends a session while the AI is
+  // speaking, the pending audio-playback .then()/.catchError() callbacks fire
+  // AFTER cleanup and call _startListening(), turning the mic back on. This
+  // flag is set synchronously the moment ending begins and blocks every
+  // listening entry point.
+  bool _isEnding = false;
+
   void _startListening() {
+    if (_isEnding || isSessionEnded) {
+      debugPrint('STT: session ending/ended — refusing to start listening');
+      return;
+    }
     if (isListening && _sttService.isListening) return;
     
     // Cancel any pending safety timer from previous turn
@@ -307,6 +320,7 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
   // Additional methods for screen compatibility
   void resetForNewSession() {
     _cleanup();
+    _isEnding = false;
     _isInitializing = false;
     isSessionEnded = false;
     isConnecting = true;
@@ -434,6 +448,8 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
   // which prevents the feedback screen navigation guard from ever firing.
   Future<void> endSession() async {
     if (isSessionEnded) return;
+    _isEnding = true;          // block any pending _startListening callbacks
+    _sttService.stop();        // and silence the mic immediately
     final savedSessionId = sessionId;
     terminateSession();
     if (savedSessionId != null) {
