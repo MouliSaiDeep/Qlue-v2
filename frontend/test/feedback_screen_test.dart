@@ -6,7 +6,6 @@ import 'package:mockito/annotations.dart';
 import 'package:frontend/screens/interview/feedback_report_screen.dart';
 import 'package:frontend/context/feedback_provider.dart';
 import 'package:frontend/core/models/feedback_report_model.dart';
-import 'package:frontend/core/models/session_model.dart';
 import 'package:frontend/context/dashboard_provider.dart';
 import 'package:frontend/context/auth_provider.dart';
 

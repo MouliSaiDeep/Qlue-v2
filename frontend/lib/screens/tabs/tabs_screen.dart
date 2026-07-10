@@ -77,9 +77,13 @@ class _TabsScreenState extends State<TabsScreen> with WidgetsBindingObserver {
 
   int _calculateIndex(String location) {
     int newIndex = 0;
-    if (location.startsWith('/dashboard')) newIndex = 0;
-    else if (location.startsWith('/practice')) newIndex = 1;
-    else if (location.startsWith('/history')) newIndex = 2;
+    if (location.startsWith('/dashboard')) {
+      newIndex = 0;
+    } else if (location.startsWith('/practice')) {
+      newIndex = 1;
+    } else if (location.startsWith('/history')) {
+      newIndex = 2;
+    }
     
     TabsScreen.currentIndex = newIndex;
     return newIndex;

@@ -83,9 +83,11 @@ class SttService {
       },
       listenFor: const Duration(seconds: 120),
       pauseFor: const Duration(seconds: 30), // FE-BUG #13 FIX: was 15s, too short for interview thinking time
-      partialResults: true,
       localeId: _localeId,
-      listenMode: ListenMode.dictation,
+      listenOptions: SpeechListenOptions(
+        partialResults: true,
+        listenMode: ListenMode.dictation,
+      ),
     );
   }
 

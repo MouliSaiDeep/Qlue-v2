@@ -88,7 +88,7 @@ class AuthProvider extends ChangeNotifier {
       if (e.code == 'requires-recent-login') {
         return 'For security, please log out and log back in, then retry.';
       }
-      return 'Password change failed: ' + (e.message ?? e.code);
+      return 'Password change failed: ${e.message ?? e.code}';
     } catch (e) {
       return 'Password change failed. Please try again.';
     }
@@ -178,11 +178,7 @@ class AuthProvider extends ChangeNotifier {
     _clearError();
     try {
       // 1. Authenticate (Replacement for signIn() in 7.x)
-      final GoogleSignInAccount? googleUser = await _googleSignIn.authenticate();
-      if (googleUser == null) {
-        _setLoading(false);
-        return;
-      }
+      final GoogleSignInAccount googleUser = await _googleSignIn.authenticate();
 
       // 2. Authentication result (No longer a Future in 7.x)
       final GoogleSignInAuthentication googleAuth = googleUser.authentication;
@@ -273,15 +269,16 @@ class AuthProvider extends ChangeNotifier {
       }
       
       // 3. Update Backend
+      final Map<String, dynamic> updateData = {};
+      if (name != null) updateData['displayName'] = name;
+      if (imageUrl != null) updateData['photoUrl'] = imageUrl;
+      if (profession != null) updateData['profession'] = profession;
+      if (skills != null) updateData['skills'] = skills;
+      if (voiceId != null) updateData['voiceId'] = voiceId;
+
       await DioClient().dio.put(
         ApiConstants.authProfile,
-        data: {
-          if (name != null) 'displayName': name,
-          if (imageUrl != null) 'photoUrl': imageUrl,
-          if (profession != null) 'profession': profession,
-          if (skills != null) 'skills': skills,
-          if (voiceId != null) 'voiceId': voiceId,
-        },
+        data: updateData,
       );
 
       await _currentUser!.reload();

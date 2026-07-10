@@ -19,15 +19,11 @@ class MockAuthProvider extends Mock implements AuthProvider {}
 void main() {
   late MockFirebaseAuth mockAuth;
   late MockUser mockUser;
-  late MockGoogleSignIn mockGoogleSignIn;
-  late MockDio mockDio;
   late AuthProvider authProvider;
 
   setUp(() {
     mockAuth = MockFirebaseAuth();
     mockUser = MockUser();
-    mockGoogleSignIn = MockGoogleSignIn();
-    mockDio = MockDio();
 
     when(() => mockAuth.authStateChanges()).thenAnswer((_) => Stream.value(null));
     when(() => mockUser.email).thenReturn('test@test.com');

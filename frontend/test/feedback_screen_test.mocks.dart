@@ -168,20 +168,65 @@ class MockDashboardProvider extends _i1.Mock implements _i6.DashboardProvider {
       ) as bool);
 
   @override
+  bool get isAutoRefreshing => (super.noSuchMethod(
+        Invocation.getter(#isAutoRefreshing),
+        returnValue: false,
+      ) as bool);
+
+  @override
   bool get hasListeners => (super.noSuchMethod(
         Invocation.getter(#hasListeners),
         returnValue: false,
       ) as bool);
 
   @override
-  _i4.Future<void> fetchDashboardData() => (super.noSuchMethod(
+  _i4.Future<void> fetchDashboardData({bool? silent = false}) =>
+      (super.noSuchMethod(
         Invocation.method(
           #fetchDashboardData,
+          [],
+          {#silent: silent},
+        ),
+        returnValue: _i4.Future<void>.value(),
+        returnValueForMissingStub: _i4.Future<void>.value(),
+      ) as _i4.Future<void>);
+
+  @override
+  _i4.Future<void> refreshNow() => (super.noSuchMethod(
+        Invocation.method(
+          #refreshNow,
           [],
         ),
         returnValue: _i4.Future<void>.value(),
         returnValueForMissingStub: _i4.Future<void>.value(),
       ) as _i4.Future<void>);
+
+  @override
+  void startAutoRefresh() => super.noSuchMethod(
+        Invocation.method(
+          #startAutoRefresh,
+          [],
+        ),
+        returnValueForMissingStub: null,
+      );
+
+  @override
+  void stopAutoRefresh() => super.noSuchMethod(
+        Invocation.method(
+          #stopAutoRefresh,
+          [],
+        ),
+        returnValueForMissingStub: null,
+      );
+
+  @override
+  void dispose() => super.noSuchMethod(
+        Invocation.method(
+          #dispose,
+          [],
+        ),
+        returnValueForMissingStub: null,
+      );
 
   @override
   _i4.Future<void> fetchHistory({String? moduleType}) => (super.noSuchMethod(
@@ -208,15 +253,6 @@ class MockDashboardProvider extends _i1.Mock implements _i6.DashboardProvider {
         Invocation.method(
           #removeListener,
           [listener],
-        ),
-        returnValueForMissingStub: null,
-      );
-
-  @override
-  void dispose() => super.noSuchMethod(
-        Invocation.method(
-          #dispose,
-          [],
         ),
         returnValueForMissingStub: null,
       );

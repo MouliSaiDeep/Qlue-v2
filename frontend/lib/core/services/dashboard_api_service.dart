@@ -17,10 +17,14 @@ class DashboardApiService {
   }
 
   Future<List<SessionModel>> getHistory({String? moduleType, int limit = 100}) async {
-    final response = await _dio.get(ApiConstants.sessionHistory, queryParameters: {
-      if (moduleType != null) 'moduleType': moduleType,
+    final Map<String, dynamic> params = {
       'limit': limit,
-    });
+    };
+    if (moduleType != null) {
+      params['moduleType'] = moduleType;
+    }
+
+    final response = await _dio.get(ApiConstants.sessionHistory, queryParameters: params);
     
     final List sessions = response.data['sessions'] ?? [];
     return sessions.map((s) => SessionModel.fromJson(s)).toList();

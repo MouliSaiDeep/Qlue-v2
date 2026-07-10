@@ -36,6 +36,7 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
     );
 
     if (result != null) {
+      if (!mounted) return;
       final fileData = result.files.single;
       final fileName = fileData.name;
       

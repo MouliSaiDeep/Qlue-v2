@@ -53,7 +53,7 @@ class FeedbackReportModel {
     if (data == null) return {};
     if (data is! Map) return {};
     final result = <String, double>{};
-    (data as Map).forEach((key, value) {
+    data.forEach((key, value) {
       if (value is num) {
         result[key.toString()] = value.toDouble();
       }

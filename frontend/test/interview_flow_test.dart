@@ -47,7 +47,6 @@ void main() {
     // Listeners
     when(() => mockInterviewProvider.addListener(any())).thenReturn(null);
     when(() => mockInterviewProvider.removeListener(any())).thenReturn(null);
-    when(() => mockInterviewProvider.hasListeners).thenReturn(false);
   });
 
   Widget createTestWidget(Widget child) {

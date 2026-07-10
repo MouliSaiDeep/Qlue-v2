@@ -141,7 +141,7 @@ class SpiderChartPainter extends CustomPainter {
 
     // Fill
     final fillPaint = Paint()
-      ..color = t.primary.withOpacity(0.25)
+      ..color = t.primary.withValues(alpha: 0.25)
       ..style = PaintingStyle.fill;
     canvas.drawPath(dataPath, fillPaint);
 

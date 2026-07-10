@@ -82,7 +82,7 @@ class _PremiumFlipCardState extends State<PremiumFlipCard> with TickerProviderSt
           
           final transform = Matrix4.identity()
             ..setEntry(3, 2, 0.0015)
-            ..translate(0.0, 0.0, zDepth)
+            ..translateByDouble(0.0, 0.0, zDepth, 1.0)
             ..rotateY(angle);
 
           bool showBack = angle > pi / 2;
@@ -99,7 +99,7 @@ class _PremiumFlipCardState extends State<PremiumFlipCard> with TickerProviderSt
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(shadowOpacity),
+                    color: Colors.black.withValues(alpha: shadowOpacity),
                     blurRadius: shadowBlur,
                     spreadRadius: shadowSpread,
                     offset: Offset(0, 4 + (sin(angle)*10)),

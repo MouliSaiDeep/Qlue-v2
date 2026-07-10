@@ -1,6 +1,5 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:feather_icons/feather_icons.dart';
 import '../core/theme.dart';
 import 'glass_card.dart';
 

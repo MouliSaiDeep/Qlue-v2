@@ -302,7 +302,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             : "Complete your first interview session to get personalized AI-powered coaching tips.",
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.white.withOpacity(0.8),
+                          color: Colors.white.withValues(alpha: 0.8),
                           height: 1.5,
                         ),
                       ),
@@ -377,7 +377,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 imageUrl: auth.profileImageUrl,
                 size: 44,
                 isCircle: true,
-                border: Border.all(color: t.metallicBorder.withOpacity(0.5), width: 1.5),
+                border: Border.all(color: t.metallicBorder.withValues(alpha: 0.5), width: 1.5),
               ),
             ),
             const SizedBox(width: 16),
@@ -594,7 +594,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: color.withOpacity(0.12),
+                    color: color.withValues(alpha: 0.12),
                     blurRadius: 40,
                     spreadRadius: 10,
                   ),
@@ -614,7 +614,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     color: t.bgSecondary,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: t.border.withOpacity(0.5),
+                      color: t.border.withValues(alpha: 0.5),
                       width: 0.8,
                     ),
                   ),
@@ -674,7 +674,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
-                      colors: [t.primary.withOpacity(0.15), Colors.transparent],
+                      colors: [t.primary.withValues(alpha: 0.15), Colors.transparent],
                     ),
                   ),
                 ),
@@ -722,15 +722,15 @@ class _DashboardScreenState extends State<DashboardScreen>
       padding: const EdgeInsets.symmetric(horizontal: 10),
       height: 40,
       decoration: BoxDecoration(
-        color: t.bgSecondary.withOpacity(0.25),
+        color: t.bgSecondary.withValues(alpha: 0.25),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: t.metallicBorder.withOpacity(0.3),
+          color: t.metallicBorder.withValues(alpha: 0.3),
           width: 1.0,
         ),
         boxShadow: [
           BoxShadow(
-            color: t.primary.withOpacity(0.12),
+            color: t.primary.withValues(alpha: 0.12),
             blurRadius: 20,
             spreadRadius: 2,
           ),
@@ -740,7 +740,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         child: DropdownButton<String>(
           value: _selectedRadar,
           icon: Icon(FeatherIcons.chevronDown, size: 14, color: t.primary),
-          dropdownColor: t.cardElevated.withOpacity(0.98),
+          dropdownColor: t.cardElevated.withValues(alpha: 0.98),
           elevation: 12,
           borderRadius: BorderRadius.circular(14),
           style: TextStyle(
@@ -790,7 +790,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 barrierColor: Colors.black54,
                 transitionDuration: const Duration(milliseconds: 260),
                 reverseTransitionDuration: const Duration(milliseconds: 220),
-                pageBuilder: (context, _, __) => DetailFlashCard(
+                pageBuilder: (context, _, _) => DetailFlashCard(
                   title: title,
                   items: items,
                   icon: icon,
@@ -866,7 +866,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       decoration: BoxDecoration(
         color: t.bgSecondary,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: t.metallicBorder.withOpacity(0.1)),
+        border: Border.all(color: t.metallicBorder.withValues(alpha: 0.1)),
       ),
       child: Row(
         children: [
@@ -874,7 +874,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: t.primary.withOpacity(0.1),
+              color: t.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(FeatherIcons.zap, size: 18, color: t.primary),
@@ -903,7 +903,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: t.accentGreen.withOpacity(0.1),
+              color: t.accentGreen.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
@@ -918,34 +918,5 @@ class _DashboardScreenState extends State<DashboardScreen>
         ],
       ),
     );
-  }
-
-  Map<String, double> _getRadarData(String module) {
-    if (module == "resume")
-      return {
-        "Comm": 0.70,
-        "Tech": 0.95,
-        "Logic": 0.85,
-        "Fit": 0.60,
-        "Conf": 0.80,
-        "Lead": 0.50,
-      };
-    if (module == "hr")
-      return {
-        "Comm": 0.95,
-        "Tech": 0.50,
-        "Logic": 0.80,
-        "Fit": 0.95,
-        "Conf": 0.90,
-        "Lead": 0.85,
-      };
-    return {
-      "Comm": 0.85,
-      "Tech": 0.70,
-      "Logic": 0.90,
-      "Fit": 0.80,
-      "Conf": 0.75,
-      "Lead": 0.60,
-    };
   }
 }

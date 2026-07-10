@@ -276,7 +276,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final file = result.files.single;
         
         if (kIsWeb && file.bytes != null) {
-          if (context.mounted) {
+          if (mounted) {
             Notify.info(context, "Cloud profile sync is being prioritized. Using local preview.");
           }
           auth.updateUserProfile(
@@ -286,7 +286,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           await auth.updateUserProfile(
             imageUrl: file.path,
           );
-          if (context.mounted) Notify.success(context, "Profile picture updated!");
+          if (mounted) Notify.success(context, "Profile picture updated!");
         }
       }
     } catch (e) {
@@ -368,7 +368,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       final err = await context
                           .read<AuthProvider>()
                           .changePassword(current, fresh);
-                      if (!ctx.mounted) return;
+                      if (!mounted || !ctx.mounted) return;
                       setDialogState(() => busy = false);
                       if (err == null) {
                         Navigator.of(ctx).pop();

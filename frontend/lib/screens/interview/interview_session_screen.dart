@@ -173,8 +173,9 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
     _isSimulating = true;
     
     Future.doWhile(() async {
+      if (!mounted) return false;
       final currentPhase = context.read<InterviewProvider>().currentPhase;
-      if (!mounted || _isDisposed || (currentPhase != InterviewPhase.speaking && currentPhase != InterviewPhase.listening)) {
+      if (_isDisposed || (currentPhase != InterviewPhase.speaking && currentPhase != InterviewPhase.listening)) {
         _isSimulating = false;
         return false;
       }

@@ -411,6 +411,94 @@ class _AIModulesScreenState extends State<AIModulesScreen>
     );
   }
 
+  Widget _buildTutorList(AppThemeColors t) {
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        _buildModuleCard(
+          t,
+          "Website",
+          "Learn from educational URL content.",
+          "Enter link below",
+          "Website",
+          "assets/images/website.png",
+          featureWidget: Container(
+            height: 52,
+            margin: const EdgeInsets.only(top: 12),
+            child: TextField(
+              controller: _urlController,
+              style: TextStyle(color: t.text, fontSize: 13),
+              decoration: InputDecoration(
+                hintText: "https://example.com/topic",
+                hintStyle: TextStyle(color: t.textTertiary, fontSize: 13),
+                filled: true,
+                fillColor: t.bgSecondary.withValues(alpha: 0.4),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                prefixIcon: Icon(FeatherIcons.link, size: 14, color: t.primary),
+              ),
+            ),
+          ),
+          onFeatureTap: () {}, // Handled by text field
+          isLoading: _isValidatingUrl,
+          onStartTap: _isValidatingUrl ? null : () async {
+            final url = _urlController.text.trim();
+            if (url.isEmpty) {
+              Notify.error(context, "Please enter a website URL first");
+              return;
+            }
+
+            final uri = Uri.tryParse(url);
+            if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
+              Notify.error(context, "Invalid URL format.");
+              return;
+            }
+
+            setState(() => _isValidatingUrl = true);
+            try {
+              final response = await DioClient().dio.post(
+                ApiConstants.websiteValidate,
+                data: {'websiteUrl': url},
+              );
+
+              // Backend wraps payloads as { success, data: {...} }
+              final result = (response.data is Map && response.data['data'] is Map)
+                  ? response.data['data']
+                  : response.data;
+
+              if (result['isEducational'] == true) {
+                if (mounted) {
+                  context.push('/interview/session/new?moduleType=WEBSITE&websiteUrl=${Uri.encodeComponent(url)}');
+                }
+              } else {
+                if (mounted) {
+                  Notify.error(context, result['reason'] ?? "This website does not contain educational content.");
+                }
+              }
+            } catch (e) {
+              if (mounted) Notify.error(context, "Network error during URL validation.");
+            } finally {
+              if (mounted) setState(() => _isValidatingUrl = false);
+            }
+          },
+        ),
+        const SizedBox(height: 24),
+        _buildModuleCard(
+          t,
+          "Self-Intro",
+          "Record your professional introduction.",
+          "Evaluate clarity and delivery.",
+          "Intro",
+          "assets/images/SelfIntro.png",
+          onStartTap: () => context.push('/interview/session/new?moduleType=INTRO'),
+        ),
+      ],
+    );
+  }
+
   Widget _buildModuleCard(
     AppThemeColors t,
     String title,
