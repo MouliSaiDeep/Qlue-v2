@@ -4,6 +4,8 @@ const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
 const { mockClient } = require('aws-sdk-client-mock');
 
 jest.mock('../../src/models/session');
+jest.mock('../../src/models/transcript');
+const { getLatestTranscripts } = require('../../src/models/transcript');
 const snsMock = mockClient(SNSClient);
 
 describe('terminateSession handler', () => {
@@ -15,6 +17,9 @@ describe('terminateSession handler', () => {
         jest.clearAllMocks();
         snsMock.reset();
         process.env.FEEDBACK_TOPIC_ARN = FEEDBACK_TOPIC_ARN;
+        getLatestTranscripts.mockResolvedValue([
+            { speaker: 'USER', text: 'Hello, here is my response.' }
+        ]);
     });
 
     it('should return 400 if sessionId is missing', async () => {
@@ -117,5 +122,31 @@ describe('terminateSession handler', () => {
 
         const result = await handler(event);
         expect(result.statusCode).toBe(200); // Still returns 200 because it was likely already moved to TERMINATED
+    });
+
+    it('should discard empty session if no user answers', async () => {
+        getSessionById.mockResolvedValue({
+            userId,
+            sessionId,
+            currentState: INTERVIEW_STATES.AI_SPEAKING,
+            moduleType: 'HR'
+        });
+        getLatestTranscripts.mockResolvedValue([]); // No transcripts / no user answers
+        updateSessionState.mockResolvedValue({});
+
+        const event = {
+            requestContext: { authorizer: { uid: userId } },
+            body: JSON.stringify({ sessionId, reason: 'USER_QUIT' })
+        };
+
+        const result = await handler(event);
+        expect(result.statusCode).toBe(200);
+        expect(JSON.parse(result.body).discarded).toBe(true);
+        expect(updateSessionState).toHaveBeenCalledWith(
+            sessionId,
+            INTERVIEW_STATES.TERMINATED,
+            null,
+            expect.objectContaining({ discarded: true, terminationReason: 'DISCARDED_EMPTY' })
+        );
     });
 });

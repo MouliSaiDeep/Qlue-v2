@@ -1,12 +1,12 @@
-const firebaseLib = require('../../../src/lib/firebase');
-const sdk = require('firebase-admin');
+let firebaseLib;
+let sdk;
 const fs = require('fs');
 
 jest.mock('firebase-admin', () => ({
     apps: [],
-    initializeApp: jest.fn(),
+    initializeApp: jest.fn(() => ({})),
     credential: {
-        cert: jest.fn()
+        cert: jest.fn(() => ({}))
     },
     auth: jest.fn(),
     messaging: jest.fn()
@@ -14,7 +14,13 @@ jest.mock('firebase-admin', () => ({
 
 jest.mock('fs');
 jest.mock('../../../src/lib/secrets', () => ({
-    getFirebaseServiceAccount: jest.fn().mockResolvedValue('{"project_id": "test"}')
+    getFirebaseServiceAccount: jest.fn().mockResolvedValue({
+        project_id: 'test',
+        type: 'service_account',
+        private_key_id: 'test',
+        private_key: 'test',
+        client_email: 'test@test.iam.gserviceaccount.com'
+    })
 }));
 
 describe('firebase lib', () => {
@@ -23,6 +29,9 @@ describe('firebase lib', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        jest.resetModules();
+        firebaseLib = require('../../../src/lib/firebase');
+        sdk = require('firebase-admin');
         sdk.apps = [];
         
         mockAuth = {
