@@ -253,6 +253,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2.5, color: t.primary),
                 ),
               )
+            else if (dashboard.isLoading && dashboard.history.isEmpty)
+              // A fetch is in flight — never flash the empty state while the
+              // full history is loading.
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: CircularProgressIndicator(strokeWidth: 2.5, color: t.primary),
+                ),
+              )
             else if (dashboard.history.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,

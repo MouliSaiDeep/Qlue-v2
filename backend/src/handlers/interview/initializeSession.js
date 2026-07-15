@@ -56,6 +56,31 @@ exports.handler = async (event) => {
         const itemData = { voiceId };
         if (body.resumeId) itemData.resumeId = body.resumeId;
         if (body.websiteUrl) itemData.websiteUrl = body.websiteUrl;
+
+        // WEBSITE MODULE FIX: nothing ever scraped the URL, so the tutor ran
+        // with 'no website content' and improvised unrelated questions (the
+        // "asked about other topics instead of Java" bug). Scrape once at
+        // init and snapshot the content + a target concept onto the session.
+        if (moduleType === 'WEBSITE') {
+            if (!body.websiteUrl) {
+                return { statusCode: 400, body: JSON.stringify({ error: 'WEBSITE module requires a websiteUrl.' }) };
+            }
+            try {
+                const { fetchAndCleanContent } = require('../../lib/scraper');
+                const scraped = await fetchAndCleanContent(body.websiteUrl);
+                itemData.scrapedSummary = (scraped.content || '').substring(0, 6000);
+                itemData.targetConcept = (scraped.title || 'the main topic')
+                    .replace(/\s*[|\-–].*$/, '') // strip " | SiteName" tails
+                    .trim()
+                    .substring(0, 80) || 'the main topic';
+            } catch (scrapeErr) {
+                console.error('WEBSITE init scrape failed:', scrapeErr.message);
+                return {
+                    statusCode: 400,
+                    body: JSON.stringify({ error: 'Could not read that website. Try a different tutorial or article link.' })
+                };
+            }
+        }
         itemData.engine = body.engine || 'neural';
 
         // JD MODULE: requires a resume and a prior job-match analysis

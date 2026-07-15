@@ -137,6 +137,8 @@ ${summary}
 6. NEVER repeat questions from the history.
 7. Keep your total response maximum 3 short sentences to ensure natural spoken pacing.
 8. If the candidate's last answer drifted away from professional/interview topics, use your acknowledgment to politely steer them back before asking your question.
+9. If the candidate's last answer was COMPLETELY unrelated to the interview (personal chatter, random topics, refusing to engage), begin your ENTIRE response with the exact marker [OFFTOPIC] and use your acknowledgment to clearly warn them that the interview will end if they continue going off-topic.
+10. IMPORTANT: The candidate's answers arrive via speech-to-text and may contain mis-transcribed technical terms (e.g. "flitter std" for "Flutter STT", "tax" for "text"). Infer the intended words from context; never quote or correct transcription artifacts.
 </response_rules>
 
 <conversation_history>
@@ -158,7 +160,12 @@ function buildWebsiteTeachPrompt(websiteContent, targetConcept, turnIndex, conve
   return `You are ${aiName}, an expert Tutor from Qlue.
 
 <source_material>
-${websiteContent?.substring(0, 1500) || 'Content not available'}
+${websiteContent?.substring(0, 5000) || 'Content not available'}
+
+STRICT GROUNDING RULES:
+- Ask ONLY about concepts, facts, and terminology that actually appear in the content above.
+- NEVER invent questions about topics the content does not cover; if the content is thin, ask the student to explain or apply something it DOES contain.
+- IMPORTANT: The candidate's answers arrive via speech-to-text and may contain mis-transcribed technical terms (e.g. "flitter std" for "Flutter STT", "tax" for "text"). Infer the intended words from context; never quote or correct transcription artifacts.
 </source_material>
 
 <core_personality>
@@ -248,6 +255,8 @@ Acknowledge the candidate's last answer in one short sentence, then ask ONE foll
 3. NEVER repeat questions from the history.
 4. Keep your total response maximum 3 short sentences.
 5. If the candidate's last answer drifted off-topic, use your acknowledgment to politely steer them back before asking your question.
+6. If the candidate's last answer was COMPLETELY unrelated to the interview (personal chatter, random topics, refusing to engage), begin your ENTIRE response with the exact marker [OFFTOPIC] and use your acknowledgment to clearly warn them that the interview will end if they continue going off-topic.
+7. IMPORTANT: The candidate's answers arrive via speech-to-text and may contain mis-transcribed technical terms (e.g. "flitter std" for "Flutter STT", "tax" for "text"). Infer the intended words from context; never quote or correct transcription artifacts.
 </response_rules>`;
 }
 
@@ -287,6 +296,8 @@ ${userData?.currentRole ? `Current Role: ${userData.currentRole}` : ''}
 4. Base your follow-up heavily on their previous answer.
 5. Keep your total response maximum 3 short sentences.
 6. If the candidate's last answer drifted off-topic, use your reaction to politely steer them back before asking your question.
+7. If the candidate's last answer was COMPLETELY unrelated to the interview (personal chatter, random topics, refusing to engage), begin your ENTIRE response with the exact marker [OFFTOPIC] and use your acknowledgment to clearly warn them that the interview will end if they continue going off-topic.
+8. IMPORTANT: The candidate's answers arrive via speech-to-text and may contain mis-transcribed technical terms (e.g. "flitter std" for "Flutter STT", "tax" for "text"). Infer the intended words from context; never quote or correct transcription artifacts.
 </response_rules>
 
 <conversation_history>
@@ -378,7 +389,7 @@ function cleanAIResponse(rawText) {
 exports.handler = async (event) => {
   try {
     const body = typeof event.body === 'string' ? JSON.parse(event.body || '{}') : (event.body || {});
-    const { sessionId, moduleType, resumeData, jdSummary, websiteContent, targetConcept, userData, turnIndex, conversationHistory, voiceId, currentDimension } = body;
+    const { sessionId, moduleType, resumeData, jdSummary, websiteContent, targetConcept, userData, turnIndex, conversationHistory, voiceId, currentDimension, isFinalTurn } = body;
 
     const aiName = getAiPersona(voiceId);
 
@@ -391,6 +402,26 @@ exports.handler = async (event) => {
     const relevance = analyzeResponseRelevance(userLatestTranscript);
 
     let prompt;
+    // WRAP-UP: when the turn cap is reached, deliver a natural closing
+    // statement instead of yet another question.
+    if (isFinalTurn && ['RESUME', 'HR', 'JD', 'WEBSITE'].includes(moduleType)) {
+      const historyText = (conversationHistory || []).map(t => `${t.speaker}: ${t.text}`).join('\n');
+      prompt = `You are ${aiName}, a professional interviewer concluding an interview session.
+
+<conversation_history>
+${historyText || '(none)'}
+</conversation_history>
+
+<task>
+The interview is now complete. Briefly acknowledge the candidate's final answer, then deliver a warm closing: thank them for their time, mention ONE genuine positive from the conversation, and tell them their detailed feedback report is being prepared.
+</task>
+
+<response_rules>
+1. Format EXACTLY as: [Acknowledgment] || [Closing statement]
+2. Do NOT ask any question. Maximum 3 short sentences total.
+3. IMPORTANT: The candidate's answers arrive via speech-to-text and may contain mis-transcribed technical terms (e.g. "flitter std" for "Flutter STT", "tax" for "text"). Infer the intended words from context; never quote or correct transcription artifacts.
+</response_rules>`;
+    } else {
     switch (moduleType) {
       case 'WEBSITE':
         prompt = buildWebsiteTeachPrompt(websiteContent, targetConcept, turnIndex, conversationHistory, aiName);
@@ -408,6 +439,7 @@ exports.handler = async (event) => {
       default:
         prompt = buildInterviewPrompt(resumeData, turnIndex, conversationHistory, aiName, relevance, currentDimension || 'their past experience');
         break;
+    }
     }
 
     let rawResponse = '';

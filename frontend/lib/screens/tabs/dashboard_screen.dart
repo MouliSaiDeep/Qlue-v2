@@ -72,6 +72,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     final dashboard = Provider.of<DashboardProvider>(context);
     final summary = dashboard.summary;
     final sessions = dashboard.history;
+    debugPrint('Dashboard recent-activity sessions: ${sessions.length}');
 
     final avgScore = summary.averageScore;
     final total = summary.totalSessions;
@@ -389,12 +390,31 @@ class _DashboardScreenState extends State<DashboardScreen>
                   right: 24,
                   bottom: bottomPadding + 100,
                 ),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate((context, index) {
-                    final s = sessions[index];
-                    return _buildActivityItem(t, s);
-                  }, childCount: math.min(sessions.length, 3)),
-                ),
+                sliver: sessions.isEmpty
+                    // Diagnosable fallback instead of a silent blank: if this
+                    // shows while sessions exist, the history fetch is the
+                    // problem, not the rendering.
+                    ? SliverToBoxAdapter(
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: t.bgSecondary,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                                color: t.metallicBorder.withValues(alpha: 0.1)),
+                          ),
+                          child: Text(
+                            "Your recent sessions will appear here.",
+                            style: TextStyle(fontSize: 13, color: t.textTertiary),
+                          ),
+                        ),
+                      )
+                    : SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          final s = sessions[index];
+                          return _buildActivityItem(t, s);
+                        }, childCount: math.min(sessions.length, 3)),
+                      ),
               ),
             ],
           ],
