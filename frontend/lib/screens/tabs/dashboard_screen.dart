@@ -5,6 +5,7 @@ import 'package:frontend/components/premium_flip_card.dart';
 import 'package:frontend/components/spectral_background.dart';
 import 'package:frontend/components/spider_chart.dart';
 import 'package:frontend/components/detail_flash_card.dart';
+import 'package:frontend/core/models/dashboard_model.dart';
 import 'package:provider/provider.dart';
 import 'package:feather_icons/feather_icons.dart';
 import 'package:go_router/go_router.dart';
@@ -33,14 +34,17 @@ class _DashboardScreenState extends State<DashboardScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
-    
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<DashboardProvider>().fetchDashboardData();
-      
+
       // Fix #28: Ensure any hanging interview sessions are terminated on dashboard entry
       final interviewProvider = context.read<InterviewProvider>();
-      if (interviewProvider.sessionId != null && !interviewProvider.isSessionEnded) {
-        debugPrint('Dashboard: Terminating active session ${interviewProvider.sessionId}');
+      if (interviewProvider.sessionId != null &&
+          !interviewProvider.isSessionEnded) {
+        debugPrint(
+          'Dashboard: Terminating active session ${interviewProvider.sessionId}',
+        );
         interviewProvider.endSession();
       }
     });
@@ -68,7 +72,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     final dashboard = Provider.of<DashboardProvider>(context);
     final summary = dashboard.summary;
     final sessions = dashboard.history;
-    
+
     final avgScore = summary.averageScore;
     final total = summary.totalSessions;
     final byModule = summary.moduleBreakdown;
@@ -89,7 +93,10 @@ class _DashboardScreenState extends State<DashboardScreen>
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: Center(
-                  child: CircularProgressIndicator(strokeWidth: 2.5, color: t.primary),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: t.primary,
+                  ),
                 ),
               )
             else if (dashboard.isLoading)
@@ -99,7 +106,10 @@ class _DashboardScreenState extends State<DashboardScreen>
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: Center(
-                  child: CircularProgressIndicator(strokeWidth: 2.5, color: t.primary),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: t.primary,
+                  ),
                 ),
               )
             else if (total == 0)
@@ -108,261 +118,284 @@ class _DashboardScreenState extends State<DashboardScreen>
                 child: _buildEmptyState(t, bottomPadding),
               )
             else ...[
-            // OVERALL PERFORMANCE & MINI STATS
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: SizedBox(
-                  height: 125,
-                  child: Row(
-                    children: [
-                      Expanded(child: _buildScoreDisplay(t, avgScore)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildMiniStatCard(
-                          t,
-                          _bestScoreLabel(summary),
-                          summary.bestScore > 0 ? "${summary.bestScore}%" : "—",
-                          FeatherIcons.target,
-                          t.accentGreen,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // 2x2 MODULE GRID
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 14, left: 24, right: 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildSectionTitle(t, "Modules Overview"),
-                    const SizedBox(height: 0),
-                    GridView.count(
-                      padding: const EdgeInsets.only(top: 14, bottom: 14),
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 12,
-                      crossAxisSpacing: 12,
-                      childAspectRatio: 1.6,
+              // OVERALL PERFORMANCE & MINI STATS
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: SizedBox(
+                    height: 125,
+                    child: Row(
                       children: [
-                        PremiumFlipCard(
-                          onFlip: (isFront) => isFront
-                              ? _flipEffectController.reverse()
-                              : _flipEffectController.forward(),
-                          front: _buildModuleTile(
+                        Expanded(child: _buildScoreDisplay(t, avgScore)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildMiniStatCard(
                             t,
-                            "Resume",
-                            "${byModule['RESUME'] ?? 0} Sessions",
-                            FeatherIcons.fileText,
-                            t.moduleResume,
-                          ),
-                          back: _buildModuleStats(t, "Resume", "High: ${summary.bestScoreByModule['RESUME'] ?? 0}%"),
-                        ),
-                        PremiumFlipCard(
-                          onFlip: (isFront) => isFront
-                              ? _flipEffectController.reverse()
-                              : _flipEffectController.forward(),
-                          front: _buildModuleTile(
-                            t,
-                            "HR",
-                            "${byModule['HR'] ?? 0} Sessions",
-                            FeatherIcons.users,
-                            t.moduleHR,
-                          ),
-                          back: _buildModuleStats(t, "HR", "High: ${summary.bestScoreByModule['HR'] ?? 0}%"),
-                        ),
-                        PremiumFlipCard(
-                          onFlip: (isFront) => isFront
-                              ? _flipEffectController.reverse()
-                              : _flipEffectController.forward(),
-                          front: _buildModuleTile(
-                            t,
-                            "Website",
-                            "${byModule['WEBSITE'] ?? 0} Sessions",
-                            FeatherIcons.globe,
-                            t.moduleWeb,
-                          ),
-                          back: _buildModuleStats(t, "Website", "High: ${summary.bestScoreByModule['WEBSITE'] ?? 0}%"),
-                        ),
-                        PremiumFlipCard(
-                          onFlip: (isFront) => isFront
-                              ? _flipEffectController.reverse()
-                              : _flipEffectController.forward(),
-                          front: _buildModuleTile(
-                            t,
-                            "Intro",
-                            "${byModule['INTRO'] ?? 0} Sessions",
-                            FeatherIcons.mic,
+                            _bestScoreLabel(summary),
+                            summary.bestScore > 0
+                                ? "${summary.bestScore}%"
+                                : "—",
+                            FeatherIcons.target,
                             t.accentGreen,
                           ),
-                          back: _buildModuleStats(t, "Intro", "High: ${summary.bestScoreByModule['INTRO'] ?? 0}%"),
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-            ),
-
-            // PERFORMANCE RADAR WITH DROPDOWN
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 4, left: 24, right: 24),
-                child: GlassCard(
-                  hasMetallicBorder: true,
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _buildSectionTitle(t, "Performance Radar"),
-                          _buildRadarDropdown(t),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      Center(
-                        child: SpiderChart(
-                          data: dashboard.radarData.getDimensionsForModule(_selectedRadar),
-                          maxValue: 1.0,
-                          size: MediaQuery.of(context).size.width * 0.45,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
                   ),
                 ),
               ),
-            ),
 
-            // STRENGTHS & IMPROVEMENTS
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 32, left: 24, right: 24),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildKeyAreaCard(
-                        t,
-                        "Strengths",
-                        summary.strengths.isNotEmpty
-                            ? summary.strengths.take(3).toList()
-                            : ["Complete an interview", "to see your strengths"],
-                        FeatherIcons.zap,
-                        t.accentGreen,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildKeyAreaCard(
-                        t,
-                        "To Improve",
-                        summary.improvements.isNotEmpty
-                            ? summary.improvements.take(3).toList()
-                            : ["Complete an interview", "to see insights"],
-                        FeatherIcons.trendingUp,
-                        t.warning,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // TIPS SECTION
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 32, left: 24, right: 24),
-                child: GlassCard(
-                  hasMetallicBorder: true,
-                  tintColor: t.primary,
-                  padding: const EdgeInsets.all(20),
+              // 2x2 MODULE GRID
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 14, left: 24, right: 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      _buildSectionTitle(t, "Modules Overview"),
+                      const SizedBox(height: 0),
+                      GridView.count(
+                        padding: const EdgeInsets.only(top: 14, bottom: 14),
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisCount: 2,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
+                        childAspectRatio: 1.6,
                         children: [
-                          const Icon(
-                            FeatherIcons.helpCircle,
-                            color: Colors.white,
-                            size: 20,
+                          PremiumFlipCard(
+                            onFlip: (isFront) => isFront
+                                ? _flipEffectController.reverse()
+                                : _flipEffectController.forward(),
+                            front: _buildModuleTile(
+                              t,
+                              "Resume",
+                              "${byModule['RESUME'] ?? 0} Sessions",
+                              FeatherIcons.fileText,
+                              t.moduleResume,
+                            ),
+                            back: _buildModuleStats(
+                              t,
+                              "Resume",
+                              "High: ${summary.bestScoreByModule['RESUME'] ?? 0}%",
+                            ),
                           ),
-                          const SizedBox(width: 10),
-                          const Text(
-                            "Improvement Tip",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                          PremiumFlipCard(
+                            onFlip: (isFront) => isFront
+                                ? _flipEffectController.reverse()
+                                : _flipEffectController.forward(),
+                            front: _buildModuleTile(
+                              t,
+                              "HR",
+                              "${byModule['HR'] ?? 0} Sessions",
+                              FeatherIcons.users,
+                              t.moduleHR,
+                            ),
+                            back: _buildModuleStats(
+                              t,
+                              "HR",
+                              "High: ${summary.bestScoreByModule['HR'] ?? 0}%",
+                            ),
+                          ),
+                          PremiumFlipCard(
+                            onFlip: (isFront) => isFront
+                                ? _flipEffectController.reverse()
+                                : _flipEffectController.forward(),
+                            front: _buildModuleTile(
+                              t,
+                              "Website",
+                              "${byModule['WEBSITE'] ?? 0} Sessions",
+                              FeatherIcons.globe,
+                              t.moduleWeb,
+                            ),
+                            back: _buildModuleStats(
+                              t,
+                              "Website",
+                              "High: ${summary.bestScoreByModule['WEBSITE'] ?? 0}%",
+                            ),
+                          ),
+                          PremiumFlipCard(
+                            onFlip: (isFront) => isFront
+                                ? _flipEffectController.reverse()
+                                : _flipEffectController.forward(),
+                            front: _buildModuleTile(
+                              t,
+                              "Intro",
+                              "${byModule['INTRO'] ?? 0} Sessions",
+                              FeatherIcons.mic,
+                              t.accentGreen,
+                            ),
+                            back: _buildModuleStats(
+                              t,
+                              "Intro",
+                              "High: ${summary.bestScoreByModule['INTRO'] ?? 0}%",
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        summary.tip.isNotEmpty
-                            ? summary.tip
-                            : "Complete your first interview session to get personalized AI-powered coaching tips.",
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.white.withValues(alpha: 0.8),
-                          height: 1.5,
+                    ],
+                  ),
+                ),
+              ),
+
+              // PERFORMANCE RADAR WITH DROPDOWN
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 4, left: 24, right: 24),
+                  child: GlassCard(
+                    hasMetallicBorder: true,
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _buildSectionTitle(t, "Performance Radar"),
+                            _buildRadarDropdown(t),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Center(
+                          child: SpiderChart(
+                            data: dashboard.radarData.getDimensionsForModule(
+                              _selectedRadar,
+                            ),
+                            maxValue: 1.0,
+                            size: MediaQuery.of(context).size.width * 0.45,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // STRENGTHS & IMPROVEMENTS
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 32, left: 24, right: 24),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _buildKeyAreaCard(
+                          t,
+                          "Strengths",
+                          summary.strengths.isNotEmpty
+                              ? summary.strengths.take(3).toList()
+                              : [
+                                  "Complete an interview",
+                                  "to see your strengths",
+                                ],
+                          FeatherIcons.zap,
+                          t.accentGreen,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildKeyAreaCard(
+                          t,
+                          "To Improve",
+                          summary.improvements.isNotEmpty
+                              ? summary.improvements.take(3).toList()
+                              : ["Complete an interview", "to see insights"],
+                          FeatherIcons.trendingUp,
+                          t.warning,
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-            ),
 
-            // RECENT ACTIVITY
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.only(
-                  top: 32,
-                  left: 24,
-                  right: 24,
-                  bottom: 12,
+              // TIPS SECTION
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 32, left: 24, right: 24),
+                  child: GlassCard(
+                    hasMetallicBorder: true,
+                    tintColor: t.primary,
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              FeatherIcons.helpCircle,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 10),
+                            const Text(
+                              "Improvement Tip",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          summary.tip.isNotEmpty
+                              ? summary.tip
+                              : "Complete your first interview session to get personalized AI-powered coaching tips.",
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.white.withValues(alpha: 0.8),
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildSectionTitle(t, "Recent Activity"),
-                    GestureDetector(
-                      onTap: () => context.go('/history'),
-                      child: Text(
-                        "See All",
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: t.primary,
+              ),
+
+              // RECENT ACTIVITY
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(
+                    top: 32,
+                    left: 24,
+                    right: 24,
+                    bottom: 12,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildSectionTitle(t, "Recent Activity"),
+                      GestureDetector(
+                        onTap: () => context.go('/history'),
+                        child: Text(
+                          "See All",
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: t.primary,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-            SliverPadding(
-              padding: EdgeInsets.only(
-                left: 24,
-                right: 24,
-                bottom: bottomPadding + 100,
+              SliverPadding(
+                padding: EdgeInsets.only(
+                  left: 24,
+                  right: 24,
+                  bottom: bottomPadding + 100,
+                ),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final s = sessions[index];
+                    return _buildActivityItem(t, s);
+                  }, childCount: math.min(sessions.length, 3)),
+                ),
               ),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  final s = sessions[index];
-                  return _buildActivityItem(t, s);
-                }, childCount: math.min(sessions.length, 3)),
-              ),
-            ),
             ],
           ],
         ),
@@ -387,7 +420,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                 imageUrl: auth.profileImageUrl,
                 size: 44,
                 isCircle: true,
-                border: Border.all(color: t.metallicBorder.withValues(alpha: 0.5), width: 1.5),
+                border: Border.all(
+                  color: t.metallicBorder.withValues(alpha: 0.5),
+                  width: 1.5,
+                ),
               ),
             ),
             const SizedBox(width: 16),
@@ -424,7 +460,11 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget _buildEmptyState(AppThemeColors t, double bottomPadding) {
     return Padding(
-      padding: EdgeInsets.only(left: 24, right: 24, bottom: bottomPadding + 100),
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        bottom: bottomPadding + 100,
+      ),
       child: Center(
         child: GlassCard(
           hasMetallicBorder: true,
@@ -440,7 +480,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                   color: t.primary.withValues(alpha: 0.1),
                   border: Border.all(color: t.primary.withValues(alpha: 0.25)),
                 ),
-                child: Center(child: Icon(FeatherIcons.barChart2, size: 30, color: t.primary)),
+                child: Center(
+                  child: Icon(
+                    FeatherIcons.barChart2,
+                    size: 30,
+                    color: t.primary,
+                  ),
+                ),
               ),
               const SizedBox(height: 24),
               Text(
@@ -456,13 +502,20 @@ class _DashboardScreenState extends State<DashboardScreen>
               Text(
                 "Attend an interview to view your\nperformance stats here.",
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: t.textSecondary, height: 1.5),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: t.textSecondary,
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 28),
               GestureDetector(
                 onTap: () => context.go('/practice'),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 28,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(colors: t.primaryGradient),
                     borderRadius: BorderRadius.circular(16),
@@ -476,7 +529,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                   child: const Text(
                     "Start an Interview",
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
@@ -556,7 +613,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (summary.bestScore <= 0) return "Best Score";
     String? bestModule;
     int best = 0;
-    const names = {'RESUME': 'Resume', 'HR': 'HR', 'WEBSITE': 'Website', 'INTRO': 'Intro', 'JD': 'Job Match'};
+    const names = {
+      'RESUME': 'Resume',
+      'HR': 'HR',
+      'WEBSITE': 'Website',
+      'INTRO': 'Intro',
+      'JD': 'Job Match',
+    };
     summary.bestScoreByModule.forEach((k, v) {
       if (v > best) {
         best = v;
@@ -594,10 +657,12 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           ),
           const SizedBox(height: 4),
-          Text(label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11, color: t.textTertiary)),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: t.textTertiary),
+          ),
         ],
       ),
     );
@@ -706,7 +771,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
-                      colors: [t.primary.withValues(alpha: 0.15), Colors.transparent],
+                      colors: [
+                        t.primary.withValues(alpha: 0.15),
+                        Colors.transparent,
+                      ],
                     ),
                   ),
                 ),
@@ -804,7 +872,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     Color color,
   ) {
     final heroTag = "hero_$title";
-    
+
     return Hero(
       tag: heroTag,
       child: Material(
@@ -829,9 +897,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                   color: color,
                   heroTag: heroTag,
                 ),
-                transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                  return FadeTransition(opacity: animation, child: child);
-                },
+                transitionsBuilder:
+                    (context, animation, secondaryAnimation, child) {
+                      return FadeTransition(opacity: animation, child: child);
+                    },
               ),
             );
           },
@@ -858,32 +927,37 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ],
               ),
               const SizedBox(height: 12),
-              ...items.take(3).map(
-                (it) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 4,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: t.textTertiary,
-                        ),
+              ...items
+                  .take(3)
+                  .map(
+                    (it) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 4,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: t.textTertiary,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              it,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: t.textSecondary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          it,
-                          style: TextStyle(fontSize: 11, color: t.textSecondary),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
             ],
           ),
         ),
@@ -895,62 +969,62 @@ class _DashboardScreenState extends State<DashboardScreen>
     return GestureDetector(
       onTap: () => context.push('/feedback/${s.sessionId}'),
       child: Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: t.bgSecondary,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: t.metallicBorder.withValues(alpha: 0.1)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: t.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: t.bgSecondary,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: t.metallicBorder.withValues(alpha: 0.1)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: t.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(FeatherIcons.zap, size: 18, color: t.primary),
             ),
-            child: Icon(FeatherIcons.zap, size: 18, color: t.primary),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  s.topic,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: t.text,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    s.topic,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: t.text,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  s.dateText,
-                  style: TextStyle(fontSize: 12, color: t.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: t.accentGreen.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              "${s.score}%",
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: t.accentGreen,
+                  const SizedBox(height: 2),
+                  Text(
+                    s.dateText,
+                    style: TextStyle(fontSize: 12, color: t.textSecondary),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
-      ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: t.accentGreen.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                "${s.score}%",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: t.accentGreen,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
