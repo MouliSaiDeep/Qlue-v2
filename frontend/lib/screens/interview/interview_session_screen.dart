@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:frontend/context/auth_provider.dart';
+import 'package:frontend/context/appearance_provider.dart';
 import 'package:go_router/go_router.dart';
 import 'dot_matrix_painter.dart';
 import '../../core/theme.dart';
@@ -82,7 +83,11 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
         if (!mounted) return;
         setState(() => _time += 0.016);
       });
-    _animationController.repeat();
+    // Reduce-motion (Profile -> Appearance) freezes the ambient dot-matrix
+    // animation; the bubble still renders its liquid-glass dots statically.
+    if (!context.read<AppearanceProvider>().reduceMotion) {
+      _animationController.repeat();
+    }
 
     _intensityController = AnimationController(
       vsync: this,

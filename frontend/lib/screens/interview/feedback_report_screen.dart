@@ -4,6 +4,9 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:feather_icons/feather_icons.dart';
 import '../../core/theme.dart';
+import 'package:provider/provider.dart';
+import '../../context/auth_provider.dart';
+import '../../components/semi_circle_gauge.dart';
 import '../../core/models/session_model.dart';
 import '../../core/models/feedback_report_model.dart';
 import 'package:dio/dio.dart';
@@ -316,74 +319,91 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
 
   Widget _buildScoreCard(AppThemeColors t) {
     final score = _report?.overallScore.round() ?? widget.session?.score ?? 0;
+    final auth = context.read<AuthProvider>();
+    final String role = auth.profession.isNotEmpty
+        ? auth.profession
+        : (_report?.moduleType ?? widget.session?.moduleType ?? 'Candidate');
+    final Color scoreColor =
+        score >= 75 ? t.success : (score >= 50 ? t.primary : Colors.orangeAccent);
+
     return GlassCard(
-      padding: const EdgeInsets.symmetric(vertical: 40),
-      borderRadius: 32,
-      blurSigma: 30,
-      child: Column(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      borderRadius: 24,
+      blurSigma: 26,
+      child: Row(
         children: [
-          Text(
-            "Overall Score",
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: t.textSecondary,
-              letterSpacing: 2,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              // Glow Effect
-              Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: t.primary.withValues(alpha: 0.3),
-                      blurRadius: 40,
-                      spreadRadius: 10,
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                "$score",
-                style: TextStyle(
-                  fontSize: 72,
-                  fontWeight: FontWeight.w900,
-                  color: t.text,
-                  height: 1.0,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            decoration: BoxDecoration(
-              color: t.success.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: t.success.withValues(alpha: 0.2)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+          // Identity
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(FeatherIcons.trendingUp, size: 14, color: t.success),
-                const SizedBox(width: 6),
                 Text(
-                  score >= 80
-                      ? "Top 15% of candidates"
-                      : "Great effort, keep practicing!",
+                  auth.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: t.success,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: t.text,
+                    letterSpacing: -0.4,
                   ),
                 ),
+                const SizedBox(height: 3),
+                Text(
+                  role,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.5, color: t.textSecondary),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: scoreColor.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: scoreColor.withValues(alpha: 0.25)),
+                  ),
+                  child: Text(
+                    score >= 80
+                        ? "Top 15% of candidates"
+                        : score >= 50
+                            ? "Solid performance"
+                            : "Keep practicing!",
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: scoreColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Score gauge
+          SemiCircleGauge(
+            progress: score / 100.0,
+            color: scoreColor,
+            trackColor: t.metallicBorder.withValues(alpha: 0.25),
+            width: 128,
+            strokeWidth: 11,
+            center: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  "$score",
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    color: t.text,
+                    height: 1.0,
+                  ),
+                ),
+                Text("OVERALL",
+                    style: TextStyle(
+                        fontSize: 8.5,
+                        letterSpacing: 1.5,
+                        color: t.textTertiary)),
               ],
             ),
           ),
@@ -393,56 +413,118 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
   }
 
   Widget _buildSpiderChartCard(AppThemeColors t) {
-    // Ensure we specifically have exactly 3 items to draw a triangle
     List<double> finalData = [0.8, 0.7, 0.9];
     List<String> finalLabels = ["Clarity", "Fluency", "Vocabulary"];
+    List<MapEntry<String, num>> allDims = [];
 
     if (_report != null && _report!.dimensionScores.isNotEmpty) {
-      final entries = _report!.dimensionScores.entries.toList();
-      if (entries.length >= 3) {
-        // Take first 3 entries
-        finalData = entries.take(3).map((e) => e.value / 100).toList();
-        finalLabels = entries.take(3).map((e) => e.key).toList();
-      } else {
-        // Pad with default data if less than 3
-        finalData = entries.map((e) => e.value / 100).toList();
-        finalLabels = entries.map((e) => e.key).toList();
-        while (finalData.length < 3) {
-          finalData.add(0.8);
-          finalLabels.add("Metric ${finalData.length}");
-        }
+      allDims = _report!.dimensionScores.entries
+          .map((e) => MapEntry(e.key, e.value as num))
+          .toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      final chartDims = allDims.take(3).toList();
+      finalData = chartDims.map((e) => e.value / 100.0).toList();
+      finalLabels = chartDims.map((e) => e.key).toList();
+      while (finalData.length < 3) {
+        finalData.add(0.8);
+        finalLabels.add("Metric ${finalData.length}");
       }
     }
 
     return GlassCard(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       borderRadius: 24,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             "Dimension Breakdown",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: t.text,
-            ),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: t.text),
           ),
-          const SizedBox(height: 30),
-          Center(
-            child: SizedBox(
-              width: 220,
-              height: 220,
-              child: CustomPaint(
-                painter: RadarChartPainter(
-                  t: t,
-                  data: finalData,
-                  labels: finalLabels,
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 140,
+                height: 140,
+                child: CustomPaint(
+                  painter: RadarChartPainter(
+                    t: t,
+                    data: finalData,
+                    labels: finalLabels,
+                  ),
                 ),
               ),
+              const SizedBox(width: 18),
+              // Every dimension with its exact value — the info the big
+              // chart alone never conveyed.
+              Expanded(
+                child: Column(
+                  children: (allDims.isEmpty
+                          ? finalLabels.asMap().entries.map((e) =>
+                              MapEntry(e.value, (finalData[e.key] * 100)))
+                          : allDims.map((e) => MapEntry(e.key, e.value.toDouble())))
+                      .map((d) => _buildDimensionBar(t, d.key, d.value.toDouble()))
+                      .toList(),
+                ),
+              ),
+            ],
+          ),
+          if (allDims.length >= 2) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Icon(FeatherIcons.award, size: 13, color: t.success),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    "Strongest: ${allDims.first.key} · Focus next: ${allDims.last.key}",
+                    style: TextStyle(fontSize: 11.5, color: t.textSecondary),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDimensionBar(AppThemeColors t, String label, double value) {
+    final Color barColor =
+        value >= 75 ? t.success : (value >= 50 ? t.primary : Colors.orangeAccent);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 9),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 11.5, color: t.textSecondary)),
+              ),
+              Text("${value.round()}",
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.bold,
+                      color: t.text)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: (value / 100).clamp(0.0, 1.0),
+              minHeight: 5,
+              backgroundColor: t.metallicBorder.withValues(alpha: 0.15),
+              valueColor: AlwaysStoppedAnimation<Color>(barColor),
             ),
           ),
-          const SizedBox(height: 20),
         ],
       ),
     );

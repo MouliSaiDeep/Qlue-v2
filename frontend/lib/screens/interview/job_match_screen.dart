@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:feather_icons/feather_icons.dart';
@@ -8,6 +6,7 @@ import '../../core/theme.dart';
 import '../../core/models/resume_model.dart';
 import '../../context/resume_provider.dart';
 import '../../components/glass_card.dart';
+import '../../components/semi_circle_gauge.dart';
 import '../../components/spectral_background.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/notifications.dart';
@@ -282,30 +281,22 @@ class _JobMatchScreenState extends State<JobMatchScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Center(
-            child: SizedBox(
+            child: SemiCircleGauge(
+              progress: score / 100.0,
+              color: scoreColor,
+              trackColor: t.metallicBorder.withValues(alpha: 0.25),
               width: 200,
-              height: 110,
-              child: CustomPaint(
-                painter: _SemiCircleGaugePainter(
-                  progress: score / 100.0,
-                  color: scoreColor,
-                  trackColor: t.metallicBorder.withValues(alpha: 0.25),
-                ),
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text("$score%",
-                          style: TextStyle(
-                              fontSize: 34,
-                              fontWeight: FontWeight.w900,
-                              color: scoreColor)),
-                      Text("Profile Match",
-                          style: TextStyle(fontSize: 11, color: t.textTertiary)),
-                    ],
-                  ),
-                ),
+              center: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text("$score%",
+                      style: TextStyle(
+                          fontSize: 34,
+                          fontWeight: FontWeight.w900,
+                          color: scoreColor)),
+                  Text("Profile Match",
+                      style: TextStyle(fontSize: 11, color: t.textTertiary)),
+                ],
               ),
             ),
           ),
@@ -439,43 +430,4 @@ class _JobMatchScreenState extends State<JobMatchScreen> {
       ),
     );
   }
-}
-
-/// Semicircle gauge: background track + progress arc drawn over 180 degrees.
-class _SemiCircleGaugePainter extends CustomPainter {
-  final double progress; // 0.0 - 1.0
-  final Color color;
-  final Color trackColor;
-
-  _SemiCircleGaugePainter({
-    required this.progress,
-    required this.color,
-    required this.trackColor,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const strokeWidth = 14.0;
-    final center = Offset(size.width / 2, size.height);
-    final radius = math.min(size.width / 2, size.height) - strokeWidth / 2;
-    final rect = Rect.fromCircle(center: center, radius: radius);
-
-    final track = Paint()
-      ..color = trackColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-    canvas.drawArc(rect, math.pi, math.pi, false, track);
-
-    final arc = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-    canvas.drawArc(rect, math.pi, math.pi * progress.clamp(0.0, 1.0), false, arc);
-  }
-
-  @override
-  bool shouldRepaint(covariant _SemiCircleGaugePainter old) =>
-      old.progress != progress || old.color != color;
 }

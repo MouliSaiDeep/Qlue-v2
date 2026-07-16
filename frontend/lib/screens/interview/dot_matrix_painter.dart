@@ -105,14 +105,35 @@ class AiDotMatrixPainter extends CustomPainter {
           state += coreGlow * (intensity * 0.5);
 
           final double clampedState = state.clamp(0.02, 1.0);
-          dotPaint.color = baseColor.withValues(alpha: clampedState);
-          
-          final double r = 1.6 + 2.8 * (clampedState * clampedState);
+
+          // LIQUID GLASS DOTS: each dot is rendered as a tiny glass orb —
+          // a translucent tinted body, a light-bending rim, and a bright
+          // specular highlight offset to the top-left (the light "passing
+          // through"). The wave engine above is untouched; only the render
+          // changed.
+          final double r = 1.8 + 3.0 * (clampedState * clampedState);
+
+          // 1. Glass body (translucent, keeps the mode's color identity)
+          dotPaint.color = baseColor.withValues(alpha: 0.10 + clampedState * 0.38);
           canvas.drawCircle(pos, r, dotPaint);
 
+          // 2. Rim: light refracting at the orb's edge
+          canvas.drawCircle(pos, r, Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 0.7
+            ..color = Colors.white.withValues(alpha: 0.08 + clampedState * 0.30));
+
+          // 3. Specular highlight — the liquid-glass signature
+          canvas.drawCircle(
+            pos.translate(-r * 0.32, -r * 0.32),
+            r * 0.32,
+            Paint()..color = Colors.white.withValues(alpha: clampedState * 0.85),
+          );
+
+          // 4. Colored bloom for hot dots (unchanged from before)
           if (clampedState > 0.8) {
-             canvas.drawCircle(pos, r + 1, Paint()
-               ..color = baseColor.withValues(alpha: clampedState * 0.2)
+             canvas.drawCircle(pos, r + 1.5, Paint()
+               ..color = baseColor.withValues(alpha: clampedState * 0.22)
                ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
           }
        }
