@@ -86,7 +86,7 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
         // FE-BUG FIX: Ensure data is parsed correctly even if API Gateway returns text/plain
         final rawData = response.data;
         final data = rawData is String ? jsonDecode(rawData) : rawData;
-        
+
         // The endpoint returns {session, feedback, transcript}
         var feedbackData = data['feedback'];
         if (feedbackData != null) {
@@ -98,7 +98,7 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
           if (data['transcript'] != null) {
             feedbackData['transcript'] = data['transcript'];
           }
-          
+
           setState(() {
             _report = FeedbackReportModel.fromJson(feedbackData);
             _isLoading = false;
@@ -121,7 +121,8 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
     } catch (e) {
       debugPrint("Error fetching feedback report: $e");
       // Do NOT retry on auth errors (401/403) — they won't resolve on their own.
-      final is4xxAuthError = e is DioException &&
+      final is4xxAuthError =
+          e is DioException &&
           (e.response?.statusCode == 401 || e.response?.statusCode == 403);
       if (!is4xxAuthError && retries > 0) {
         // Continue retrying only for transient failures
@@ -233,10 +234,7 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
             const SizedBox(height: 16),
             Text(
               "This usually takes 15-30 seconds",
-              style: TextStyle(
-                color: t.textSecondary,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: t.textSecondary, fontSize: 14),
             ),
           ],
         ),
@@ -322,9 +320,10 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
     final auth = context.read<AuthProvider>();
     final String role = auth.profession.isNotEmpty
         ? auth.profession
-        : (_report?.moduleType ?? widget.session?.moduleType ?? 'Candidate');
-    final Color scoreColor =
-        score >= 75 ? t.success : (score >= 50 ? t.primary : Colors.orangeAccent);
+        : (widget.session?.moduleType ?? 'Candidate');
+    final Color scoreColor = score >= 75
+        ? t.success
+        : (score >= 50 ? t.primary : Colors.orangeAccent);
 
     return GlassCard(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
@@ -357,18 +356,23 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
                 ),
                 const SizedBox(height: 10),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: scoreColor.withValues(alpha: 0.10),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: scoreColor.withValues(alpha: 0.25)),
+                    border: Border.all(
+                      color: scoreColor.withValues(alpha: 0.25),
+                    ),
                   ),
                   child: Text(
                     score >= 80
                         ? "Top 15% of candidates"
                         : score >= 50
-                            ? "Solid performance"
-                            : "Keep practicing!",
+                        ? "Solid performance"
+                        : "Keep practicing!",
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -399,11 +403,14 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
                     height: 1.0,
                   ),
                 ),
-                Text("OVERALL",
-                    style: TextStyle(
-                        fontSize: 8.5,
-                        letterSpacing: 1.5,
-                        color: t.textTertiary)),
+                Text(
+                  "OVERALL",
+                  style: TextStyle(
+                    fontSize: 8.5,
+                    letterSpacing: 1.5,
+                    color: t.textTertiary,
+                  ),
+                ),
               ],
             ),
           ),
@@ -418,10 +425,11 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
     List<MapEntry<String, num>> allDims = [];
 
     if (_report != null && _report!.dimensionScores.isNotEmpty) {
-      allDims = _report!.dimensionScores.entries
-          .map((e) => MapEntry(e.key, e.value as num))
-          .toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
+      allDims =
+          _report!.dimensionScores.entries
+              .map((e) => MapEntry(e.key, e.value as num))
+              .toList()
+            ..sort((a, b) => b.value.compareTo(a.value));
       final chartDims = allDims.take(3).toList();
       finalData = chartDims.map((e) => e.value / 100.0).toList();
       finalLabels = chartDims.map((e) => e.key).toList();
@@ -439,7 +447,11 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
         children: [
           Text(
             "Dimension Breakdown",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: t.text),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: t.text,
+            ),
           ),
           const SizedBox(height: 16),
           Row(
@@ -461,12 +473,25 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
               // chart alone never conveyed.
               Expanded(
                 child: Column(
-                  children: (allDims.isEmpty
-                          ? finalLabels.asMap().entries.map((e) =>
-                              MapEntry(e.value, (finalData[e.key] * 100)))
-                          : allDims.map((e) => MapEntry(e.key, e.value.toDouble())))
-                      .map((d) => _buildDimensionBar(t, d.key, d.value.toDouble()))
-                      .toList(),
+                  children:
+                      (allDims.isEmpty
+                              ? finalLabels.asMap().entries.map(
+                                  (e) => MapEntry(
+                                    e.value,
+                                    (finalData[e.key] * 100),
+                                  ),
+                                )
+                              : allDims.map(
+                                  (e) => MapEntry(e.key, e.value.toDouble()),
+                                ))
+                          .map(
+                            (d) => _buildDimensionBar(
+                              t,
+                              d.key,
+                              d.value.toDouble(),
+                            ),
+                          )
+                          .toList(),
                 ),
               ),
             ],
@@ -492,8 +517,9 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
   }
 
   Widget _buildDimensionBar(AppThemeColors t, String label, double value) {
-    final Color barColor =
-        value >= 75 ? t.success : (value >= 50 ? t.primary : Colors.orangeAccent);
+    final Color barColor = value >= 75
+        ? t.success
+        : (value >= 50 ? t.primary : Colors.orangeAccent);
     return Padding(
       padding: const EdgeInsets.only(bottom: 9),
       child: Column(
@@ -503,16 +529,21 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                child: Text(label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11.5, color: t.textSecondary)),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11.5, color: t.textSecondary),
+                ),
               ),
-              Text("${value.round()}",
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.bold,
-                      color: t.text)),
+              Text(
+                "${value.round()}",
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.bold,
+                  color: t.text,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 4),
