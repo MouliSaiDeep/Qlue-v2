@@ -926,8 +926,10 @@ Resources:
     Properties:
       Handler: handlers/interview/initializeSession.handler
       CodeUri: src/
-      MemorySize: 256
-      Timeout: 15
+      # WEBSITE module fallback path may scrape (tiered, up to render+proxy);
+      # 15s guaranteed timeouts. Cached path returns in milliseconds.
+      MemorySize: 512
+      Timeout: 60
       Events:
         Api:
           Type: Api

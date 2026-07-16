@@ -55,6 +55,28 @@ Format your output strictly as a JSON object: {"isEducational": boolean, "reason
             }
         }
 
+        // Guarantee a human-readable reason so the app never falls back to
+        // its generic toast text.
+        if (analysis.isEducational !== true && !analysis.reason) {
+            analysis.reason = 'This page did not look like educational or professional learning content.';
+        }
+
+        // SCRAPE-ONCE: cache the content we already fetched so session init
+        // reuses it instead of scraping the same URL again seconds later
+        // (rate limits + the 15s init timeout caused the 'Could not read
+        // that website' failure right after a green validation).
+        if (analysis.isEducational === true && userId) {
+            try {
+                const { saveWebsiteScrape } = require('../../models/user');
+                await saveWebsiteScrape(userId, {
+                    url: websiteUrl,
+                    content: content.substring(0, 6000)
+                });
+            } catch (cacheErr) {
+                console.warn('Website scrape cache failed (non-fatal):', cacheErr.message);
+            }
+        }
+
         return success(analysis);
     } catch (err) {
         console.error('Validation Error:', err);

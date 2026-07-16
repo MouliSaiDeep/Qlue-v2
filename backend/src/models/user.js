@@ -63,9 +63,30 @@ async function saveJdAnalysis(userId, analysis) {
     return res.data;
 }
 
+/**
+ * Caches the most recent successfully validated website scrape so the
+ * WEBSITE module's session init can reuse it instead of scraping the same
+ * URL twice back-to-back (which hit rate limits and the init Lambda's
+ * timeout — the 'Could not read that website' failure right after a
+ * successful validation).
+ */
+async function saveWebsiteScrape(userId, scrape) {
+    const res = await update(
+        USERS_TABLE,
+        { userId },
+        'SET latestWebsiteScrape = :ws',
+        { ':ws': { ...scrape, scrapedAt: new Date().toISOString() } }
+    );
+    if (!res.success) {
+        throw new Error(`Failed to cache website scrape: ${res.error?.message || 'Unknown error'}`);
+    }
+    return res.data;
+}
+
 module.exports = {
     saveUser,
     getUserById,
     setActiveResumeId,
-    saveJdAnalysis
+    saveJdAnalysis,
+    saveWebsiteScrape
 };

@@ -65,6 +65,14 @@ exports.handler = async (event) => {
             if (!body.websiteUrl) {
                 return { statusCode: 400, body: JSON.stringify({ error: 'WEBSITE module requires a websiteUrl.' }) };
             }
+            // SCRAPE-ONCE: prefer the content validateWebsite just cached for
+            // this exact URL — no second scrape, no rate limits, instant init.
+            const cached = user?.latestWebsiteScrape;
+            if (cached?.url === body.websiteUrl && cached?.content) {
+                itemData.scrapedSummary = cached.content.substring(0, 6000);
+                itemData.targetConcept = 'the main topic';
+                console.log('WEBSITE init: using cached validated scrape');
+            } else {
             try {
                 const { fetchAndCleanContent } = require('../../lib/scraper');
                 const scraped = await fetchAndCleanContent(body.websiteUrl);
@@ -79,6 +87,7 @@ exports.handler = async (event) => {
                     statusCode: 400,
                     body: JSON.stringify({ error: 'Could not read that website. Try a different tutorial or article link.' })
                 };
+            }
             }
         }
         itemData.engine = body.engine || 'neural';

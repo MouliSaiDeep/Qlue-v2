@@ -457,18 +457,23 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              // CLIPPING FIX: the painter draws its labels beyond the chart
+              // bounds; the inner padding keeps them inside the card.
               SizedBox(
-                width: 140,
-                height: 140,
-                child: CustomPaint(
-                  painter: RadarChartPainter(
-                    t: t,
-                    data: finalData,
-                    labels: finalLabels,
+                width: 150,
+                height: 150,
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: CustomPaint(
+                    painter: RadarChartPainter(
+                      t: t,
+                      data: finalData,
+                      labels: finalLabels,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: 18),
+              const SizedBox(width: 12),
               // Every dimension with its exact value — the info the big
               // chart alone never conveyed.
               Expanded(

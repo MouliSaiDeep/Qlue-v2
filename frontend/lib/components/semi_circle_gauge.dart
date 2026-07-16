@@ -24,9 +24,13 @@ class SemiCircleGauge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // OVERFLOW FIX (yellow/black stripes in the feedback score card): the
+    // 0.55 height ratio left the bottom-aligned center content a few pixels
+    // short. Taller canvas + a scale-down FittedBox make overflow impossible
+    // at any font scale or score width.
     return SizedBox(
       width: width,
-      height: width * 0.55,
+      height: width * 0.62,
       child: CustomPaint(
         painter: _SemiCircleGaugePainter(
           progress: progress,
@@ -36,7 +40,10 @@ class SemiCircleGauge extends StatelessWidget {
         ),
         child: center == null
             ? null
-            : Align(alignment: Alignment.bottomCenter, child: center),
+            : Align(
+                alignment: Alignment.bottomCenter,
+                child: FittedBox(fit: BoxFit.scaleDown, child: center),
+              ),
       ),
     );
   }
