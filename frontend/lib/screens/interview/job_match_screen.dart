@@ -270,7 +270,11 @@ class _JobMatchScreenState extends State<JobMatchScreen> {
     final List matched = (r['matchedSkills'] as List?) ?? [];
     final List missing = (r['missingSkills'] as List?) ?? [];
     final String verdict = r['verdict'] ?? '';
-    final Color scoreColor = eligible ? t.accentGreen : Colors.orangeAccent;
+    final Color scoreColor = score >= 75
+        ? const Color(0xFF4ADE80) // light green
+        : (score >= 50
+            ? const Color(0xFFFBBF24) // mustard
+            : const Color(0xFFF87171)); // red
 
     return GlassCard(
       hasMetallicBorder: true,

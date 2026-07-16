@@ -315,15 +315,21 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
     );
   }
 
+  /// Bright, meaningful score colors: light green for strong, mustard for
+  /// medium, red for low — visible at a glance on the dark theme.
+  Color _scoreColor(num score) {
+    if (score >= 75) return const Color(0xFF4ADE80); // light green
+    if (score >= 50) return const Color(0xFFFBBF24); // mustard
+    return const Color(0xFFF87171); // red
+  }
+
   Widget _buildScoreCard(AppThemeColors t) {
     final score = _report?.overallScore.round() ?? widget.session?.score ?? 0;
     final auth = context.read<AuthProvider>();
     final String role = auth.profession.isNotEmpty
         ? auth.profession
         : (widget.session?.moduleType ?? 'Candidate');
-    final Color scoreColor = score >= 75
-        ? t.success
-        : (score >= 50 ? t.primary : Colors.orangeAccent);
+    final Color scoreColor = _scoreColor(score);
 
     return GlassCard(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
@@ -399,7 +405,7 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.w900,
-                    color: t.text,
+                    color: scoreColor,
                     height: 1.0,
                   ),
                 ),
@@ -522,9 +528,7 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
   }
 
   Widget _buildDimensionBar(AppThemeColors t, String label, double value) {
-    final Color barColor = value >= 75
-        ? t.success
-        : (value >= 50 ? t.primary : Colors.orangeAccent);
+    final Color barColor = _scoreColor(value);
     return Padding(
       padding: const EdgeInsets.only(bottom: 9),
       child: Column(
@@ -863,7 +867,9 @@ class RadarChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = min(size.width, size.height) / 2;
+    // CLIPPING FIX: reserve room inside the canvas for the vertex labels
+    // instead of drawing them 20px beyond the bounds.
+    final radius = min(size.width, size.height) / 2 - 24;
     final angleStep = (2 * pi) / data.length;
 
     // 1. Draw Background Grid (Concentric Pentagons/Polygons)
@@ -905,8 +911,8 @@ class RadarChartPainter extends CustomPainter {
 
       // Labels
       final labelOffset = Offset(
-        center.dx + (radius + 20) * cos(angle),
-        center.dy + (radius + 15) * sin(angle),
+        center.dx + (radius + 16) * cos(angle),
+        center.dy + (radius + 14) * sin(angle),
       );
       _drawText(canvas, labels[i], labelOffset, t);
     }
@@ -928,36 +934,40 @@ class RadarChartPainter extends CustomPainter {
     }
     dataPath.close();
 
+    // BRIGHT DATA POLYGON: light-green glassy fill with a luminous edge —
+    // the dull dark-green triangle read as 'broken' on the dark card.
+    const Color radarBright = Color(0xFF4ADE80);
     final fillPaint = Paint()
       ..shader = RadialGradient(
         colors: [
-          t.primary.withValues(alpha: 0.4),
-          t.primary.withValues(alpha: 0.1),
+          radarBright.withValues(alpha: 0.45),
+          radarBright.withValues(alpha: 0.08),
         ],
       ).createShader(Rect.fromCircle(center: center, radius: radius))
       ..style = PaintingStyle.fill;
 
     final outlinePaint = Paint()
-      ..color = t.primary
+      ..color = radarBright
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0
-      ..maskFilter = const MaskFilter.blur(BlurStyle.solid, 2);
+      ..strokeWidth = 2.4
+      ..maskFilter = const MaskFilter.blur(BlurStyle.solid, 3);
 
     canvas.drawPath(dataPath, fillPaint);
     canvas.drawPath(dataPath, outlinePaint);
 
     // Draw dots at vertices
     final dotPaint = Paint()
-      ..color = t.primary
+      ..color = radarBright
       ..style = PaintingStyle.fill;
+    final dotHalo = Paint()
+      ..color = radarBright.withValues(alpha: 0.35)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
     for (var i = 0; i < data.length; i++) {
       final r = radius * data[i];
       final angle = i * angleStep - (pi / 2);
-      canvas.drawCircle(
-        Offset(center.dx + r * cos(angle), center.dy + r * sin(angle)),
-        4,
-        dotPaint,
-      );
+      final v = Offset(center.dx + r * cos(angle), center.dy + r * sin(angle));
+      canvas.drawCircle(v, 6, dotHalo);
+      canvas.drawCircle(v, 3.5, dotPaint);
     }
   }
 
