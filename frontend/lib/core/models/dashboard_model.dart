@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 
 class DashboardSummary {
   final int totalSessions;
@@ -85,9 +84,19 @@ class RadarData {
 
     Map<String, double> result = {};
     data[modKey]!.forEach((dim, score) {
-      // Dimensions from backend are usually like "Communication", "Technical"
-      // We map them to shorter keys for the Spider Chart UI
-      String key = dim.substring(0, math.min(dim.length, 4));
+      // FULL LABEL FIX: dimensions were truncated to 4 characters ("Tech",
+      // "Clar", "Stru"...) which read as cryptic codes on the radar. Pass
+      // the full name through, just prettified: camelCase gets spaces
+      // ("technicalVocabulary" -> "Technical Vocabulary") and the first
+      // letter is capitalized. The chart painter wraps long names onto two
+      // centered lines.
+      String key = dim.replaceAllMapped(
+        RegExp(r'([a-z])([A-Z])'),
+        (m) => '${m[1]} ${m[2]}',
+      );
+      if (key.isNotEmpty) {
+        key = key[0].toUpperCase() + key.substring(1);
+      }
       result[key] = score / 100.0;
     });
     return result;

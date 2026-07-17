@@ -47,8 +47,9 @@ class SpiderChartPainter extends CustomPainter {
     if (data.isEmpty) return;
 
     final center = Offset(size.width / 2, size.height / 2);
-    // Reduce radius to leave room for text labels
-    final radius = min(size.width, size.height) / 2 * 0.70;
+    // Reduce radius to leave room for full-name labels, which can wrap
+    // onto two lines around the chart.
+    final radius = min(size.width, size.height) / 2 * 0.62;
     final categories = data.keys.toList();
     final values = data.values.toList();
     final numPoints = categories.length;
@@ -103,9 +104,9 @@ class SpiderChartPainter extends CustomPainter {
         text: categories[j],
         style: TextStyle(
           color: t.textSecondary,
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: FontWeight.w600,
-          height: 1.1,
+          height: 1.15,
         ),
       );
       final textPainter = TextPainter(
@@ -113,7 +114,7 @@ class SpiderChartPainter extends CustomPainter {
         textAlign: TextAlign.center,
         textDirection: TextDirection.ltr,
       );
-      textPainter.layout(minWidth: 0, maxWidth: 65);
+      textPainter.layout(minWidth: 0, maxWidth: 74);
 
       canvas.save();
       // center text on the point
