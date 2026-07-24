@@ -10,6 +10,14 @@ const { success, badRequest } = require('../../lib/response');
  */
 exports.handler = async (event) => {
     try {
+        // BUG FIX: userId was referenced by the scrape-cache block below but
+        // never defined in this scope. The resulting ReferenceError was caught
+        // by the outer handler, so EVERY validation — including perfectly good
+        // tutorial links — came back as { isEducational: false }, making the
+        // WEBSITE module impossible to start.
+        const authorizer = event.requestContext?.authorizer;
+        const userId = authorizer?.uid || authorizer?.principalId || authorizer?.claims?.sub;
+
         const { websiteUrl } = JSON.parse(event.body || '{}');
         if (!websiteUrl) return badRequest('URL required');
 

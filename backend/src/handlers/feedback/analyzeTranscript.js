@@ -9,6 +9,10 @@ const REPORT_LAMBDA = process.env.GENERATE_REPORT_LAMBDA;
 
 const MODULE_DIMENSIONS = {
   RESUME: ['Technical Accuracy', 'Clarity', 'Use of Examples'],
+  // BUG FIX: JD was missing, so every job-match session fell through to the
+  // generic ['performance'] fallback — a single-axis radar chart and a feedback
+  // report that said nothing about role fit.
+  JD: ['Role Alignment', 'Technical Accuracy', 'Use of Examples'],
   HR: ['Problem Solving', 'Communication', 'Self Awareness'],
   WEBSITE: ['Comprehension', 'Critical Thinking', 'Concept Retention'],
   INTRO: ['Clarity', 'Structure', 'Confidence'],

@@ -1260,13 +1260,12 @@ Resources:
       Environment:
         Variables:
           GENERATE_REPORT_LAMBDA: !Ref GenerateFeedbackReportFunction
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /feedback/analyze
-            Method: post
-            RestApiId: !Ref RestApi
+      # SECURITY: the feedback pipeline stages are internal, invoked only via
+      # SNS -> triggerFeedbackGeneration -> lambda:InvokeFunction. Exposing them
+      # as public REST routes let any signed-in caller drive paid Bedrock
+      # inference and write feedback rows for arbitrary userIds, with an event
+      # shape (raw payload, not an API Gateway event) that skips every
+      # ownership check. The Api events have been removed.
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
@@ -1289,13 +1288,7 @@ Resources:
       CodeUri: src/
       MemorySize: 256
       Timeout: 15
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /feedback/scores
-            Method: post
-            RestApiId: !Ref RestApi
+      # SECURITY: internal pipeline stage — see AnalyzeTranscriptFunction.
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
@@ -1317,13 +1310,7 @@ Resources:
       Environment:
         Variables:
           STORE_FEEDBACK_LAMBDA: !Ref StoreFeedbackReportFunction
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /feedback/report
-            Method: post
-            RestApiId: !Ref RestApi
+      # SECURITY: internal pipeline stage — see AnalyzeTranscriptFunction.
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
@@ -1349,13 +1336,7 @@ Resources:
       Environment:
         Variables:
           SEND_NOTIFICATION_LAMBDA: !Ref SendFeedbackNotificationFunction
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /feedback/store
-            Method: post
-            RestApiId: !Ref RestApi
+      # SECURITY: internal pipeline stage — see AnalyzeTranscriptFunction.
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
@@ -1378,13 +1359,7 @@ Resources:
       CodeUri: src/
       MemorySize: 256
       Timeout: 10
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /feedback/notify
-            Method: post
-            RestApiId: !Ref RestApi
+      # SECURITY: internal pipeline stage — see AnalyzeTranscriptFunction.
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }

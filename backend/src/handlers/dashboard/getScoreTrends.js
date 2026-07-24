@@ -24,7 +24,12 @@ function calculateAggregateScore(scoresObj) {
 
 exports.handler = async (event) => {
     try {
-        const userId = event.requestContext?.authorizer?.claims?.sub || event.queryStringParameters?.userId;
+        // SECURITY: the custom authorizer returns { uid } in the context, not
+        // Cognito-style claims, so `claims.sub` was always undefined and the
+        // effective identity came from the ?userId= query string — any signed-in
+        // user could read anyone else's score history. Trust the authorizer only.
+        const auth = event.requestContext?.authorizer;
+        const userId = auth?.uid || auth?.claims?.sub || auth?.principalId;
         const period = event.queryStringParameters?.period || '30d';
 
         if (!userId) return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized.' }) };
@@ -67,6 +72,6 @@ exports.handler = async (event) => {
         };
     } catch (err) {
         console.error('getScoreTrends failed:', err);
-        return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
+        return { statusCode: 500, body: JSON.stringify({ error: 'INTERNAL_ERROR', message: 'Could not load score trends. Please try again.' }) };
     }
 };

@@ -50,7 +50,10 @@ function resolveVoiceAndEngine(voiceId, requestedEngine) {
   return { voice, engine };
 }
 
-async function synthesizeSpeech(text, voiceId = 'Ruth', requestedEngine = null) {
+// Engines tried, in order, when the requested one fails.
+const ENGINE_FALLBACK_ORDER = ['generative', 'neural', 'standard'];
+
+async function synthesizeSpeech(text, voiceId = 'Ruth', requestedEngine = null, attemptedEngines = []) {
   if (!text || text.trim().length === 0) {
     throw new Error('Text is required for speech synthesis');
   }
@@ -88,16 +91,27 @@ async function synthesizeSpeech(text, voiceId = 'Ruth', requestedEngine = null) 
 
   } catch (error) {
     console.error('Polly synthesis error:', error);
-    
-    // Fallback logic: neural/generative -> standard
-    if (finalEngine === 'generative') {
-      console.log('[Polly] generative failed. Falling back to neural engine');
-      return synthesizeSpeech(text, finalVoiceId, 'neural');
-    } else if (finalEngine === 'neural') {
-      console.log('[Polly] neural failed. Falling back to standard engine');
-      return synthesizeSpeech(text, finalVoiceId, 'standard');
+
+    // BUG FIX (infinite recursion): the old fallback retried 'neural' with
+    // 'standard', but resolveVoiceAndEngine maps an unsupported engine back to
+    // the voice's cheapest supported one — for Ruth that is 'neural' again. A
+    // persistent Polly failure therefore recursed forever until the Lambda
+    // timed out or the stack blew, instead of surfacing the error. Track which
+    // engines have actually been attempted and stop when they are exhausted.
+    // Record both the engine we asked for and the one resolveVoiceAndEngine
+    // actually used — otherwise a request that keeps being remapped to an
+    // already-failed engine never registers as attempted.
+    const tried = [...attemptedEngines, finalEngine, requestedEngine].filter(Boolean);
+    const nextEngine = ENGINE_FALLBACK_ORDER
+      .slice(ENGINE_FALLBACK_ORDER.indexOf(finalEngine) + 1)
+      .find(e => !tried.includes(e));
+
+    if (nextEngine) {
+      console.log(`[Polly] ${finalEngine} failed. Falling back to ${nextEngine} engine`);
+      return synthesizeSpeech(text, finalVoiceId, nextEngine, tried);
     }
-    
+
+    console.error(`[Polly] All engines exhausted for voice ${finalVoiceId} (tried: ${tried.join(', ')})`);
     throw error;
   }
 }

@@ -17,7 +17,10 @@ function getCutoffTimestamp(periodStr) {
 
 exports.handler = async (event) => {
     try {
-        const userId = event.requestContext?.authorizer?.claims?.sub || event.queryStringParameters?.userId || event.requestContext?.authorizer?.uid;
+        // SECURITY: see getScoreTrends — the ?userId= fallback took precedence
+        // over the real authorizer context and exposed other users' stats.
+        const auth = event.requestContext?.authorizer;
+        const userId = auth?.uid || auth?.claims?.sub || auth?.principalId;
         const period = event.queryStringParameters?.period || '30d';
 
         if (!userId) return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized.' }) };
@@ -43,14 +46,18 @@ exports.handler = async (event) => {
         const sessions = res.Items || [];
 
         // Radar Chart Data aggregation
+        // BUG FIX: JD had no bucket, so job-match sessions were dropped by the
+        // `!dimensionsBreakdown[mod]` guard below — excluded from their own
+        // radar AND from the OVERALL aggregate.
         const dimensionsBreakdown = {
             OVERALL: {},
             RESUME: {},
             WEBSITE: {},
             HR: {},
-            INTRO: {}
+            INTRO: {},
+            JD: {}
         };
-        const counts = { OVERALL: {}, RESUME: {}, WEBSITE: {}, HR: {}, INTRO: {} };
+        const counts = { OVERALL: {}, RESUME: {}, WEBSITE: {}, HR: {}, INTRO: {}, JD: {} };
 
         for (const session of sessions) {
             const mod = session.moduleType;
@@ -83,6 +90,6 @@ exports.handler = async (event) => {
         };
     } catch (err) {
         console.error('getModuleStats failed:', err);
-        return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
+        return { statusCode: 500, body: JSON.stringify({ error: 'INTERNAL_ERROR', message: 'Could not load module stats. Please try again.' }) };
     }
 };

@@ -3,11 +3,13 @@ const { getSessionById, updateSessionState, INTERVIEW_STATES } = require('../../
 const { getLatestTranscripts } = require('../../src/models/transcript');
 const { postToConnection } = require('../../src/lib/websocket');
 const { docClient } = require('../../src/lib/dynamodb');
+const { getConnection } = require('../../src/models/wsConnection');
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 const { mockClient } = require('aws-sdk-client-mock');
 
 jest.mock('../../src/models/session');
 jest.mock('../../src/models/transcript');
+jest.mock('../../src/models/wsConnection');
 jest.mock('../../src/lib/websocket');
 jest.mock('../../src/lib/dynamodb');
 
@@ -23,6 +25,58 @@ describe('sendTextHandler', () => {
         sqsMock.reset();
         process.env.ASYNC_QUEUE_URL = 'https://sqs.queue.url';
         process.env.WS_CONNECTIONS_TABLE = 'qlue-connections';
+        // The identity for every $default message comes from the connection
+        // record written by $connect after verifying the Firebase token —
+        // never from the message body.
+        getConnection.mockResolvedValue({ connectionId, userId, isActive: 'true' });
+    });
+
+    it('rejects messages from a connection that is not registered', async () => {
+        getConnection.mockResolvedValue(null);
+        postToConnection.mockResolvedValue(true);
+
+        const result = await handler({
+            requestContext: { connectionId },
+            body: JSON.stringify({ type: 'ping' })
+        });
+
+        expect(result.statusCode).toBe(401);
+        expect(getSessionById).not.toHaveBeenCalled();
+    });
+
+    it('ignores a spoofed userId in the message body', async () => {
+        getSessionById.mockResolvedValue({ sessionId, userId: 'victim-user' });
+        postToConnection.mockResolvedValue(true);
+
+        await handler({
+            requestContext: { connectionId },
+            body: JSON.stringify({
+                type: 'session_init',
+                userId: 'victim-user',
+                payload: { sessionId }
+            })
+        });
+
+        expect(postToConnection).toHaveBeenCalledWith(connectionId, expect.objectContaining({
+            type: 'turn_error',
+            payload: expect.objectContaining({ code: 403 })
+        }));
+        expect(sqsMock.calls()).toHaveLength(0);
+    });
+
+    it('rejects session_reconnect for a session owned by another user', async () => {
+        getSessionById.mockResolvedValue({ sessionId, userId: 'other-user' });
+        postToConnection.mockResolvedValue(true);
+
+        await handler({
+            requestContext: { connectionId },
+            body: JSON.stringify({ type: 'session_reconnect', payload: { sessionId } })
+        });
+
+        expect(postToConnection).toHaveBeenCalledWith(connectionId, expect.objectContaining({
+            type: 'turn_error',
+            payload: expect.objectContaining({ code: 403 })
+        }));
     });
 
     it('should handle ping and update heartbeat', async () => {

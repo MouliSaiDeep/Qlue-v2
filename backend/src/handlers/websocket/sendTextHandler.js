@@ -6,6 +6,7 @@ const { getTranscriptBySession, getLatestTranscripts } = require('../../models/t
 // imported, so every pong / turn_error / reconnect reply threw a silent
 // ReferenceError inside try/catch blocks and never reached the client.
 const { postToConnection, deregisterConnection } = require('../../lib/websocket');
+const { getConnection } = require('../../models/wsConnection');
 const { docClient } = require('../../lib/dynamodb');
 
 const sqsClient = new SQSClient({ region: process.env.AWS_REGION || 'us-east-1' });
@@ -142,6 +143,14 @@ async function handleTurnSubmit(connectionId, body, userId) {
     if (!session || session.currentState === INTERVIEW_STATES.TERMINATED) {
       return await sendError(connectionId, 'Session is terminated');
     }
+
+    // Ownership is checked before any state is reported back, so probing an
+    // arbitrary sessionId cannot reveal whether it exists or what state it is
+    // in. (The check used to sit below the state branches.)
+    if (session.userId !== userId) {
+      return await sendError(connectionId, 'Forbidden: Session does not belong to this user', 403);
+    }
+
     if (session.currentState === INTERVIEW_STATES.GENERATING_FEEDBACK) {
       await postToConnection(connectionId, { 
         type: 'termination', 
@@ -151,11 +160,6 @@ async function handleTurnSubmit(connectionId, body, userId) {
     }
     if (session.currentState === INTERVIEW_STATES.PROCESSING_RESPONSE || session.currentState === INTERVIEW_STATES.AI_SPEAKING) {
       return await sendError(connectionId, 'TURN_IN_PROGRESS', 409);
-    }
-
-    // BUG-2 FIX: Validate session ownership
-    if (session.userId !== userId) {
-      return await sendError(connectionId, 'Forbidden: Session does not belong to this user', 403);
     }
 
     // BUG-3 FIX: Make state update atomic - only update if currently USER_RESPONDING
@@ -211,6 +215,13 @@ async function handleSessionReconnect(connectionId, body, userId) {
     const session = await getSessionById(sessionId);
     if (!session) {
       return await sendError(connectionId, 'Session not found');
+    }
+
+    // SECURITY: reconnect replays the session's current question back to the
+    // caller. Without this check any connected user could reconnect to an
+    // arbitrary sessionId and read another candidate's interview.
+    if (session.userId !== userId) {
+      return await sendError(connectionId, 'Forbidden: Session does not belong to this user', 403);
     }
 
     // Update connection mapping
@@ -343,12 +354,33 @@ async function handleTerminateSession(connectionId, body, userId) {
 exports.handler = async (event) => {
   const connectionId = event.requestContext?.connectionId;
   const routeKey = event.requestContext?.routeKey;
-  const body = JSON.parse(event.body || '{}');
-  const userId = event.requestContext?.authorizer?.uid || body.userId;
 
-  if (!userId) {
-    console.error('WebSocket message missing userId');
-    return await sendError(connectionId, 'userId required');
+  // A malformed frame used to throw here, outside the try below, surfacing as
+  // an unhandled Lambda error with no reply to the client.
+  let body;
+  try {
+    body = JSON.parse(event.body || '{}');
+  } catch (parseErr) {
+    console.warn(`Malformed WebSocket frame from ${connectionId}:`, parseErr.message);
+    await sendError(connectionId, 'Malformed message payload', 400);
+    return { statusCode: 400, body: 'Bad Request' };
+  }
+
+  // SECURITY: the WebSocket $default route has no API Gateway authorizer, so
+  // event.requestContext.authorizer is always undefined here. The previous
+  // fallback to body.userId meant the identity used for every ownership check
+  // was supplied by the client — any connected user could drive, read or
+  // terminate another user's session by sending their uid. The only trusted
+  // identity is the one $connect wrote to the connections table after
+  // verifying the Firebase ID token; resolve it from there and never from the
+  // message body.
+  const connection = await getConnection(connectionId);
+  const userId = connection?.userId;
+
+  if (!userId || connection.isActive !== 'true') {
+    console.error(`WebSocket message from unregistered/inactive connection ${connectionId}`);
+    await sendError(connectionId, 'Unauthorized: connection is not authenticated', 401);
+    return { statusCode: 401, body: 'Unauthorized' };
   }
 
   console.log(`Received WS message [${body.type || routeKey}] from connection ${connectionId}`);

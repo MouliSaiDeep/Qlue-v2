@@ -60,7 +60,7 @@ exports.handler = async (event) => {
         console.error('Get Session History Error:', error);
         return {
             statusCode: 500,
-            body: JSON.stringify({ error: 'SERVER_ERROR', message: error.message })
+            body: JSON.stringify({ error: 'SERVER_ERROR', message: 'Something went wrong. Please try again.' })
         };
     }
 };

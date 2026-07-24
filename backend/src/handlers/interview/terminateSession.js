@@ -18,9 +18,17 @@ exports.handler = async (event) => {
       return { statusCode: 404, body: JSON.stringify({ error: 'Session not found' }) };
     }
 
-    // BE-BUG #14 FIX: Verify session ownership before allowing termination
+    // BE-BUG #14 FIX: Verify session ownership before allowing termination.
+    // The guard used to be `if (userId && ...)`, which silently skipped the
+    // check whenever the caller omitted the identity. Every caller (REST
+    // authorizer, sendTextHandler, asyncWorker, initializeSession) supplies it,
+    // so a missing uid is a bug, not an internal-caller shortcut.
     const userId = event.requestContext?.authorizer?.uid;
-    if (userId && session.userId !== userId) {
+    if (!userId) {
+      console.error('[TerminateSession] Missing user context');
+      return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized: missing user context' }) };
+    }
+    if (session.userId !== userId) {
       console.warn(`[TerminateSession] Ownership violation: user ${userId} attempted to terminate session owned by ${session.userId}`);
       return { statusCode: 403, body: JSON.stringify({ error: 'Forbidden: You do not own this session' }) };
     }

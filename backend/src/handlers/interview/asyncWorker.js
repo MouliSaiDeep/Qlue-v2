@@ -179,7 +179,10 @@ async function generateAtomicTurn({
              accumulatedText += token;
 
              if (!earlyTts && accumulatedText.includes('||')) {
-               const ackText = cleanAIResponse(accumulatedText.split('||')[0]);
+               // cleanAIResponse deliberately preserves the [OFFTOPIC] marker so
+               // the strike check below can see it; strip it here so Polly never
+               // speaks the literal word.
+               const ackText = cleanAIResponse(accumulatedText.split('||')[0]).replace(/\[OFFTOPIC\]/gi, '').trim();
                if (ackText && ackText.length >= 5 && ackText.length <= MAX_AI_TEXT_LENGTH) {
                  earlyTts = {
                    text: ackText,
@@ -191,13 +194,15 @@ async function generateAtomicTurn({
                }
              }
 
-             // Send text_stream event to the frontend
+             // Send text_stream event to the frontend. The [OFFTOPIC] marker and
+             // the '||' delimiter are internal protocol, not speech — strip them
+             // so they never flash up in the live subtitle.
              await postToConnection(connectionId, {
                type: 'text_stream',
                payload: {
                  sessionId,
                  text: token,
-                 fullText: accumulatedText,
+                 fullText: accumulatedText.replace(/\[OFFTOPIC\]/gi, '').replace(/\|\|/g, ' ').replace(/\s+/g, ' ').trimStart(),
                  timestamp: Date.now()
                }
              }).catch(e => console.error('Failed to stream token to WS:', e));
@@ -465,7 +470,15 @@ exports.handler = async (event) => {
         });
 
         const processBody = JSON.parse(processResult.body);
-        
+
+        // The status code was previously ignored, so a 403 (ownership) or 500
+        // from processUserInput still fell through and generated a paid Bedrock
+        // turn against a session that had rejected the input.
+        if (processResult.statusCode && processResult.statusCode >= 400) {
+          console.error(`[AsyncWorker] processUserInput rejected turn for ${sessionId}: ${processResult.statusCode} ${processBody.error}`);
+          throw new Error(processBody.error || 'Failed to process user input');
+        }
+
         if (processBody.shouldTerminate) {
           const terminateSession = require('./terminateSession');
           await terminateSession.handler({
@@ -509,13 +522,28 @@ exports.handler = async (event) => {
 
     } catch (error) {
       console.error(`[AsyncWorker] Error processing ${action} for ${sessionId}:`, error);
-      
+
+      // RECOVERY FIX: sendTextHandler moves the session to PROCESSING_RESPONSE
+      // before queueing, and the SQS message is consumed even when the turn
+      // fails. Without releasing the state here the session stayed in
+      // PROCESSING_RESPONSE forever and every subsequent turn_submit was
+      // rejected with TURN_IN_PROGRESS — the user's interview was dead until
+      // the 30s stale-reconnect path happened to run. Hand the turn back to
+      // the user so they can retry.
+      try {
+        await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING);
+      } catch (stateErr) {
+        console.error('[AsyncWorker] Failed to release session state after error:', stateErr);
+      }
+
       try {
         await postToConnection(connectionId, {
           type: 'turn_error',
           payload: {
             sessionId,
             error: error.message,
+            state: INTERVIEW_STATES.USER_RESPONDING,
+            recoverable: true,
             timestamp: Date.now()
           }
         });
