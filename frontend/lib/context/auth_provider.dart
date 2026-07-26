@@ -15,6 +15,9 @@ class AuthProvider extends ChangeNotifier {
   String _profession = "";
   List<String> _skills = [];
   String _voiceId = "Tiffany"; // generative default — most natural voice
+  // Voice mode: 'cost_saver' (neural, free-tier friendly) or 'premium'
+  // (generative — the most natural voices, uses more credits).
+  String _voiceMode = "cost_saver";
   String _photoUrl = "";
   String _displayName = "";
 
@@ -30,6 +33,8 @@ class AuthProvider extends ChangeNotifier {
   String get profession => _profession;
   List<String> get skills => _skills;
   String get voiceId => _voiceId;
+  String get voiceMode => _voiceMode;
+  bool get isPremiumVoice => _voiceMode == 'premium';
 
   void setBypassAuthenticated() {
     _isBypassAuthenticated = true;
@@ -235,6 +240,7 @@ class AuthProvider extends ChangeNotifier {
       _profession = data['profession'] ?? "";
       _skills = List<String>.from(data['skills'] ?? []);
       _voiceId = data['voiceId'] ?? "Tiffany";
+      _voiceMode = data['voiceMode'] ?? "cost_saver";
       _photoUrl = data['photoUrl'] ?? "";
       _displayName = data['displayName'] ?? "";
       notifyListeners();
@@ -243,13 +249,14 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> updateUserProfile({String? name, String? imageUrl, String? profession, List<String>? skills, String? voiceId}) async {
+  Future<void> updateUserProfile({String? name, String? imageUrl, String? profession, List<String>? skills, String? voiceId, String? voiceMode}) async {
     if (_currentUser == null) return;
-    
+
     // Store old values for potential rollback
     final oldProfession = _profession;
     final oldSkills = List<String>.from(_skills);
     final oldVoiceId = _voiceId;
+    final oldVoiceMode = _voiceMode;
     final oldPhotoUrl = _photoUrl;
     final oldDisplayName = _displayName;
 
@@ -258,6 +265,7 @@ class AuthProvider extends ChangeNotifier {
       if (profession != null) _profession = profession;
       if (skills != null) _skills = List.from(skills);
       if (voiceId != null) _voiceId = voiceId;
+      if (voiceMode != null) _voiceMode = voiceMode;
       if (imageUrl != null) _photoUrl = imageUrl;
       if (name != null) _displayName = name;
       notifyListeners();
@@ -275,6 +283,7 @@ class AuthProvider extends ChangeNotifier {
       if (profession != null) updateData['profession'] = profession;
       if (skills != null) updateData['skills'] = skills;
       if (voiceId != null) updateData['voiceId'] = voiceId;
+      if (voiceMode != null) updateData['voiceMode'] = voiceMode;
 
       await DioClient().dio.put(
         ApiConstants.authProfile,
@@ -290,6 +299,7 @@ class AuthProvider extends ChangeNotifier {
       _profession = oldProfession;
       _skills = oldSkills;
       _voiceId = oldVoiceId;
+      _voiceMode = oldVoiceMode;
       _photoUrl = oldPhotoUrl;
       _displayName = oldDisplayName;
       notifyListeners();

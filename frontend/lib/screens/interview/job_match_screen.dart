@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:feather_icons/feather_icons.dart';
@@ -23,13 +26,19 @@ class JobMatchScreen extends StatefulWidget {
   State<JobMatchScreen> createState() => _JobMatchScreenState();
 }
 
+enum JdSource { link, paste, pdf }
+
 class _JobMatchScreenState extends State<JobMatchScreen> {
   final TextEditingController _urlController = TextEditingController();
   final TextEditingController _pasteController = TextEditingController();
-  bool _usePastedText = false;
+  JdSource _source = JdSource.link;
   ResumeModel? _selectedResume;
   bool _analyzing = false;
   Map<String, dynamic>? _result;
+
+  // Selected JD PDF (bytes read up-front so it works on web + mobile).
+  Uint8List? _pdfBytes;
+  String? _pdfFileName;
 
   @override
   void initState() {
@@ -51,27 +60,99 @@ class _JobMatchScreenState extends State<JobMatchScreen> {
     super.dispose();
   }
 
+  Future<void> _pickPdf() async {
+    try {
+      final res = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+        withData: true, // read bytes so it works on web + mobile
+      );
+      if (res == null || res.files.isEmpty) return;
+      final file = res.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) {
+        if (mounted) Notify.error(context, "Could not read that file. Try again.");
+        return;
+      }
+      if (bytes.length > 10 * 1024 * 1024) {
+        if (mounted) Notify.error(context, "PDF is too large (max 10 MB).");
+        return;
+      }
+      setState(() {
+        _pdfBytes = bytes;
+        _pdfFileName = file.name;
+      });
+    } catch (e) {
+      if (mounted) Notify.error(context, "Could not pick a file.");
+    }
+  }
+
+  /// Uploads the selected PDF via a presigned URL and returns its S3 key.
+  Future<String?> _uploadPdf() async {
+    final bytes = _pdfBytes;
+    final name = _pdfFileName;
+    if (bytes == null || name == null) return null;
+
+    final urlRes = await DioClient().dio.post(ApiConstants.jdUploadUrl, data: {
+      'fileName': name,
+      'fileSize': bytes.length,
+    });
+    final data = (urlRes.data is Map && urlRes.data['data'] is Map)
+        ? urlRes.data['data']
+        : urlRes.data;
+    final uploadUrl = data['uploadUrl'] as String?;
+    final jobPdfKey = data['jobPdfKey'] as String?;
+    if (uploadUrl == null || jobPdfKey == null) {
+      throw Exception('Upload URL missing');
+    }
+
+    // PUT the raw bytes straight to S3 with the same content-type that was signed.
+    final s3Dio = Dio();
+    await s3Dio.putUri(
+      Uri.parse(uploadUrl),
+      data: Stream.fromIterable([bytes]),
+      options: Options(
+        headers: {
+          'Content-Type': 'application/pdf',
+          Headers.contentLengthHeader: bytes.length,
+        },
+        validateStatus: (s) => s != null && s < 400,
+      ),
+    );
+    return jobPdfKey;
+  }
+
   Future<void> _analyze() async {
     if (_selectedResume == null) {
       Notify.error(context, "Select a resume first.");
       return;
     }
     final Map<String, dynamic> body = {'resumeId': _selectedResume!.resumeId};
-    if (_usePastedText) {
-      final text = _pasteController.text.trim();
-      if (text.length < 100) {
-        Notify.error(context, "Paste the full job description (at least 100 characters).");
-        return;
-      }
-      body['jobText'] = text;
-    } else {
-      final url = _urlController.text.trim();
-      final uri = Uri.tryParse(url);
-      if (url.isEmpty || uri == null || !uri.hasScheme || !uri.hasAuthority) {
-        Notify.error(context, "Enter a valid job posting link.");
-        return;
-      }
-      body['jobUrl'] = url;
+
+    switch (_source) {
+      case JdSource.paste:
+        final text = _pasteController.text.trim();
+        if (text.length < 100) {
+          Notify.error(context, "Paste the full job description (at least 100 characters).");
+          return;
+        }
+        body['jobText'] = text;
+        break;
+      case JdSource.pdf:
+        if (_pdfBytes == null) {
+          Notify.error(context, "Choose a PDF first.");
+          return;
+        }
+        break;
+      case JdSource.link:
+        final url = _urlController.text.trim();
+        final uri = Uri.tryParse(url);
+        if (url.isEmpty || uri == null || !uri.hasScheme || !uri.hasAuthority) {
+          Notify.error(context, "Enter a valid job posting link.");
+          return;
+        }
+        body['jobUrl'] = url;
+        break;
     }
 
     setState(() {
@@ -79,6 +160,16 @@ class _JobMatchScreenState extends State<JobMatchScreen> {
       _result = null;
     });
     try {
+      // For the PDF source, upload first, then send the resulting key.
+      if (_source == JdSource.pdf) {
+        final key = await _uploadPdf();
+        if (key == null) {
+          if (mounted) Notify.error(context, "Upload failed. Try again.");
+          return;
+        }
+        body['jobPdfKey'] = key;
+      }
+
       final response = await DioClient().dio.post(ApiConstants.jdAnalyze, data: body);
       final result = (response.data is Map && response.data['data'] is Map)
           ? response.data['data']
@@ -86,10 +177,10 @@ class _JobMatchScreenState extends State<JobMatchScreen> {
 
       if (result['analyzed'] != true) {
         if (!mounted) return;
-        if (result['canPasteText'] == true && !_usePastedText) {
-          setState(() => _usePastedText = true);
+        if (result['canPasteText'] == true && _source != JdSource.paste) {
+          setState(() => _source = JdSource.paste);
           Notify.error(context,
-              result['reason'] ?? "This site blocks automated reading — paste the description instead.");
+              result['reason'] ?? "That source could not be read — paste the description instead.");
         } else {
           Notify.error(context, result['reason'] ?? "Could not analyze this job posting.");
         }
@@ -137,32 +228,39 @@ class _JobMatchScreenState extends State<JobMatchScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: _sourceToggle(t, "Job Link", !_usePastedText,
-                              () => setState(() => _usePastedText = false)),
+                          child: _sourceToggle(t, "Link", _source == JdSource.link,
+                              () => setState(() => _source = JdSource.link)),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: _sourceToggle(t, "Paste JD", _usePastedText,
-                              () => setState(() => _usePastedText = true)),
+                          child: _sourceToggle(t, "PDF", _source == JdSource.pdf,
+                              () => setState(() => _source = JdSource.pdf)),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _sourceToggle(t, "Paste", _source == JdSource.paste,
+                              () => setState(() => _source = JdSource.paste)),
                         ),
                       ],
                     ),
                     const SizedBox(height: 14),
-                    if (!_usePastedText)
+                    if (_source == JdSource.link)
                       TextField(
                         controller: _urlController,
                         style: TextStyle(color: t.text, fontSize: 13),
                         decoration: _inputDecoration(
                             t, "https://company.com/careers/job-id", FeatherIcons.link),
                       )
-                    else
+                    else if (_source == JdSource.paste)
                       TextField(
                         controller: _pasteController,
                         maxLines: 6,
                         style: TextStyle(color: t.text, fontSize: 13),
                         decoration: _inputDecoration(
                             t, "Paste the full job description here...", FeatherIcons.clipboard),
-                      ),
+                      )
+                    else
+                      _pdfPicker(t),
                     const SizedBox(height: 14),
                     Text("RESUME",
                         style: TextStyle(
@@ -374,6 +472,47 @@ class _JobMatchScreenState extends State<JobMatchScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _pdfPicker(AppThemeColors t) {
+    final hasFile = _pdfBytes != null;
+    return GestureDetector(
+      onTap: _analyzing ? null : _pickPdf,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
+        decoration: BoxDecoration(
+          color: t.bg.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: hasFile ? t.primary : t.metallicBorder.withValues(alpha: 0.4),
+            width: hasFile ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(hasFile ? FeatherIcons.fileText : FeatherIcons.uploadCloud,
+                size: 26, color: hasFile ? t.primary : t.textTertiary),
+            const SizedBox(height: 10),
+            Text(
+              hasFile ? _pdfFileName! : "Tap to choose a job description PDF",
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: hasFile ? FontWeight.bold : FontWeight.normal,
+                  color: hasFile ? t.text : t.textTertiary),
+            ),
+            if (hasFile) ...[
+              const SizedBox(height: 6),
+              Text("Tap to change",
+                  style: TextStyle(fontSize: 11, color: t.primary)),
+            ],
+          ],
+        ),
       ),
     );
   }

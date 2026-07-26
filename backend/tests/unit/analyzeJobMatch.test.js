@@ -103,6 +103,39 @@ describe('analyzeJobMatch handler', () => {
     const res = await handler(authedEvent({ jobUrl: 'https://x.com/j' }));
     expect(res.statusCode).toBe(400);
   });
+
+  describe('JD PDF path', () => {
+    const textract = require('../../src/lib/textract');
+    beforeAll(() => { textract.extractTextFromPdf = jest.fn(); });
+
+    it('extracts text from an uploaded PDF and analyzes it', async () => {
+      textract.extractTextFromPdf.mockResolvedValue('Backend Engineer role requiring Node.js. '.repeat(10));
+      invokeModel.mockResolvedValue(llmReply({
+        isJobPosting: true, matchScore: 80, roleTitle: 'Backend Engineer',
+        matchedSkills: ['Node.js'], missingSkills: [], verdict: 'Great.', jdSummary: 'Backend role.'
+      }));
+
+      const res = await handler(authedEvent({ jobPdfKey: 'jd/user-1/123_file.pdf', resumeId: 'r1' }));
+      const body = JSON.parse(res.body);
+      expect(res.statusCode).toBe(200);
+      expect(body.data.analyzed).toBe(true);
+      expect(fetchAndCleanContent).not.toHaveBeenCalled();
+      expect(saveJdAnalysis).toHaveBeenCalledWith('user-1', expect.objectContaining({ jobUrl: '(uploaded PDF)' }));
+    });
+
+    it("rejects a PDF key that belongs to another user's prefix", async () => {
+      const res = await handler(authedEvent({ jobPdfKey: 'jd/someone-else/999.pdf', resumeId: 'r1' }));
+      expect(res.statusCode).toBe(403);
+      expect(textract.extractTextFromPdf).not.toHaveBeenCalled();
+    });
+
+    it('offers the paste fallback when PDF extraction fails', async () => {
+      textract.extractTextFromPdf.mockRejectedValue(new Error('Textract failed'));
+      const body = JSON.parse((await handler(authedEvent({ jobPdfKey: 'jd/user-1/x.pdf', resumeId: 'r1' }))).body);
+      expect(body.data.analyzed).toBe(false);
+      expect(body.data.canPasteText).toBe(true);
+    });
+  });
 });
 
 describe('JD prompt and scoring integration', () => {

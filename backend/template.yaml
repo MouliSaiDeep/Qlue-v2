@@ -338,6 +338,13 @@ Resources:
           - Id: AutoDelete
             Status: Enabled
             ExpirationInDays: 30
+      # Presigned-PUT uploads of JD PDFs go directly to this bucket from the
+      # client, so the web build needs a CORS allowance (mirrors ResumesBucket).
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: ['PUT']
+            AllowedOrigins: ['*']
 
   AudioBucket:
     Type: AWS::S3::Bucket
@@ -1552,7 +1559,27 @@ Resources:
         - DynamoDBReadPolicy: { TableName: !Ref ResumesTable }
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        # JD PDF path: read the uploaded file and run Textract text detection.
+        - S3ReadPolicy: { BucketName: !Ref ScrapedContentBucket }
+        - Statement: [{ Effect: Allow, Action: ['textract:StartDocumentTextDetection', 'textract:GetDocumentTextDetection'], Resource: '*' }]
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
+
+  GenerateJdUploadUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/jd/generateJdUploadUrl.handler
+      CodeUri: src/
+      MemorySize: 256
+      Timeout: 10
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /jd/upload-url
+            Method: post
+            RestApiId: !Ref RestApi
+      Policies:
+        - S3CrudPolicy: { BucketName: !Ref ScrapedContentBucket }
 
   ValidateWebsiteFunction:
     Type: AWS::Serverless::Function

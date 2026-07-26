@@ -120,21 +120,26 @@ async function resolveTurnContext(session, moduleType) {
   return { resumeData, userData, websiteContent, targetConcept, jdSummary };
 }
 
-async function generateAtomicTurn({ 
-  connectionId, 
-  sessionId, 
-  session, 
-  moduleType, 
+async function generateAtomicTurn({
+  connectionId,
+  sessionId,
+  session,
+  moduleType,
   prompt,
   preGeneratedText,
   voiceId: requestedVoiceId,
-  engine: requestedEngine
+  engine: requestedEngine,
+  voiceMode: requestedVoiceMode
 }) {
   const startTime = Date.now();
-  
+
   try {
     const voiceId = requestedVoiceId || session.voiceId || 'Ruth'; // COST-FIX: Ruth supports the cheaper neural engine (Tiffany is generative-only)
     const engine = requestedEngine || session.engine || 'neural';
+    // VOICE MODE: 'premium' authorises generative synthesis for this session.
+    const voiceMode = requestedVoiceMode || session.itemData?.voiceMode || session.voiceMode || 'cost_saver';
+    const allowGenerative = voiceMode === 'premium';
+    const ttsOptions = { allowGenerative };
     
     console.log(`[AtomicTurn] Session ${sessionId} | Turn ${session.turnCount || 0} | Voice: ${voiceId} | Engine: ${engine}`);
 
@@ -186,7 +191,7 @@ async function generateAtomicTurn({
                if (ackText && ackText.length >= 5 && ackText.length <= MAX_AI_TEXT_LENGTH) {
                  earlyTts = {
                    text: ackText,
-                   promise: synthesizeSpeech(ackText, voiceId, engine).catch(err => {
+                   promise: synthesizeSpeech(ackText, voiceId, engine, ttsOptions).catch(err => {
                      console.warn('[AtomicTurn] Early ack synthesis failed, will fall back to full synthesis:', err.message);
                      return null;
                    })
@@ -264,7 +269,7 @@ async function generateAtomicTurn({
       const remainder = aiText.slice(earlyTts.text.length).trim();
       const [ackAudio, restAudio] = await Promise.all([
         earlyTts.promise,
-        remainder.length > 0 ? synthesizeSpeech(remainder, voiceId, engine) : Promise.resolve(null)
+        remainder.length > 0 ? synthesizeSpeech(remainder, voiceId, engine, ttsOptions) : Promise.resolve(null)
       ]);
       if (ackAudio?.audioBase64) {
         const buffers = [Buffer.from(ackAudio.audioBase64, 'base64')];
@@ -274,7 +279,7 @@ async function generateAtomicTurn({
       }
     }
     if (!audioBase64) {
-      const audioResult = await synthesizeSpeech(aiText, voiceId, engine);
+      const audioResult = await synthesizeSpeech(aiText, voiceId, engine, ttsOptions);
       audioBase64 = audioResult.audioBase64 || '';
     }
 
@@ -296,7 +301,7 @@ async function generateAtomicTurn({
       if (audioBase64.length > MAX_INLINE_AUDIO_B64) {
         console.warn('[AtomicTurn] No S3 URL and audio exceeds inline limit; truncating text and re-synthesizing');
         aiText = truncateAtSentenceBoundary(aiText, 100);
-        const shortAudio = await synthesizeSpeech(aiText, voiceId, engine);
+        const shortAudio = await synthesizeSpeech(aiText, voiceId, engine, ttsOptions);
         audioData = shortAudio.audioBase64 || '';
       } else {
         audioData = audioBase64;
@@ -409,12 +414,13 @@ exports.handler = async (event) => {
       continue;
     }
 
-    const { 
-      connectionId, 
-      sessionId, 
-      body, 
-      voiceId, 
+    const {
+      connectionId,
+      sessionId,
+      body,
+      voiceId,
       engine,
+      voiceMode,
       action,
       expectedTurnCount,
       userId   // BE-BUG #17 FIX: userId now destructured from message
@@ -451,9 +457,10 @@ exports.handler = async (event) => {
           session,
           moduleType: session.moduleType,
           voiceId,
-          engine
+          engine,
+          voiceMode
         });
-      } 
+      }
       else if (action === 'turn_submit') {
         const processResult = await processUserInput.handler({
           requestContext: {
@@ -516,7 +523,8 @@ exports.handler = async (event) => {
           moduleType: updatedSession.moduleType,
           preGeneratedText: processBody.nextAIResponse,
           voiceId,
-          engine
+          engine,
+          voiceMode
         });
       }
 

@@ -432,6 +432,7 @@ class MockAuthProvider extends _i1.Mock implements _i8.AuthProvider {
     String? profession,
     List<String>? skills,
     String? voiceId,
+    String? voiceMode,
   }) =>
       (super.noSuchMethod(
         Invocation.method(
@@ -443,6 +444,7 @@ class MockAuthProvider extends _i1.Mock implements _i8.AuthProvider {
             #profession: profession,
             #skills: skills,
             #voiceId: voiceId,
+            #voiceMode: voiceMode,
           },
         ),
         returnValue: _i4.Future<void>.value(),

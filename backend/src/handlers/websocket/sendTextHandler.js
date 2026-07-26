@@ -44,6 +44,21 @@ async function updateConnectionHeartbeat(connectionId) {
   }
 }
 
+/**
+ * Resolve the voice mode + engine for a turn. The client may pass voiceMode on
+ * each message (so a user can switch mid-session); otherwise fall back to what
+ * the session was created with. 'premium' -> generative, 'cost_saver' -> neural.
+ */
+function resolveVoiceMode(session, body) {
+  const requested = body?.voiceMode;
+  const stored = session?.itemData?.voiceMode || session?.voiceMode;
+  const voiceMode = (requested === 'premium' || requested === 'cost_saver')
+    ? requested
+    : (stored === 'premium' ? 'premium' : 'cost_saver');
+  const engine = voiceMode === 'premium' ? 'generative' : 'neural';
+  return { voiceMode, engine };
+}
+
 async function getLastAiTurnIndex(sessionId, sessionTurnCount = 0) {
   try {
     const transcripts = await getLatestTranscripts(sessionId, 5);
@@ -78,11 +93,12 @@ async function handleSessionInit(connectionId, body, userId) {
 
     const allowedVoices = (process.env.ALLOWED_VOICES || 'Tiffany,Ruth,Joanna,Matthew,Stephen').split(',');
     const finalVoiceId = allowedVoices.includes(voiceId) ? voiceId : (session.voiceId || 'Tiffany');
-    
-    // COST-FIX: was hard-coded to 'generative' ($30/1M chars, 100K free);
-    // default to neural ($16/1M, 1M chars/month free) — lib/polly.js still
-    // validates voice/engine compatibility.
-    const finalEngine = process.env.POLLY_DEFAULT_ENGINE || 'neural';
+
+    // VOICE MODE: the session was created with a voiceMode ('premium' unlocks
+    // generative voices, 'cost_saver' stays on neural). The engine follows from
+    // the mode; lib/polly.js still validates the (voice, engine) pair and
+    // enforces the generative opt-in.
+    const { voiceMode: finalVoiceMode, engine: finalEngine } = resolveVoiceMode(session, body);
     // Do not advance session state here; asyncWorker owns session initialization state transitions.
 
     // BUG-4 FIX: Use UpdateCommand with attribute_not_exists to prevent overwrite race
@@ -118,11 +134,12 @@ async function handleSessionInit(connectionId, body, userId) {
         userId,   // BE-BUG #17 FIX: pass userId so asyncWorker can call handlers with ownership context
         action: 'session_init',
         voiceId: finalVoiceId,
-        engine: finalEngine
+        engine: finalEngine,
+        voiceMode: finalVoiceMode
       })
     }));
 
-    console.log(`[session_init] Queued for ${sessionId} with voice ${finalVoiceId}`);
+    console.log(`[session_init] Queued for ${sessionId} with voice ${finalVoiceId} (${finalVoiceMode})`);
 
   } catch (err) {
     console.error('session_init error:', err);
@@ -178,11 +195,11 @@ async function handleTurnSubmit(connectionId, body, userId) {
 
     const allowedVoices = (process.env.ALLOWED_VOICES || 'Tiffany,Ruth,Joanna,Matthew,Stephen').split(',');
     const finalVoiceId = allowedVoices.includes(voiceId) ? voiceId : (session.voiceId || 'Tiffany');
-    
-    // COST-FIX: see session_init note above.
-    const finalEngine = process.env.POLLY_DEFAULT_ENGINE || 'neural';
 
-    console.log(`[turn_submit] Session ${sessionId} | Voice: ${finalVoiceId} | Engine: ${finalEngine}`);
+    // COST-FIX / VOICE MODE: see session_init note above.
+    const { voiceMode: finalVoiceMode, engine: finalEngine } = resolveVoiceMode(session, body);
+
+    console.log(`[turn_submit] Session ${sessionId} | Voice: ${finalVoiceId} | Engine: ${finalEngine} (${finalVoiceMode})`);
 
     await sqsClient.send(new SendMessageCommand({
       QueueUrl: ASYNC_QUEUE_URL,
@@ -194,6 +211,7 @@ async function handleTurnSubmit(connectionId, body, userId) {
         action: 'turn_submit',
         voiceId: finalVoiceId,
         engine: finalEngine,
+        voiceMode: finalVoiceMode,
         expectedTurnCount: session.turnCount || 0
       })
     }));

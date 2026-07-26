@@ -36,6 +36,7 @@ exports.handler = async (event) => {
                 profession: user.profession || '',
                 skills: user.skills || [],
                 voiceId: user.voiceId || 'Tiffany',
+                voiceMode: user.voiceMode || 'cost_saver',
                 activeResumeId: user.activeResumeId || null,
                 createdAt: user.createdAt
             })

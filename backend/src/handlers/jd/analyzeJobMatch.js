@@ -24,22 +24,33 @@ exports.handler = async (event) => {
       return unauthorized('Unauthorized. User ID required.');
     }
 
-    const { jobUrl, jobText, resumeId } = body;
+    const { jobUrl, jobText, jobPdfKey, resumeId } = body;
     if (!resumeId) {
       return badRequest('resumeId is required');
     }
-    // Either a URL to scrape OR pasted job-description text. The pasted-text
-    // path is the guaranteed fallback for sites that block scrapers
-    // (LinkedIn, some Indeed pages, login-walled boards).
+    // Three ways to supply the job description, in order of reliability:
+    //   1. jobPdfKey  — an uploaded PDF (Textract-parsed) — 100% reliable
+    //   2. jobText    — pasted text — 100% reliable, the fallback for blocked sites
+    //   3. jobUrl     — scraped — convenient but sites may block automated access
     const hasPastedText = typeof jobText === 'string' && jobText.trim().length >= 100;
-    if (!jobUrl && !hasPastedText) {
-      return badRequest('Provide either a job posting URL or paste the job description (at least 100 characters).');
+    const hasPdf = typeof jobPdfKey === 'string' && jobPdfKey.trim().length > 0;
+    if (!jobUrl && !hasPastedText && !hasPdf) {
+      return badRequest('Provide a job posting URL, a PDF upload, or paste the job description (at least 100 characters).');
     }
     if (jobUrl) {
       try {
         new URL(jobUrl);
       } catch (e) {
         return badRequest('Invalid job posting URL format');
+      }
+    }
+    if (hasPdf) {
+      // The key is minted server-side as jd/<userId>/..., so require the caller
+      // to own the prefix — a client cannot point Textract at another user's
+      // uploaded file.
+      const expectedPrefix = `jd/${userId}/`;
+      if (!jobPdfKey.startsWith(expectedPrefix)) {
+        return forbidden('This upload does not belong to you.');
       }
     }
 
@@ -51,9 +62,31 @@ exports.handler = async (event) => {
     }
     const resumeSummary = extractResumeSummary(resume.parsedData || resume);
 
-    // 2. Obtain the job description: pasted text wins (100% reliable); else scrape.
+    // 2. Obtain the job description: PDF and pasted text are reliable; scrape last.
     let jdContent;
-    if (hasPastedText) {
+    let jdSource = 'scrape';
+    if (hasPdf) {
+      jdSource = 'pdf';
+      try {
+        const { extractTextFromPdf } = require('../../lib/textract');
+        const bucket = process.env.SCRAPED_CONTENT_BUCKET || process.env.RESUMES_BUCKET;
+        jdContent = await extractTextFromPdf(bucket, jobPdfKey);
+        if (!jdContent || jdContent.replace(/\s+/g, ' ').trim().length < 100) {
+          return success({
+            analyzed: false,
+            reason: 'We could not read enough text from that PDF. Make sure it is a text-based job description (not a scanned image), or paste the text instead.'
+          });
+        }
+      } catch (pdfErr) {
+        console.error('JD PDF extraction failed:', pdfErr);
+        return success({
+          analyzed: false,
+          canPasteText: true,
+          reason: 'Could not read the uploaded PDF. Paste the job description text instead.'
+        });
+      }
+    } else if (hasPastedText) {
+      jdSource = 'paste';
       jdContent = jobText.trim();
     } else {
       try {
@@ -114,7 +147,7 @@ Score honestly: 80+ only for strong overlap of core requirements, 50-79 for part
 
     // 4. Persist for initializeSession (JD module) to pick up
     await saveJdAnalysis(userId, {
-      jobUrl: jobUrl || '(pasted text)',
+      jobUrl: jobUrl || (jdSource === 'pdf' ? '(uploaded PDF)' : '(pasted text)'),
       resumeId,
       roleTitle: analysis.roleTitle || 'Unknown Role',
       matchScore,

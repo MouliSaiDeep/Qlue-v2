@@ -104,7 +104,12 @@ exports.handler = async (event) => {
             }
             }
         }
-        itemData.engine = body.engine || 'neural';
+        // VOICE MODE: 'premium' unlocks generative voices (Tiffany), 'cost_saver'
+        // (default) keeps everything on the cheaper neural engine. Persisted on
+        // the session so every turn synthesizes with the same policy.
+        const voiceMode = (body.voiceMode === 'premium') ? 'premium' : 'cost_saver';
+        itemData.voiceMode = voiceMode;
+        itemData.engine = body.engine || (voiceMode === 'premium' ? 'generative' : 'neural');
 
         // JD MODULE: requires a resume and a prior job-match analysis
         // (stored by /jd/analyze on the user record).
