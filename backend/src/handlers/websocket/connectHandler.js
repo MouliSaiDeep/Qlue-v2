@@ -8,7 +8,10 @@ const { postToConnection } = require('../../lib/websocket');
 exports.handler = async (event) => {
   const connectionId = event.requestContext.connectionId;
   const token = event.queryStringParameters?.token;
-  console.info(`[Connect] New connection attempt. ID: ${connectionId}, QueryParams:`, JSON.stringify(event.queryStringParameters));
+  // SECURITY: never log queryStringParameters verbatim — it carries the
+  // Firebase ID token, which would then sit in CloudWatch in plaintext for
+  // anyone with log read access to replay until it expires.
+  console.info(`[Connect] New connection attempt. ID: ${connectionId}, tokenPresent: ${Boolean(token)}`);
 
   if (!token) {
     console.error(`[Connect] Missing authentication token for connectionId: ${connectionId}`);

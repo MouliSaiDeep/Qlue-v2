@@ -18,9 +18,9 @@ exports.handler = async (event) => {
         }
 
         const body = JSON.parse(event.body || '{}');
-        const { displayName, photoUrl, profession, skills, voiceId } = body;
+        const { displayName, photoUrl, profession, skills, voiceId, voiceMode } = body;
 
-        if (displayName === undefined && photoUrl === undefined && profession === undefined && skills === undefined && voiceId === undefined) {
+        if (displayName === undefined && photoUrl === undefined && profession === undefined && skills === undefined && voiceId === undefined && voiceMode === undefined) {
             return {
                 statusCode: 400,
                 body: JSON.stringify({ error: 'NO_UPDATE_FIELDS', message: 'Provide fields to update' })
@@ -73,6 +73,17 @@ exports.handler = async (event) => {
             }
             updateExpression += ', voiceId = :voiceId';
             expressionAttributeValues[':voiceId'] = voiceId;
+        }
+
+        if (voiceMode !== undefined) {
+            if (voiceMode !== 'premium' && voiceMode !== 'cost_saver') {
+                return {
+                    statusCode: 400,
+                    body: JSON.stringify({ error: 'INVALID_VOICE_MODE', message: "voiceMode must be 'premium' or 'cost_saver'" })
+                };
+            }
+            updateExpression += ', voiceMode = :voiceMode';
+            expressionAttributeValues[':voiceMode'] = voiceMode;
         }
 
         const result = await update(

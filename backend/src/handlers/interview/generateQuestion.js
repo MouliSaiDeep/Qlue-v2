@@ -16,6 +16,22 @@ function getAiPersona(voiceId) {
   return VOICE_PERSONA_MAP[voiceId] || 'Alex';
 }
 
+// Only these labels are treated as speaker/section prefixes worth stripping:
+// every persona the model can be given, the generic role names it sometimes
+// prepends, and the structural labels the prompts explicitly forbid but that
+// still leak through. Optionally wrapped in markdown bold and optionally
+// followed by a parenthesised role, e.g. "**Emma (Interviewer)**: ".
+// Anything else before a colon is real speech and must be left alone.
+const SPEAKER_LABELS = [
+  ...new Set([...Object.values(VOICE_PERSONA_MAP), 'Alex']),
+  'AI', 'Assistant', 'Interviewer', 'Tutor', 'Coach', 'Qlue',
+  'Question', 'Response', 'Answer', 'Acknowledgment', 'Acknowledgement', 'Feedback'
+];
+const SPEAKER_LABEL_REGEX = new RegExp(
+  `^\\*{0,2}(?:${SPEAKER_LABELS.join('|')})(?:\\s*\\([^)]*\\))?\\*{0,2}:\\s*`,
+  'i'
+);
+
 // PERF-FIX #2: Removed keyword-blocklist relevance detection. The old regex
 // flagged legitimate answers as off-topic (e.g. "I built a sports analytics
 // dashboard", or a game developer describing their work), and any answer under
@@ -354,6 +370,15 @@ function cleanAIResponse(rawText) {
   if (!rawText) return '';
   let cleaned = rawText.trim();
 
+  // BUG FIX (3-strike system was dead): the stage-direction stripper below
+  // removes anything in square brackets, which silently ate the [OFFTOPIC]
+  // marker. Because generateQuestion returns the already-cleaned text, the
+  // asyncWorker's `aiText.includes('[OFFTOPIC]')` check could never be true and
+  // no strike was ever recorded. Lift the marker out here and re-attach it
+  // after cleaning so the worker can still see it.
+  const wasOffTopic = /\[OFFTOPIC\]/i.test(cleaned);
+  if (wasOffTopic) cleaned = cleaned.replace(/\[OFFTOPIC\]/gi, ' ');
+
   try {
     const parsed = JSON.parse(cleaned);
     if (parsed.question) cleaned = parsed.question;
@@ -370,8 +395,13 @@ function cleanAIResponse(rawText) {
   }
 
   cleaned = cleaned
-    .replace(/^(.*?):\s*/i, '') // Remove any prefix like "Emma:" or "Interviewer:"
-    .replace(/^\*\*.*?\*\*:\s*/, '')
+    // BUG FIX: this used to be /^(.*?):\s*/ — an unbounded match that deleted
+    // everything before the FIRST colon anywhere in the first line. Legitimate
+    // speech like "My next question: what trade-offs did you weigh?" was
+    // truncated to "what trade-offs did you weigh?", and a line mentioning a
+    // time ("we deploy at 9:00") lost its opening clause. Only a known speaker
+    // label is stripped now.
+    .replace(SPEAKER_LABEL_REGEX, '')
     .replace(/^["']|["']$/g, '')
     .trim();
 
@@ -380,7 +410,8 @@ function cleanAIResponse(rawText) {
                    .replace(/\s*\[[^\]]*\]\s*/g, ' ')
                    .replace(/\s*\{[^}]*\}\s*/g, ' ');
 
-  return cleaned.replace(/\s+/g, ' ').trim();
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  return wasOffTopic ? `[OFFTOPIC] ${cleaned}` : cleaned;
 }
 
 // =============================================================================

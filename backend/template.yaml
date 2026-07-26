@@ -338,6 +338,13 @@ Resources:
           - Id: AutoDelete
             Status: Enabled
             ExpirationInDays: 30
+      # Presigned-PUT uploads of JD PDFs go directly to this bucket from the
+      # client, so the web build needs a CORS allowance (mirrors ResumesBucket).
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: ['PUT']
+            AllowedOrigins: ['*']
 
   AudioBucket:
     Type: AWS::S3::Bucket
@@ -1260,13 +1267,12 @@ Resources:
       Environment:
         Variables:
           GENERATE_REPORT_LAMBDA: !Ref GenerateFeedbackReportFunction
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /feedback/analyze
-            Method: post
-            RestApiId: !Ref RestApi
+      # SECURITY: the feedback pipeline stages are internal, invoked only via
+      # SNS -> triggerFeedbackGeneration -> lambda:InvokeFunction. Exposing them
+      # as public REST routes let any signed-in caller drive paid Bedrock
+      # inference and write feedback rows for arbitrary userIds, with an event
+      # shape (raw payload, not an API Gateway event) that skips every
+      # ownership check. The Api events have been removed.
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
@@ -1289,13 +1295,7 @@ Resources:
       CodeUri: src/
       MemorySize: 256
       Timeout: 15
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /feedback/scores
-            Method: post
-            RestApiId: !Ref RestApi
+      # SECURITY: internal pipeline stage — see AnalyzeTranscriptFunction.
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
@@ -1317,13 +1317,7 @@ Resources:
       Environment:
         Variables:
           STORE_FEEDBACK_LAMBDA: !Ref StoreFeedbackReportFunction
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /feedback/report
-            Method: post
-            RestApiId: !Ref RestApi
+      # SECURITY: internal pipeline stage — see AnalyzeTranscriptFunction.
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
@@ -1349,13 +1343,7 @@ Resources:
       Environment:
         Variables:
           SEND_NOTIFICATION_LAMBDA: !Ref SendFeedbackNotificationFunction
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /feedback/store
-            Method: post
-            RestApiId: !Ref RestApi
+      # SECURITY: internal pipeline stage — see AnalyzeTranscriptFunction.
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
@@ -1378,13 +1366,7 @@ Resources:
       CodeUri: src/
       MemorySize: 256
       Timeout: 10
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /feedback/notify
-            Method: post
-            RestApiId: !Ref RestApi
+      # SECURITY: internal pipeline stage — see AnalyzeTranscriptFunction.
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
@@ -1577,7 +1559,27 @@ Resources:
         - DynamoDBReadPolicy: { TableName: !Ref ResumesTable }
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
+        # JD PDF path: read the uploaded file and run Textract text detection.
+        - S3ReadPolicy: { BucketName: !Ref ScrapedContentBucket }
+        - Statement: [{ Effect: Allow, Action: ['textract:StartDocumentTextDetection', 'textract:GetDocumentTextDetection'], Resource: '*' }]
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
+
+  GenerateJdUploadUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/jd/generateJdUploadUrl.handler
+      CodeUri: src/
+      MemorySize: 256
+      Timeout: 10
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /jd/upload-url
+            Method: post
+            RestApiId: !Ref RestApi
+      Policies:
+        - S3CrudPolicy: { BucketName: !Ref ScrapedContentBucket }
 
   ValidateWebsiteFunction:
     Type: AWS::Serverless::Function

@@ -27,6 +27,7 @@ describe('getUserProfile handler', () => {
             profession: 'Engineer',
             skills: ['JavaScript', 'AWS'],
             voiceId: 'Tiffany',
+            voiceMode: 'cost_saver',
             activeResumeId: 'resume-456',
             createdAt: '2023-01-01T00:00:00Z'
         };

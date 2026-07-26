@@ -113,8 +113,9 @@ async function associateSession(connectionId, sessionId) {
  * Get connection by primary key.
  */
 async function getConnection(connectionId) {
+  if (!connectionId) return null;
   const result = await ddb.get(TABLE_NAME, { connectionId });
-  return result.success ? result.data : null;
+  return result?.success ? result.data : null;
 }
 
 module.exports = {

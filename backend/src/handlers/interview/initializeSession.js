@@ -7,7 +7,9 @@ exports.handler = async (event) => {
         const body = JSON.parse(event.body || '{}');
         // Custom Authorizer returns claims in authorizer object directly (uid or principalId)
         const authorizer = event.requestContext?.authorizer;
-        const userId = authorizer?.uid || authorizer?.principalId || authorizer?.claims?.sub || body.userId;
+        // SECURITY: no body.userId fallback — a client-supplied uid would let a
+        // caller create sessions (and pull resume context) as another user.
+        const userId = authorizer?.uid || authorizer?.principalId || authorizer?.claims?.sub;
         const moduleType = body.moduleType || 'RESUME';
 
         if (!userId) {
@@ -52,6 +54,18 @@ exports.handler = async (event) => {
             }
         }
 
+        // SECURITY: resumeId arrives from the client and its parsed contents are
+        // injected into every interview prompt. Without an ownership check a
+        // caller could pass someone else's resumeId and have the AI read that
+        // resume back to them question by question.
+        if (body.resumeId) {
+            const { getResumeById } = require('../../models/resume');
+            const ownedResume = await getResumeById(body.resumeId);
+            if (!ownedResume || ownedResume.userId !== userId) {
+                return { statusCode: 403, body: JSON.stringify({ error: 'Resume not found or not owned by this user.' }) };
+            }
+        }
+
         const sessionId = randomUUID();
         const itemData = { voiceId };
         if (body.resumeId) itemData.resumeId = body.resumeId;
@@ -90,7 +104,12 @@ exports.handler = async (event) => {
             }
             }
         }
-        itemData.engine = body.engine || 'neural';
+        // VOICE MODE: 'premium' unlocks generative voices (Tiffany), 'cost_saver'
+        // (default) keeps everything on the cheaper neural engine. Persisted on
+        // the session so every turn synthesizes with the same policy.
+        const voiceMode = (body.voiceMode === 'premium') ? 'premium' : 'cost_saver';
+        itemData.voiceMode = voiceMode;
+        itemData.engine = body.engine || (voiceMode === 'premium' ? 'generative' : 'neural');
 
         // JD MODULE: requires a resume and a prior job-match analysis
         // (stored by /jd/analyze on the user record).
@@ -155,6 +174,6 @@ exports.handler = async (event) => {
         };
     } catch (err) {
         console.error('Initialization Failed:', err);
-        return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
+        return { statusCode: 500, body: JSON.stringify({ error: 'INTERNAL_ERROR', message: 'Could not start the session. Please try again.' }) };
     }
 };

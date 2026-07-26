@@ -120,21 +120,26 @@ async function resolveTurnContext(session, moduleType) {
   return { resumeData, userData, websiteContent, targetConcept, jdSummary };
 }
 
-async function generateAtomicTurn({ 
-  connectionId, 
-  sessionId, 
-  session, 
-  moduleType, 
+async function generateAtomicTurn({
+  connectionId,
+  sessionId,
+  session,
+  moduleType,
   prompt,
   preGeneratedText,
   voiceId: requestedVoiceId,
-  engine: requestedEngine
+  engine: requestedEngine,
+  voiceMode: requestedVoiceMode
 }) {
   const startTime = Date.now();
-  
+
   try {
     const voiceId = requestedVoiceId || session.voiceId || 'Ruth'; // COST-FIX: Ruth supports the cheaper neural engine (Tiffany is generative-only)
     const engine = requestedEngine || session.engine || 'neural';
+    // VOICE MODE: 'premium' authorises generative synthesis for this session.
+    const voiceMode = requestedVoiceMode || session.itemData?.voiceMode || session.voiceMode || 'cost_saver';
+    const allowGenerative = voiceMode === 'premium';
+    const ttsOptions = { allowGenerative };
     
     console.log(`[AtomicTurn] Session ${sessionId} | Turn ${session.turnCount || 0} | Voice: ${voiceId} | Engine: ${engine}`);
 
@@ -179,11 +184,14 @@ async function generateAtomicTurn({
              accumulatedText += token;
 
              if (!earlyTts && accumulatedText.includes('||')) {
-               const ackText = cleanAIResponse(accumulatedText.split('||')[0]);
+               // cleanAIResponse deliberately preserves the [OFFTOPIC] marker so
+               // the strike check below can see it; strip it here so Polly never
+               // speaks the literal word.
+               const ackText = cleanAIResponse(accumulatedText.split('||')[0]).replace(/\[OFFTOPIC\]/gi, '').trim();
                if (ackText && ackText.length >= 5 && ackText.length <= MAX_AI_TEXT_LENGTH) {
                  earlyTts = {
                    text: ackText,
-                   promise: synthesizeSpeech(ackText, voiceId, engine).catch(err => {
+                   promise: synthesizeSpeech(ackText, voiceId, engine, ttsOptions).catch(err => {
                      console.warn('[AtomicTurn] Early ack synthesis failed, will fall back to full synthesis:', err.message);
                      return null;
                    })
@@ -191,13 +199,15 @@ async function generateAtomicTurn({
                }
              }
 
-             // Send text_stream event to the frontend
+             // Send text_stream event to the frontend. The [OFFTOPIC] marker and
+             // the '||' delimiter are internal protocol, not speech — strip them
+             // so they never flash up in the live subtitle.
              await postToConnection(connectionId, {
                type: 'text_stream',
                payload: {
                  sessionId,
                  text: token,
-                 fullText: accumulatedText,
+                 fullText: accumulatedText.replace(/\[OFFTOPIC\]/gi, '').replace(/\|\|/g, ' ').replace(/\s+/g, ' ').trimStart(),
                  timestamp: Date.now()
                }
              }).catch(e => console.error('Failed to stream token to WS:', e));
@@ -259,7 +269,7 @@ async function generateAtomicTurn({
       const remainder = aiText.slice(earlyTts.text.length).trim();
       const [ackAudio, restAudio] = await Promise.all([
         earlyTts.promise,
-        remainder.length > 0 ? synthesizeSpeech(remainder, voiceId, engine) : Promise.resolve(null)
+        remainder.length > 0 ? synthesizeSpeech(remainder, voiceId, engine, ttsOptions) : Promise.resolve(null)
       ]);
       if (ackAudio?.audioBase64) {
         const buffers = [Buffer.from(ackAudio.audioBase64, 'base64')];
@@ -269,7 +279,7 @@ async function generateAtomicTurn({
       }
     }
     if (!audioBase64) {
-      const audioResult = await synthesizeSpeech(aiText, voiceId, engine);
+      const audioResult = await synthesizeSpeech(aiText, voiceId, engine, ttsOptions);
       audioBase64 = audioResult.audioBase64 || '';
     }
 
@@ -291,7 +301,7 @@ async function generateAtomicTurn({
       if (audioBase64.length > MAX_INLINE_AUDIO_B64) {
         console.warn('[AtomicTurn] No S3 URL and audio exceeds inline limit; truncating text and re-synthesizing');
         aiText = truncateAtSentenceBoundary(aiText, 100);
-        const shortAudio = await synthesizeSpeech(aiText, voiceId, engine);
+        const shortAudio = await synthesizeSpeech(aiText, voiceId, engine, ttsOptions);
         audioData = shortAudio.audioBase64 || '';
       } else {
         audioData = audioBase64;
@@ -404,12 +414,13 @@ exports.handler = async (event) => {
       continue;
     }
 
-    const { 
-      connectionId, 
-      sessionId, 
-      body, 
-      voiceId, 
+    const {
+      connectionId,
+      sessionId,
+      body,
+      voiceId,
       engine,
+      voiceMode,
       action,
       expectedTurnCount,
       userId   // BE-BUG #17 FIX: userId now destructured from message
@@ -446,9 +457,10 @@ exports.handler = async (event) => {
           session,
           moduleType: session.moduleType,
           voiceId,
-          engine
+          engine,
+          voiceMode
         });
-      } 
+      }
       else if (action === 'turn_submit') {
         const processResult = await processUserInput.handler({
           requestContext: {
@@ -465,7 +477,15 @@ exports.handler = async (event) => {
         });
 
         const processBody = JSON.parse(processResult.body);
-        
+
+        // The status code was previously ignored, so a 403 (ownership) or 500
+        // from processUserInput still fell through and generated a paid Bedrock
+        // turn against a session that had rejected the input.
+        if (processResult.statusCode && processResult.statusCode >= 400) {
+          console.error(`[AsyncWorker] processUserInput rejected turn for ${sessionId}: ${processResult.statusCode} ${processBody.error}`);
+          throw new Error(processBody.error || 'Failed to process user input');
+        }
+
         if (processBody.shouldTerminate) {
           const terminateSession = require('./terminateSession');
           await terminateSession.handler({
@@ -503,19 +523,35 @@ exports.handler = async (event) => {
           moduleType: updatedSession.moduleType,
           preGeneratedText: processBody.nextAIResponse,
           voiceId,
-          engine
+          engine,
+          voiceMode
         });
       }
 
     } catch (error) {
       console.error(`[AsyncWorker] Error processing ${action} for ${sessionId}:`, error);
-      
+
+      // RECOVERY FIX: sendTextHandler moves the session to PROCESSING_RESPONSE
+      // before queueing, and the SQS message is consumed even when the turn
+      // fails. Without releasing the state here the session stayed in
+      // PROCESSING_RESPONSE forever and every subsequent turn_submit was
+      // rejected with TURN_IN_PROGRESS — the user's interview was dead until
+      // the 30s stale-reconnect path happened to run. Hand the turn back to
+      // the user so they can retry.
+      try {
+        await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING);
+      } catch (stateErr) {
+        console.error('[AsyncWorker] Failed to release session state after error:', stateErr);
+      }
+
       try {
         await postToConnection(connectionId, {
           type: 'turn_error',
           payload: {
             sessionId,
             error: error.message,
+            state: INTERVIEW_STATES.USER_RESPONDING,
+            recoverable: true,
             timestamp: Date.now()
           }
         });

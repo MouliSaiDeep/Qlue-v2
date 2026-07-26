@@ -31,7 +31,9 @@ exports.handler = async (event) => {
     try {
         // Resolve userId from the Custom Authorizer context
         const auth = event.requestContext?.authorizer;
-        const userId = auth?.uid || auth?.claims?.sub || event.queryStringParameters?.userId;
+        // SECURITY: no ?userId= fallback — it let any signed-in user read
+        // another user's dashboard.
+        const userId = auth?.uid || auth?.claims?.sub || auth?.principalId;
         if (!userId) {
             return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized. User ID missing.' }) };
         }
@@ -68,8 +70,10 @@ exports.handler = async (event) => {
 
         // Metrics Accumulators
         let totalSessions = sessions.length;
-        let moduleBreakdown = { RESUME: 0, HR: 0, WEBSITE: 0, INTRO: 0 };
-        let bestScoreByModule = { RESUME: 0, HR: 0, WEBSITE: 0, INTRO: 0 };
+        // JD added: job-match sessions counted toward totals but were invisible
+        // in the per-module breakdown and best-score tiles.
+        let moduleBreakdown = { RESUME: 0, HR: 0, WEBSITE: 0, INTRO: 0, JD: 0 };
+        let bestScoreByModule = { RESUME: 0, HR: 0, WEBSITE: 0, INTRO: 0, JD: 0 };
         let scoresArray = [];
         let completedSessions = 0;
 
@@ -125,6 +129,8 @@ exports.handler = async (event) => {
 
     } catch (err) {
         console.error('getDashboardSummary Failed:', err);
-        return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
+        // Detail stays in CloudWatch; clients get a generic message so internal
+        // table names and SDK errors are not echoed back over the API.
+        return { statusCode: 500, body: JSON.stringify({ error: 'INTERNAL_ERROR', message: 'Could not load your dashboard. Please try again.' }) };
     }
 };

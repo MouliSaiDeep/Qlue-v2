@@ -123,9 +123,10 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
         throw ArgumentError('Invalid moduleType');
       }
 
-      // Fetch the auth provider to get the selected voice
+      // Fetch the auth provider to get the selected voice + mode. Premium mode
+      // uses generative voices; cost-saver stays on the cheaper neural engine.
       final authProvider = context.read<AuthProvider>();
-      _provider.setVoice(authProvider.voiceId, engine: 'generative'); // user preference: most natural voice (credit-funded)
+      _provider.setVoice(authProvider.voiceId, voiceMode: authProvider.voiceMode);
 
       _provider.initSession(
         type,

@@ -530,12 +530,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _showVoiceSelectionSheet() {
     final t = AppThemeColors.of(context);
+    // Each voice belongs to a mode. Premium = generative (most natural, uses
+    // more credits); Cost Saver = neural (free-tier friendly).
     final voices = [
-      {'name': 'Tiffany', 'desc': 'Most Natural (Generative)', 'gender': 'Female'},
-      {'name': 'Ruth', 'desc': 'Warm & Professional', 'gender': 'Female'},
-      {'name': 'Joanna', 'desc': 'Calm & Articulate', 'gender': 'Female'},
-      {'name': 'Matthew', 'desc': 'Clear & Authoritative', 'gender': 'Male'},
-      {'name': 'Stephen', 'desc': 'Friendly & Natural', 'gender': 'Male'},
+      {'name': 'Tiffany', 'desc': 'Most Natural, Lifelike', 'gender': 'Female', 'mode': 'premium'},
+      {'name': 'Ruth', 'desc': 'Warm & Professional', 'gender': 'Female', 'mode': 'cost_saver'},
+      {'name': 'Joanna', 'desc': 'Calm & Articulate', 'gender': 'Female', 'mode': 'cost_saver'},
+      {'name': 'Matthew', 'desc': 'Clear & Authoritative', 'gender': 'Male', 'mode': 'cost_saver'},
+      {'name': 'Stephen', 'desc': 'Friendly & Natural', 'gender': 'Male', 'mode': 'cost_saver'},
     ];
 
     showModalBottomSheet(
@@ -545,102 +547,188 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) => Consumer<AuthProvider>(
-          builder: (context, auth, _) => GlassCard(
-            borderRadius: 32,
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Select Voice Model', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: t.text)),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: t.primary.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(8),
+          builder: (context, auth, _) {
+            final mode = auth.voiceMode;
+            final visibleVoices = voices.where((v) => v['mode'] == mode).toList();
+
+            Future<void> applyMode(String newMode) async {
+              if (newMode == auth.voiceMode) return;
+              // Switching mode also snaps the selected voice to a valid one for
+              // that mode, so voiceId and voiceMode never disagree.
+              final defaultVoice = newMode == 'premium' ? 'Tiffany' : 'Ruth';
+              final stillValid = voices.any((v) => v['name'] == auth.voiceId && v['mode'] == newMode);
+              try {
+                await auth.updateUserProfile(
+                  voiceMode: newMode,
+                  voiceId: stillValid ? auth.voiceId : defaultVoice,
+                );
+                if (context.mounted) {
+                  Notify.success(context,
+                      newMode == 'premium' ? "Premium voices enabled" : "Cost Saver voices enabled");
+                }
+              } catch (e) {
+                if (context.mounted) Notify.error(context, "Failed to update voice mode");
+              }
+              if (mounted) setModalState(() {});
+            }
+
+            return GlassCard(
+              borderRadius: 32,
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Voice Model', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: t.text)),
+                  const SizedBox(height: 4),
+                  Text('Choose a voice mode, then pick a persona.', style: TextStyle(fontSize: 11, color: t.textTertiary)),
+                  const SizedBox(height: 16),
+
+                  // ---- MODE TOGGLE ----
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _voiceModeChip(
+                          t,
+                          title: 'Cost Saver',
+                          subtitle: 'Neural • Free-tier',
+                          icon: FeatherIcons.feather,
+                          active: mode == 'cost_saver',
+                          onTap: () => applyMode('cost_saver'),
+                        ),
                       ),
-                      child: Text('Generative', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: t.primary, letterSpacing: 0.5)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text('Powered by Amazon Polly Generative AI', style: TextStyle(fontSize: 11, color: t.textTertiary)),
-                const SizedBox(height: 20),
-                
-                // Scrollable list of voices
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.5,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _voiceModeChip(
+                          t,
+                          title: 'Premium',
+                          subtitle: 'Generative • Lifelike',
+                          icon: FeatherIcons.zap,
+                          active: mode == 'premium',
+                          onTap: () => applyMode('premium'),
+                        ),
+                      ),
+                    ],
                   ),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: voices.map((v) {
-                        final isSelected = auth.voiceId == v['name'];
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12.0),
-                          child: GlassCard(
-                            borderRadius: 16,
-                            padding: const EdgeInsets.all(16),
-                            tintColor: isSelected ? t.primary.withValues(alpha: 0.1) : null,
-                            hasMetallicBorder: isSelected,
-                            onTap: () async {
-                              try {
-                                final selectedVoice = v['name']!;
-                                await auth.updateUserProfile(voiceId: selectedVoice);
-                                if (context.mounted) {
-                                  Notify.success(context, "Voice model updated to $selectedVoice");
+                  const SizedBox(height: 18),
+
+                  // ---- VOICES FOR THE ACTIVE MODE ----
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.42,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: visibleVoices.map((v) {
+                          final isSelected = auth.voiceId == v['name'];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12.0),
+                            child: GlassCard(
+                              borderRadius: 16,
+                              padding: const EdgeInsets.all(16),
+                              tintColor: isSelected ? t.primary.withValues(alpha: 0.1) : null,
+                              hasMetallicBorder: isSelected,
+                              onTap: () async {
+                                try {
+                                  final selectedVoice = v['name']!;
+                                  await auth.updateUserProfile(
+                                    voiceId: selectedVoice,
+                                    voiceMode: v['mode'],
+                                  );
+                                  if (context.mounted) {
+                                    Notify.success(context, "Voice updated to $selectedVoice");
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    Notify.error(context, "Failed to update voice model");
+                                  }
                                 }
-                              } catch (e) {
-                                if (context.mounted) {
-                                  Notify.error(context, "Failed to update voice model");
-                                }
-                              }
-                              if (mounted) setModalState(() {});
-                            },
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 40, height: 40,
-                                  decoration: BoxDecoration(
-                                    color: isSelected ? t.primary : t.bgSecondary,
-                                    borderRadius: BorderRadius.circular(12),
+                                if (mounted) setModalState(() {});
+                              },
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 40, height: 40,
+                                    decoration: BoxDecoration(
+                                      color: isSelected ? t.primary : t.bgSecondary,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Icon(
+                                      isSelected ? FeatherIcons.check : FeatherIcons.user,
+                                      size: 18,
+                                      color: isSelected ? Colors.white : t.textSecondary,
+                                    ),
                                   ),
-                                  child: Icon(
-                                    isSelected ? FeatherIcons.check : FeatherIcons.user,
-                                    size: 18,
-                                    color: isSelected ? Colors.white : t.textSecondary,
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(v['name']!, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: t.text)),
+                                        Text(v['desc']!, style: TextStyle(fontSize: 12, color: t.textTertiary)),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(v['name']!, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: t.text)),
-                                      Text(v['desc']!, style: TextStyle(fontSize: 12, color: t.textTertiary)),
-                                    ],
+                                  IconButton(
+                                    onPressed: () => _playPreview(v['name']!),
+                                    icon: Icon(FeatherIcons.playCircle, color: t.primary),
+                                    tooltip: 'Preview Voice',
                                   ),
-                                ),
-                                IconButton(
-                                  onPressed: () => _playPreview(v['name']!),
-                                  icon: Icon(FeatherIcons.playCircle, color: t.primary),
-                                  tooltip: 'Preview Voice',
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      }).toList(),
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _voiceModeChip(
+    AppThemeColors t, {
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+        decoration: BoxDecoration(
+          color: active ? t.primary.withValues(alpha: 0.16) : t.bg.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: active ? t.primary : t.metallicBorder.withValues(alpha: 0.3),
+            width: active ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 15, color: active ? t.primary : t.textSecondary),
+                const SizedBox(width: 6),
+                Text(title,
+                    style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                        color: active ? t.primary : t.text)),
               ],
             ),
-          ),
+            const SizedBox(height: 3),
+            Text(subtitle, style: TextStyle(fontSize: 10.5, color: t.textTertiary)),
+          ],
         ),
       ),
     );
@@ -1165,7 +1253,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         label: "Voice Model",
                         iconColor: t.primary,
                         iconBg: t.primary.withValues(alpha: 0.1),
-                        right: Text(auth.voiceId, style: TextStyle(fontSize: 13, color: t.textSecondary)),
+                        right: Text(
+                            "${auth.voiceId} · ${auth.isPremiumVoice ? 'Premium' : 'Cost Saver'}",
+                            style: TextStyle(fontSize: 13, color: t.textSecondary)),
                         onPress: _showVoiceSelectionSheet,
                       ),
                     ],

@@ -29,14 +29,25 @@ class InterviewProvider extends ChangeNotifier {
   List<TranscriptEntry> transcript = [];
   String? errorMessage;
   String _selectedVoiceId = 'Tiffany';
-  String _selectedEngine = 'generative';
+  // COST: must match the backend default (POLLY_DEFAULT_ENGINE, 'neural').
+  // The backend overrides whatever the client sends, so 'generative' here was
+  // only ever misleading — but if the override is relaxed it would silently
+  // double the Polly bill ($30 vs $16 per 1M chars).
+  String _selectedEngine = 'neural';
+
+  // 'cost_saver' (neural) or 'premium' (generative). Drives which engine the
+  // backend is allowed to use for Polly synthesis.
+  String _voiceMode = 'cost_saver';
 
   String get selectedVoiceId => _selectedVoiceId;
   String get selectedEngine => _selectedEngine;
+  String get voiceMode => _voiceMode;
 
-  void setVoice(String voiceId, {String engine = 'generative'}) {
+  void setVoice(String voiceId, {String? engine, String voiceMode = 'cost_saver'}) {
     _selectedVoiceId = voiceId;
-    _selectedEngine = engine;
+    _voiceMode = voiceMode;
+    // Engine follows the mode unless explicitly overridden.
+    _selectedEngine = engine ?? (voiceMode == 'premium' ? 'generative' : 'neural');
     _safeNotify();
   }
 
@@ -325,6 +336,7 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
         'isSilence': text.isEmpty,
         'voiceId': _selectedVoiceId,
         'engine': _selectedEngine,
+        'voiceMode': _voiceMode,
       },
     });
   }
@@ -402,6 +414,7 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
         'moduleType': moduleType,
         'voiceId': _selectedVoiceId,
         'engine': _selectedEngine,
+        'voiceMode': _voiceMode,
         'resumeId': resumeId,
         'websiteUrl': websiteUrl,
       });
@@ -453,6 +466,7 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
         'moduleType': moduleType,
         'voiceId': _selectedVoiceId,
         'engine': _selectedEngine,
+        'voiceMode': _voiceMode,
         'resumeId': resumeId,
         'websiteUrl': websiteUrl,
       },
@@ -475,7 +489,13 @@ void _handleTurnComplete(Map<String, dynamic> payload) {
     terminateSession();
     if (savedSessionId != null) {
       try {
-        await DioClient().dio.post('${ApiConstants.interviewInit}/$savedSessionId/terminate');
+        // BUG FIX: this posted to '/interview/init/<id>/terminate', a route the
+        // API does not define — API Gateway answered 403 every time, so the
+        // REST safety net behind the WebSocket terminate never actually ran.
+        await DioClient().dio.post(
+          ApiConstants.interviewTerminate,
+          data: {'sessionId': savedSessionId, 'reason': 'USER_INITIATED'},
+        );
       } catch (e) {
         debugPrint('REST terminate failed: $e');
       }

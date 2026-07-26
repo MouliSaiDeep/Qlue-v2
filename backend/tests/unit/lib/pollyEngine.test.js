@@ -42,4 +42,21 @@ describe('resolveVoiceAndEngine', () => {
     process.env.POLLY_DEFAULT_ENGINE = 'standard';
     expect(resolveVoiceAndEngine('Amy', null)).toEqual({ voice: 'Amy', engine: 'standard' });
   });
+
+  it('honours generative for a Premium request (allowGenerative) without the env flag', () => {
+    // Premium voice mode: the per-request opt-in unlocks Tiffany/generative.
+    expect(resolveVoiceAndEngine('Tiffany', 'generative', { allowGenerative: true }))
+      .toEqual({ voice: 'Tiffany', engine: 'generative' });
+  });
+
+  it('still substitutes for a cost-saver request even if it asks for generative', () => {
+    expect(resolveVoiceAndEngine('Tiffany', 'generative', { allowGenerative: false }))
+      .toEqual({ voice: 'Ruth', engine: 'neural' });
+  });
+
+  it('lets POLLY_ALLOW_GENERATIVE=false hard-block even a Premium request', () => {
+    process.env.POLLY_ALLOW_GENERATIVE = 'false';
+    expect(resolveVoiceAndEngine('Tiffany', 'generative', { allowGenerative: true }))
+      .toEqual({ voice: 'Ruth', engine: 'neural' });
+  });
 });

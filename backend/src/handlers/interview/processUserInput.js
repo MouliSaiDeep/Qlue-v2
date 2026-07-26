@@ -4,10 +4,38 @@ const { saveTranscript } = require('../../models/transcript');
 const SILENCE_THRESHOLD = 5; // BE-BUG #5 FIX: was 3, too aggressive for interviews
 const MAX_TURNS = 20;
 
+// BUG FIX: this used naive substring matching, so a candidate saying "we store
+// it as a byte array" ('bye'), "I stopped using Redis" / "it runs nonstop"
+// ('stop') or "that's all the traffic we handled" had their interview
+// terminated mid-answer. Matching is now anchored on word boundaries, the
+// ambiguous single words are gone, and the remaining phrases must be a
+// standalone statement rather than a clause buried in a technical answer.
+// Short, ambiguous phrases must close out the utterance — "That's all." ends an
+// interview, "that's all the traffic we handled that quarter" does not.
+const TERMINAL_EXIT_PATTERNS = [
+  /\bi(?:'m| am) done\b\W*$/,
+  /\bthat(?:'s| is) all\b\W*$/,
+  /\bno more questions\b\W*$/,
+  /\bgood ?bye\b\W*$/
+];
+
+// Explicit, unambiguous requests — safe to match anywhere in the utterance.
+const EXPLICIT_EXIT_PATTERNS = [
+  /\bend (?:the |this )?interview\b/,
+  /\bstop (?:the |this )?interview\b/,
+  /\bend (?:the |this )?session\b/,
+  /\bfinish (?:the |this )?interview\b/
+];
+
+// Secondary guard: a genuine exit is short and deliberate, never a paragraph.
+const MAX_EXIT_INTENT_WORDS = 15;
+
 function detectExitIntent(text) {
   if (!text) return false;
-  const exitPhrases = ['i\'m done', 'that\'s all', 'no more', 'goodbye', 'bye', 'end interview', 'stop'];
-  return exitPhrases.some(p => text.toLowerCase().includes(p));
+  const normalized = text.toLowerCase().trim();
+  if (normalized.split(/\s+/).length > MAX_EXIT_INTENT_WORDS) return false;
+  return EXPLICIT_EXIT_PATTERNS.some(p => p.test(normalized))
+    || TERMINAL_EXIT_PATTERNS.some(p => p.test(normalized));
 }
 
 exports.handler = async (event) => {
