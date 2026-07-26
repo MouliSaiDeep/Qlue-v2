@@ -103,6 +103,15 @@ class AuthProvider extends ChangeNotifier {
 
   AuthProvider() {
     final startTime = DateTime.now();
+    // Safety net: if authStateChanges never emits (e.g. Firebase auth wedged
+    // or offline), don't strand the app on the splash screen forever. Clear
+    // the init gate after a hard cap so the router can route to /login.
+    Future.delayed(const Duration(seconds: 6), () {
+      if (_isInitializing) {
+        _isInitializing = false;
+        notifyListeners();
+      }
+    });
     _auth.authStateChanges().listen((User? user) async {
       final wasNull = _currentUser == null;
       _currentUser = user;
