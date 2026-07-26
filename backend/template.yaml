@@ -354,6 +354,10 @@ Resources:
       # audio self-deletes after 1 day and failed uploads don't linger.
       VersioningConfiguration:
         Status: Suspended
+      # NOTE: a single LifecycleConfiguration only — CloudFormation rejects a
+      # duplicate property. Turn audio (audio/ prefix) is throwaway and expires
+      # in 1 day; a broader 7-day catch-all sweeps anything else, and
+      # incomplete multipart uploads are aborted after 1 day.
       LifecycleConfiguration:
         Rules:
           - Id: ExpireTurnAudio
@@ -366,6 +370,9 @@ Resources:
             Status: Enabled
             AbortIncompleteMultipartUpload:
               DaysAfterInitiation: 1
+          - Id: AutoDeleteAudio
+            Status: Enabled
+            ExpirationInDays: 7
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -375,11 +382,6 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
-      LifecycleConfiguration:
-        Rules:
-          - Id: AutoDeleteAudio
-            Status: Enabled
-            ExpirationInDays: 7
 
   # ==============================================================================
   # API GATEWAYS
@@ -1141,10 +1143,6 @@ Resources:
         - SNSPublishMessagePolicy: { TopicName: !GetAtt FeedbackTriggerTopic.TopicName }
         - S3CrudPolicy: { BucketName: !Ref ScrapedContentBucket }
         - S3CrudPolicy: { BucketName: !Ref AudioBucket }
-        - SSMParameterReadPolicy: { ParameterName: qlue/* }
-      Environment:
-        Variables:
-          FEEDBACK_TOPIC_ARN: !Ref FeedbackTriggerTopic
 
 
   # ========= WEBSOCKET =========
