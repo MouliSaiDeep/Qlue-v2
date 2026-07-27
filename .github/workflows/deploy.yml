@@ -84,16 +84,3 @@ jobs:
       - name: SAM Deploy to Prod
         working-directory: backend
         run: sam deploy --config-env prod --no-confirm-changeset --no-fail-on-empty-changeset
-
-  notify:
-    needs: [deploy-dev]
-    if: failure()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Send Slack Notification
-        uses: rtCamp/action-slack-notify@v2
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-          SLACK_COLOR: '#FF0000'
-          SLACK_MESSAGE: 'Qlue Deployment Pipeline Failed! :x:'
-          SLACK_TITLE: Build Failure
