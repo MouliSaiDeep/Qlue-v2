@@ -43,8 +43,10 @@ void main() {
       final radar = RadarData.fromJson(json);
       final mapped = radar.getDimensionsForModule('RESUME');
 
-      expect(mapped['clar'], 0.8);
-      expect(mapped['flue'], 0.7);
+      // Labels are now passed through in full (prettified + capitalized)
+      // rather than truncated to 4 chars, and scores are normalized to 0–1.
+      expect(mapped['Clarity'], 0.8);
+      expect(mapped['Fluency'], 0.7);
     });
 
     test('SessionModel.fromJson should parse correctly', () {

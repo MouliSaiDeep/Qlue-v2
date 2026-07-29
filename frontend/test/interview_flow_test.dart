@@ -4,24 +4,33 @@ import 'package:mocktail/mocktail.dart';
 import 'package:provider/provider.dart';
 import 'package:frontend/features/interview/providers/interview_provider.dart';
 import 'package:frontend/context/auth_provider.dart' as app_auth;
+import 'package:frontend/context/appearance_provider.dart';
 import 'package:frontend/screens/interview/interview_session_screen.dart';
 import 'package:frontend/core/theme.dart';
 
 class MockInterviewProvider extends Mock implements InterviewProvider {}
 class MockAuthProvider extends Mock implements app_auth.AuthProvider {}
+class MockAppearanceProvider extends Mock implements AppearanceProvider {}
 
 void main() {
   late MockInterviewProvider mockInterviewProvider;
   late MockAuthProvider mockAuthProvider;
+  late MockAppearanceProvider mockAppearanceProvider;
 
   setUp(() {
     mockInterviewProvider = MockInterviewProvider();
     mockAuthProvider = MockAuthProvider();
+    mockAppearanceProvider = MockAppearanceProvider();
+    when(() => mockAppearanceProvider.reduceMotion).thenReturn(true);
+    when(() => mockAppearanceProvider.glassStyle).thenReturn('liquid');
+    when(() => mockAppearanceProvider.isLiquid).thenReturn(true);
+    when(() => mockAppearanceProvider.glassIntensity).thenReturn(1.0);
     
     // AuthProvider mocks
     when(() => mockAuthProvider.isAuthenticated).thenReturn(true);
     when(() => mockAuthProvider.isInitializing).thenReturn(false);
     when(() => mockAuthProvider.voiceId).thenReturn('Tiffany');
+    when(() => mockAuthProvider.voiceMode).thenReturn('cost_saver');
     
     // InterviewProvider mocks
     when(() => mockInterviewProvider.sessionId).thenReturn('s1');
@@ -40,7 +49,9 @@ void main() {
     
     // Methods
     when(() => mockInterviewProvider.resetForNewSession()).thenReturn(null);
-    when(() => mockInterviewProvider.setVoice(any(), engine: any(named: 'engine'))).thenReturn(null);
+    when(() => mockInterviewProvider.setVoice(any(),
+        engine: any(named: 'engine'),
+        voiceMode: any(named: 'voiceMode'))).thenReturn(null);
     when(() => mockInterviewProvider.initSession(any(), resumeId: any(named: 'resumeId'), websiteUrl: any(named: 'websiteUrl')))
         .thenAnswer((_) async => {});
     
@@ -56,6 +67,7 @@ void main() {
         providers: [
           ChangeNotifierProvider<app_auth.AuthProvider>.value(value: mockAuthProvider),
           ChangeNotifierProvider<InterviewProvider>.value(value: mockInterviewProvider),
+          ChangeNotifierProvider<AppearanceProvider>.value(value: mockAppearanceProvider),
         ],
         child: MaterialApp(
           home: child,

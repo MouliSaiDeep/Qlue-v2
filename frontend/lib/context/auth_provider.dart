@@ -55,7 +55,7 @@ class AuthProvider extends ChangeNotifier {
     return _currentUser?.displayName ?? "User";
   }
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  late final FirebaseAuth _auth;
 
   /// SECURITY FIX: Change Password previously showed a toast and did nothing.
   /// Firebase requires a recent login before updatePassword, so we
@@ -99,9 +99,13 @@ class AuthProvider extends ChangeNotifier {
     }
   }
   // google_sign_in 7.x uses singleton instance
-  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+  late final GoogleSignIn _googleSignIn;
 
-  AuthProvider() {
+  /// [auth] and [googleSignIn] are injectable for tests; production uses the
+  /// default singletons.
+  AuthProvider({FirebaseAuth? auth, GoogleSignIn? googleSignIn}) {
+    _auth = auth ?? FirebaseAuth.instance;
+    _googleSignIn = googleSignIn ?? GoogleSignIn.instance;
     final startTime = DateTime.now();
     // Safety net: if authStateChanges never emits (e.g. Firebase auth wedged
     // or offline), don't strand the app on the splash screen forever. Clear
@@ -130,6 +134,14 @@ class AuthProvider extends ChangeNotifier {
         _isInitializing = false;
         notifyListeners();
       } else {
+        notifyListeners();
+      }
+    }, onError: (_) {
+      // If the auth stream errors (e.g. platform channel unavailable), don't
+      // leave the app stuck initializing — fall through to the unauthenticated
+      // state so the router can route to /login.
+      if (_isInitializing) {
+        _isInitializing = false;
         notifyListeners();
       }
     });

@@ -21,7 +21,20 @@ class FeedbackReportScreen extends StatefulWidget {
   final SessionModel? session;
   final String? sessionId;
 
-  const FeedbackReportScreen({super.key, this.session, this.sessionId});
+  /// Test hooks: bypass the network fetch so the loading / error / loaded
+  /// states can be widget-tested deterministically. Not used in production.
+  final FeedbackReportModel? initialReport;
+  final String? initialError;
+  final bool autoFetch;
+
+  const FeedbackReportScreen({
+    super.key,
+    this.session,
+    this.sessionId,
+    @visibleForTesting this.initialReport,
+    @visibleForTesting this.initialError,
+    @visibleForTesting this.autoFetch = true,
+  });
 
   @override
   State<FeedbackReportScreen> createState() => _FeedbackReportScreenState();
@@ -47,8 +60,16 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
   @override
   void initState() {
     super.initState();
-    _startLoadingAnimation();
-    _fetchReport();
+    if (widget.initialReport != null) {
+      _report = widget.initialReport;
+      _isLoading = false;
+    } else if (widget.initialError != null) {
+      _errorMessage = widget.initialError;
+      _isLoading = false;
+    } else if (widget.autoFetch) {
+      _startLoadingAnimation();
+      _fetchReport();
+    }
   }
 
   @override

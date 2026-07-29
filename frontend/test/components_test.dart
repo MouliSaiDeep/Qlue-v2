@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/components/glass_card.dart';
 import 'package:frontend/components/avatar.dart';
 import 'package:frontend/core/theme.dart';
+import 'package:network_image_mock/network_image_mock.dart';
 import 'dart:io';
 
 void main() {
@@ -30,22 +31,24 @@ void main() {
     });
 
     testWidgets('Avatar should render correct state and name', (WidgetTester tester) async {
-      // Mocking Image.network is tricky without external packages, 
-      // but we can at least verify the Avatar widget itself exists.
-      await tester.pumpWidget(
-        const AppThemeColorsProvider(
-          colors: AppThemeColors.dark,
-          child: MaterialApp(
-            home: Scaffold(
-              body: Avatar(
-                name: 'Mouli',
-                size: 100,
+      // Avatar falls back to a network letter-avatar; mock network images so
+      // the request resolves to transparent bytes instead of throwing.
+      await mockNetworkImagesFor(() async {
+        await tester.pumpWidget(
+          const AppThemeColorsProvider(
+            colors: AppThemeColors.dark,
+            child: MaterialApp(
+              home: Scaffold(
+                body: Avatar(
+                  name: 'Mouli',
+                  size: 100,
+                ),
               ),
             ),
           ),
-        ),
-      );
-      
+        );
+      });
+
       expect(find.byType(Avatar), findsOneWidget);
     });
   });
