@@ -10,10 +10,12 @@ import '../../components/semi_circle_gauge.dart';
 import '../../core/models/session_model.dart';
 import '../../core/models/feedback_report_model.dart';
 import 'package:dio/dio.dart';
+import 'package:printing/printing.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/constants/api_constants.dart';
 import '../../components/glass_card.dart';
 import '../../components/spectral_background.dart';
+import 'feedback_pdf_export.dart';
 
 class FeedbackReportScreen extends StatefulWidget {
   final SessionModel? session;
@@ -28,6 +30,7 @@ class FeedbackReportScreen extends StatefulWidget {
 class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
   int _activeTabIndex = 0;
   bool _isLoading = true;
+  bool _isExporting = false;
   String? _errorMessage;
   FeedbackReportModel? _report;
 
@@ -136,6 +139,49 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
               : "Unable to load feedback at this time. It may still be generating.";
         });
       }
+    }
+  }
+
+  Future<void> _exportPdf() async {
+    final report = _report;
+    if (report == null || _isExporting) return;
+
+    setState(() => _isExporting = true);
+    try {
+      final auth = context.read<AuthProvider>();
+      final topic = widget.session?.topic ?? 'Interview Feedback';
+      final role = auth.profession.isNotEmpty
+          ? auth.profession
+          : (widget.session?.moduleType ?? 'Candidate');
+      final score =
+          report.overallScore.round();
+
+      final bytes = await FeedbackPdfBuilder.build(
+        report: report,
+        topic: topic,
+        userName: auth.displayName,
+        role: role,
+        overallScore: score,
+      );
+
+      // Sanitize the topic into a safe filename.
+      final safeTopic = topic
+          .replaceAll(RegExp(r'[^A-Za-z0-9 _-]'), '')
+          .trim()
+          .replaceAll(RegExp(r'\s+'), '_');
+      await Printing.sharePdf(
+        bytes: bytes,
+        filename: 'Qlue_Feedback_${safeTopic.isEmpty ? 'Report' : safeTopic}.pdf',
+      );
+    } catch (e) {
+      debugPrint('PDF export failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not export PDF. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
     }
   }
 
@@ -309,6 +355,33 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
                 ),
               ),
             ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Export the report as a light-mode PDF that mirrors this screen.
+        GestureDetector(
+          onTap: _isExporting ? null : _exportPdf,
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: GlassCard(
+              borderRadius: 12,
+              padding: EdgeInsets.zero,
+              hasMetallicBorder: true,
+              child: Center(
+                child: _isExporting
+                    ? SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(t.primary),
+                        ),
+                      )
+                    : Icon(FeatherIcons.download, size: 20, color: t.text),
+              ),
+            ),
           ),
         ),
       ],
