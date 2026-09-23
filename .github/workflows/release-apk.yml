@@ -1,0 +1,79 @@
+name: Release Android APK
+
+# Cut a release by pushing a version tag, for example:
+#   git tag v1.0.0 && git push origin v1.0.0
+# This builds the release APK and publishes it to GitHub Releases as Qlue.apk.
+# Everything (release tag, name, notes) is derived from the pushed tag.
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Lets softprops/action-gh-release create the release and upload the asset
+# using the built-in GITHUB_TOKEN. No external secrets are needed to publish.
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        # The Flutter project lives in frontend/, not the repo root, so every
+        # `run` step executes there. (`uses:` steps below use repo-root paths.)
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          # Pinned to the toolchain the app is built/verified with locally
+          # (Dart 3.11.0 satisfies pubspec's `sdk: ^3.11.0`). Bump when you
+          # upgrade Flutter; drop `flutter-version` to always take latest stable.
+          flutter-version: 3.41.2
+          channel: stable
+          cache: true
+
+      - name: Write google-services.json from secret
+        # The Firebase (com.google.gms.google-services) Gradle plugin hard-fails
+        # if this file is missing, and it is gitignored, so materialize it from
+        # a repository secret (base64 of frontend/android/app/google-services.json).
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "::error::Repository secret GOOGLE_SERVICES_JSON is not set. Base64-encode frontend/android/app/google-services.json and add it under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          printf '%s' "$GOOGLE_SERVICES_JSON" | base64 --decode > android/app/google-services.json
+          echo "Wrote android/app/google-services.json"
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        # Release build falls back to the debug keystore when android/key.properties
+        # is absent (it is gitignored / not in CI), which is the project's existing
+        # behavior. The artifact is debug-signed and NOT Play-Store uploadable.
+        run: flutter build apk --release
+
+      - name: Rename APK to Qlue.apk
+        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Qlue.apk
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        # Triggered by a tag push, so the release is created for that tag
+        # (github.ref_name, e.g. v1.0.0) with auto-generated notes. GITHUB_TOKEN
+        # is used automatically. Path is relative to the repo root.
+        with:
+          files: frontend/build/app/outputs/flutter-apk/Qlue.apk
+          generate_release_notes: true
+          fail_on_unmatched_files: true
