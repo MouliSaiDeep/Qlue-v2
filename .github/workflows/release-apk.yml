@@ -72,19 +72,22 @@ jobs:
           echo "Wrote env.json"
 
       - name: Write release keystore from secrets
-        # Stable release signing. Without these secrets the build falls back to
-        # the ephemeral CI debug keystore (see app/build.gradle.kts), whose SHA-1
-        # changes every run — so Google Sign-In can't be registered against it and
-        # users can't update in place. Provide ANDROID_KEYSTORE_BASE64 (base64 of
+        # Every published release MUST be signed with the SAME stable upload
+        # keystore. If one release is signed with a different key (e.g. the
+        # ephemeral CI debug keystore, whose signature changes every run), users
+        # can't update in place: Android rejects the install with "App not
+        # installed / package appears to be invalid" and they must uninstall
+        # first. So a missing keystore is a HARD FAILURE — we never publish a
+        # debug-signed APK. Provide ANDROID_KEYSTORE_BASE64 (base64 of
         # frontend/android/upload-keystore.jks) and ANDROID_KEYSTORE_PASSWORD as
-        # repository secrets to sign the release for real.
+        # repository secrets.
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
-            echo "::warning::Keystore secrets not set — release will be DEBUG-signed and Google Sign-In will fail. Add ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD under Settings -> Secrets and variables -> Actions."
-            exit 0
+            echo "::error::Release signing secrets missing. Add ANDROID_KEYSTORE_BASE64 (base64 of frontend/android/upload-keystore.jks) and ANDROID_KEYSTORE_PASSWORD under Settings -> Secrets and variables -> Actions. Publishing a debug-signed APK would break in-place updates for existing users."
+            exit 1
           fi
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/upload-keystore.jks
           printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=upload\nstoreFile=../upload-keystore.jks\n' "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEYSTORE_PASSWORD" > android/key.properties
@@ -94,23 +97,27 @@ jobs:
         run: flutter pub get
 
       - name: Build release APK
-        # Derive the app version from the pushed tag (v1.0.2 -> build-name 1.0.2)
-        # so the version shown in-app (via package_info_plus) tracks the release
-        # instead of pubspec's static 1.0.0+1. --build-number must be an integer,
-        # so we use the workflow run number (monotonic per repo) as versionCode.
-        # --dart-define-from-file=env.json injects the compile-time config the app
-        # requires (resolved relative to frontend/, this job's working-directory).
-        # Signing: uses the stable upload keystore when the keystore step above
-        # wrote key.properties; otherwise Gradle falls back to the debug keystore.
+        # Derive BOTH the version name and the versionCode from the pushed tag
+        # (v1.0.5 -> build-name 1.0.5). The version name tracks the release so
+        # package_info_plus reports it in-app; the versionCode must be an integer
+        # that NEVER decreases between releases, or Android blocks the update as a
+        # downgrade. github.run_number doesn't track the version (and resets to 1
+        # if the workflow is ever recreated), so encode the semver itself as
+        # major*10000 + minor*100 + patch (1.0.5 -> 10005), which rises with every
+        # release. --dart-define-from-file=env.json injects the compile-time
+        # config (resolved relative to frontend/, this job's working-directory).
+        # The keystore step above guarantees the stable upload signingConfig.
         env:
           TAG: ${{ github.ref_name }}
         run: |
           VERSION="${TAG#v}"
+          IFS='.' read -r MAJ MIN PAT <<< "$VERSION"
+          VERSION_CODE=$(( ${MAJ:-0} * 10000 + ${MIN:-0} * 100 + ${PAT:-0} ))
           flutter build apk --release \
             --dart-define-from-file=env.json \
             --build-name="$VERSION" \
-            --build-number="${{ github.run_number }}"
-          echo "Built app version $VERSION (versionCode ${{ github.run_number }})"
+            --build-number="$VERSION_CODE"
+          echo "Built app version $VERSION (versionCode $VERSION_CODE)"
 
       - name: Rename APK to Qlue.apk
         run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Qlue.apk
