@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/theme.dart';
 import '../../context/auth_provider.dart';
 import '../../context/appearance_provider.dart';
@@ -148,13 +149,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   final TextEditingController _detailController = TextEditingController();
 
+  // Populated at runtime from the built package (Android versionName / iOS
+  // CFBundleShortVersionString), so the version row always reflects the actual
+  // release instead of a hard-coded string.
+  String _appVersion = '';
+
   @override
   void initState() {
     super.initState();
+    _loadAppVersion();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<DashboardProvider>().fetchDashboardData();
       context.read<ResumeProvider>().fetchResumes();
     });
+  }
+
+  Future<void> _loadAppVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (!mounted) return;
+    setState(() => _appVersion = info.version);
   }
 
   void _showAvatarPicker() {
@@ -1329,7 +1342,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const ProfileDiv(),
                       SettingRow(
                         icon: FeatherIcons.info,
-                        label: "Version 1.0.0",
+                        label: _appVersion.isEmpty ? "Version" : "Version $_appVersion",
                         iconColor: t.textTertiary,
                         iconBg: t.bgSecondary.withValues(alpha: 0.1),
                         right: Text("Latest", style: TextStyle(fontSize: 13, color: t.textTertiary)),

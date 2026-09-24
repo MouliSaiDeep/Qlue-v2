@@ -94,12 +94,23 @@ jobs:
         run: flutter pub get
 
       - name: Build release APK
-        # Release build falls back to the debug keystore when android/key.properties
-        # is absent (it is gitignored / not in CI), which is the project's existing
-        # behavior. The artifact is debug-signed and NOT Play-Store uploadable.
+        # Derive the app version from the pushed tag (v1.0.2 -> build-name 1.0.2)
+        # so the version shown in-app (via package_info_plus) tracks the release
+        # instead of pubspec's static 1.0.0+1. --build-number must be an integer,
+        # so we use the workflow run number (monotonic per repo) as versionCode.
         # --dart-define-from-file=env.json injects the compile-time config the app
         # requires (resolved relative to frontend/, this job's working-directory).
-        run: flutter build apk --release --dart-define-from-file=env.json
+        # Signing: uses the stable upload keystore when the keystore step above
+        # wrote key.properties; otherwise Gradle falls back to the debug keystore.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          flutter build apk --release \
+            --dart-define-from-file=env.json \
+            --build-name="$VERSION" \
+            --build-number="${{ github.run_number }}"
+          echo "Built app version $VERSION (versionCode ${{ github.run_number }})"
 
       - name: Rename APK to Qlue.apk
         run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Qlue.apk
