@@ -1,6 +1,5 @@
 let firebaseLib;
 let sdk;
-const fs = require('fs');
 
 jest.mock('firebase-admin', () => ({
     apps: [],
@@ -28,12 +27,19 @@ describe('firebase lib', () => {
     let mockMessaging;
 
     beforeEach(() => {
-        jest.clearAllMocks();
         jest.resetModules();
+        jest.clearAllMocks();
+
+        // Require the module under test first, then grab the EXACT firebase-admin
+        // mock it captured (firebase.js re-exports it as `sdk`). Configuring that
+        // same instance — instead of a second require('firebase-admin') — is what
+        // guarantees sdk.apps is the array we set here. A separate require can hand
+        // back a different mock instance in a full-suite run, leaving firebase.js's
+        // own sdk.apps undefined, which surfaced as "Firebase init failed".
         firebaseLib = require('../../../src/lib/firebase');
-        sdk = require('firebase-admin');
+        sdk = firebaseLib.sdk;
         sdk.apps = [];
-        
+
         mockAuth = {
             verifyIdToken: jest.fn(),
             createCustomToken: jest.fn(),
@@ -47,7 +53,7 @@ describe('firebase lib', () => {
         };
         sdk.messaging.mockReturnValue(mockMessaging);
 
-        fs.existsSync.mockReturnValue(false);
+        require('fs').existsSync.mockReturnValue(false);
     });
 
     it('getAuth should initialize and return auth instance', async () => {
