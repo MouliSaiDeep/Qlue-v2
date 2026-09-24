@@ -18,6 +18,11 @@ abstract class Env {
   static const String firebaseProjectId = String.fromEnvironment('FIREBASE_PROJECT_ID');
   static const String measurementId = String.fromEnvironment('MEASUREMENT_ID');
   static const String googleClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
+  // The WEB OAuth client id. On Android/iOS this must be passed to
+  // GoogleSignIn.initialize(serverClientId:) so Google mints the ID token that
+  // Firebase signInWithCredential requires; without it idToken is null and
+  // Google sign-in silently fails right after the account picker.
+  static const String googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
 
   /// Fails fast with a clear message if the build was made without
   /// --dart-define-from-file (all values would silently be empty strings,

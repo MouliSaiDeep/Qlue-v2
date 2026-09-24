@@ -35,6 +35,16 @@ void main() async {
     );
     await GoogleSignIn.instance.initialize(
       clientId: kIsWeb ? Env.googleClientId : null,
+      // On Android/iOS the ID token Firebase needs is only minted when the WEB
+      // OAuth client id is supplied here. Without it googleAuth.idToken is null
+      // and signInWithCredential throws right after the account picker — the
+      // "picker appears, I choose an account, it disappears" symptom. Fall back
+      // to googleClientId for env.json files that predate GOOGLE_WEB_CLIENT_ID.
+      serverClientId: kIsWeb
+          ? null
+          : (Env.googleWebClientId.isNotEmpty
+              ? Env.googleWebClientId
+              : Env.googleClientId),
     );
 
     runApp(const QlueApp());
