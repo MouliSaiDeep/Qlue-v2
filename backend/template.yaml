@@ -568,6 +568,11 @@ Resources:
             Path: /auth/register
             Method: post
             RestApiId: !Ref RestApi
+            # Public route: callers have no Firebase token yet, so it must
+            # override the API's DefaultAuthorizer (FirebaseAuthorizer) or every
+            # sign-up request is rejected with 401 before the handler runs.
+            Auth:
+              Authorizer: NONE
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
@@ -587,6 +592,11 @@ Resources:
             Path: /auth/login
             Method: post
             RestApiId: !Ref RestApi
+            # Public route: login happens before any token exists, so it must
+            # override the API's DefaultAuthorizer (FirebaseAuthorizer). Without
+            # this every login is rejected with 401 before the handler runs.
+            Auth:
+              Authorizer: NONE
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
