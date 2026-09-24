@@ -71,6 +71,25 @@ jobs:
           printf '%s' "$ENV_JSON" | base64 --decode > env.json
           echo "Wrote env.json"
 
+      - name: Write release keystore from secrets
+        # Stable release signing. Without these secrets the build falls back to
+        # the ephemeral CI debug keystore (see app/build.gradle.kts), whose SHA-1
+        # changes every run — so Google Sign-In can't be registered against it and
+        # users can't update in place. Provide ANDROID_KEYSTORE_BASE64 (base64 of
+        # frontend/android/upload-keystore.jks) and ANDROID_KEYSTORE_PASSWORD as
+        # repository secrets to sign the release for real.
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "::warning::Keystore secrets not set — release will be DEBUG-signed and Google Sign-In will fail. Add ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD under Settings -> Secrets and variables -> Actions."
+            exit 0
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/upload-keystore.jks
+          printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=upload\nstoreFile=../upload-keystore.jks\n' "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEYSTORE_PASSWORD" > android/key.properties
+          echo "Wrote android/upload-keystore.jks and android/key.properties"
+
       - name: Install dependencies
         run: flutter pub get
 

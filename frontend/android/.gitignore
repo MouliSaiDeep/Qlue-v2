@@ -12,3 +12,6 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+# Base64 of the keystore, generated only to paste into the ANDROID_KEYSTORE_BASE64
+# CI secret. It IS the signing key in another form — never commit it.
+*.jks.base64.txt
