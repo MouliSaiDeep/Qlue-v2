@@ -56,6 +56,21 @@ jobs:
           printf '%s' "$GOOGLE_SERVICES_JSON" | base64 --decode > android/app/google-services.json
           echo "Wrote android/app/google-services.json"
 
+      - name: Write env.json from secret
+        # The app reads its config at COMPILE time via --dart-define-from-file=env.json
+        # (see lib/core/env.dart; Env.validate() hard-fails at launch if it is missing).
+        # env.json is not committed, so materialize it from a repository secret
+        # (base64 of frontend/env.json).
+        env:
+          ENV_JSON: ${{ secrets.ENV_JSON }}
+        run: |
+          if [ -z "$ENV_JSON" ]; then
+            echo "::error::Repository secret ENV_JSON is not set. Base64-encode frontend/env.json and add it as an Actions secret."
+            exit 1
+          fi
+          printf '%s' "$ENV_JSON" | base64 --decode > env.json
+          echo "Wrote env.json"
+
       - name: Install dependencies
         run: flutter pub get
 
@@ -63,7 +78,9 @@ jobs:
         # Release build falls back to the debug keystore when android/key.properties
         # is absent (it is gitignored / not in CI), which is the project's existing
         # behavior. The artifact is debug-signed and NOT Play-Store uploadable.
-        run: flutter build apk --release
+        # --dart-define-from-file=env.json injects the compile-time config the app
+        # requires (resolved relative to frontend/, this job's working-directory).
+        run: flutter build apk --release --dart-define-from-file=env.json
 
       - name: Rename APK to Qlue.apk
         run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Qlue.apk
