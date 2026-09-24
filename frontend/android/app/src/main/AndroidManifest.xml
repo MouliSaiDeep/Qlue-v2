@@ -41,6 +41,10 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- Lets the in-app updater hand a downloaded release APK to the system
+         package installer (Settings -> Check for updates). Android still shows
+         the install prompt and the one-time "install unknown apps" grant. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <queries>
         <intent>
