@@ -76,9 +76,12 @@ void main() {
     expect(find.text('Performance Analysis'), findsOneWidget);
     expect(find.text('Very impressive performance.'), findsOneWidget);
 
-    // Section tabs
-    expect(find.text('Summary'), findsOneWidget);
-    expect(find.text('Strengths'), findsOneWidget);
-    expect(find.text('Weaknesses'), findsOneWidget);
+    // Section tabs. The glass tab bar renders each label in two layers (a base
+    // row plus a masked selected-overlay row), so a label can appear more than
+    // once in the tree; assert presence rather than an exact count. "To Improve"
+    // and "Strengths" open glass pop-up sheets; "Summary" is the resting section.
+    expect(find.text('Summary'), findsWidgets);
+    expect(find.text('Strengths'), findsWidgets);
+    expect(find.text('To Improve'), findsWidgets);
   });
 }

@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:feather_icons/feather_icons.dart';
 import 'package:go_router/go_router.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lg;
 import '../../core/theme.dart';
 import '../../core/models/resume_model.dart';
 import '../../context/resume_provider.dart';
 import '../../components/glass_card.dart';
+import '../../components/glass_controls.dart';
 import '../../components/avatar.dart';
 import '../../components/spectral_background.dart';
 import '../../context/auth_provider.dart';
@@ -83,9 +85,10 @@ class _AIModulesScreenState extends State<AIModulesScreen>
                       color: t.text,
                     ),
                   ),
-                  IconButton(
-                    icon: Icon(FeatherIcons.x, color: t.textSecondary),
-                    onPressed: () => Navigator.pop(ctx),
+                  AppIconButton(
+                    icon: FeatherIcons.x,
+                    onTap: () => Navigator.pop(ctx),
+                    color: t.textSecondary,
                   ),
                 ],
               ),
@@ -221,28 +224,13 @@ class _AIModulesScreenState extends State<AIModulesScreen>
                       ],
                     ),
                   ),
-                  GestureDetector(
+                  AppButton(
                     onTap: () => context.push('/resume/upload'),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: t.primaryGradient),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.4),
-                          width: 0.8,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: t.primary.withValues(alpha: 0.3),
-                            blurRadius: 15,
-                            spreadRadius: 1,
-                          ),
-                        ],
-                      ),
+                    expand: false,
+                    height: 32,
+                    borderRadius: 10,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -269,60 +257,31 @@ class _AIModulesScreenState extends State<AIModulesScreen>
               ),
             ),
 
-            // CUSTOM GLASS TAB BAR (PILL STYLE)
+            // GLASS TAB BAR — inline liquid-glass segmented switcher (same
+            // engine as the bottom nav). It renders its own refracting glass
+            // track with a jelly indicator, so it sits directly in the column
+            // (no GlassCard wrapper, which would be glass-on-glass).
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: SizedBox(
-                height: 54,
-                child: GlassCard(
-                  borderRadius: 30,
-                  padding: const EdgeInsets.all(4),
-                  hasMetallicBorder: true,
-                  borderAlpha: 0.12, // Enhanced contrast for standard mode
-                  child: AnimatedBuilder(
-                    animation: _tabController,
-                    builder: (context, _) {
-                      return Stack(
-                        children: [
-                          // Sliding Indicator
-                          AnimatedAlign(
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeOutQuart,
-                            alignment: _tabController.index == 0
-                                ? Alignment.centerLeft
-                                : Alignment.centerRight,
-                            child: FractionallySizedBox(
-                              widthFactor: 0.5,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: t.primary,
-                                  borderRadius: BorderRadius.circular(24),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: t.primary.withValues(alpha: 0.4),
-                                      blurRadius: 12,
-                                      spreadRadius: 1,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          // Tab Items
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildCustomTab(0, "AI Interview", t),
-                              ),
-                              Expanded(
-                                child: _buildCustomTab(1, "AI Tutor", t),
-                              ),
-                            ],
-                          ),
-                        ],
-                      );
-                    },
-                  ),
+              child: lg.GlassTabBar.inline(
+                tabs: const [
+                  lg.GlassTab(label: "AI Interview"),
+                  lg.GlassTab(label: "AI Tutor"),
+                ],
+                selectedIndex: _tabController.index,
+                onTabSelected: (index) =>
+                    setState(() => _tabController.index = index),
+                barHeight: 48,
+                indicatorColor: t.primary.withValues(alpha: 0.85),
+                selectedLabelColor: Colors.white,
+                unselectedLabelColor: t.textTertiary,
+                selectedLabelStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -336,24 +295,6 @@ class _AIModulesScreenState extends State<AIModulesScreen>
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCustomTab(int index, String label, AppThemeColors t) {
-    final isSelected = _tabController.index == index;
-    return GestureDetector(
-      onTap: () => setState(() => _tabController.index = index),
-      behavior: HitTestBehavior.opaque,
-      child: Center(
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-            color: isSelected ? Colors.white : t.textTertiary,
-          ),
         ),
       ),
     );
@@ -635,28 +576,13 @@ class _AIModulesScreenState extends State<AIModulesScreen>
                     ),
 
                   // METALLIC START BUTTON
-                  GestureDetector(
+                  AppButton(
                     onTap: onStartTap,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 28,
-                        vertical: 14,
-                      ),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: t.primaryGradient),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.4),
-                          width: 0.8,
-                        ), // Metallic edge
-                        boxShadow: [
-                          BoxShadow(
-                            color: t.primary.withValues(alpha: 0.4),
-                            blurRadius: 20,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
+                    expand: false,
+                    height: 48,
+                    borderRadius: 14,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 28),
                       child: isLoading
                           ? const SizedBox(
                               width: 20,

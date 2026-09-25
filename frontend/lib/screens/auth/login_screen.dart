@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../context/auth_provider.dart';
 import '../../core/theme.dart';
 import '../../components/glass_card.dart';
+import '../../components/glass_controls.dart';
 import '../../components/spectral_background.dart';
 import '../../components/spectral_input.dart';
 
@@ -253,54 +254,28 @@ class _ExactLoginScreenState extends State<ExactLoginScreen> {
                       const SizedBox(height: 16),
 
                       // Metallic Sign In Button
-                      GestureDetector(
+                      AppButton(
                         onTap: _loading ? null : _handleLogin,
-                        child: Container(
-                          height: 54,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: _loading
-                                  ? [
-                                      t.primary.withValues(alpha: 0.5),
-                                      t.primary.withValues(alpha: 0.3),
-                                    ]
-                                  : t.primaryGradient,
-                            ),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.4),
-                              width: 0.8,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: t.primary.withValues(alpha: 0.3),
-                                blurRadius: 15,
-                                spreadRadius: 1,
+                        borderRadius: 18,
+                        child: _loading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text(
+                                "Sign In",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                  fontFamily: 'Montserrat',
+                                ),
                               ),
-                            ],
-                          ),
-                          child: Center(
-                            child: _loading
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Text(
-                                    "Sign In",
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 0.5,
-                                      fontFamily: 'Montserrat',
-                                    ),
-                                  ),
-                          ),
-                        ),
                       ),
 
                       const SizedBox(height: 20),

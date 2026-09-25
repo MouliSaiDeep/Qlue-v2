@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:feather_icons/feather_icons.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lg;
 import '../../core/theme.dart';
 import 'package:provider/provider.dart';
 import '../../context/auth_provider.dart';
@@ -14,6 +15,7 @@ import 'package:printing/printing.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/constants/api_constants.dart';
 import '../../components/glass_card.dart';
+import '../../components/glass_controls.dart';
 import '../../components/spectral_background.dart';
 import 'feedback_pdf_export.dart';
 
@@ -41,9 +43,9 @@ class FeedbackReportScreen extends StatefulWidget {
 }
 
 class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
-  int _activeTabIndex = 0;
   bool _isLoading = true;
   bool _isExporting = false;
+  int _activeTabIndex = 0;
   String? _errorMessage;
   FeedbackReportModel? _report;
 
@@ -174,8 +176,7 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
       final role = auth.profession.isNotEmpty
           ? auth.profession
           : (widget.session?.moduleType ?? 'Candidate');
-      final score =
-          report.overallScore.round();
+      final score = report.overallScore.round();
 
       final bytes = await FeedbackPdfBuilder.build(
         report: report,
@@ -192,13 +193,16 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
           .replaceAll(RegExp(r'\s+'), '_');
       await Printing.sharePdf(
         bytes: bytes,
-        filename: 'Qlue_Feedback_${safeTopic.isEmpty ? 'Report' : safeTopic}.pdf',
+        filename:
+            'Qlue_Feedback_${safeTopic.isEmpty ? 'Report' : safeTopic}.pdf',
       );
     } catch (e) {
       debugPrint('PDF export failed: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not export PDF. Please try again.')),
+          const SnackBar(
+            content: Text('Could not export PDF. Please try again.'),
+          ),
         );
       }
     } finally {
@@ -324,9 +328,10 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
               style: TextStyle(color: t.text, fontSize: 16),
             ),
             const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Go Back"),
+            AppButton(
+              label: "Go Back",
+              expand: false,
+              onTap: () => Navigator.pop(context),
             ),
           ],
         ),
@@ -337,20 +342,12 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
   Widget _buildHeader(BuildContext context, AppThemeColors t) {
     return Row(
       children: [
-        GestureDetector(
+        AppIconButton(
+          icon: FeatherIcons.chevronLeft,
           onTap: () => Navigator.pop(context),
-          child: SizedBox(
-            width: 44,
-            height: 44,
-            child: GlassCard(
-              borderRadius: 12,
-              padding: EdgeInsets.zero,
-              hasMetallicBorder: true,
-              child: Center(
-                child: Icon(FeatherIcons.chevronLeft, size: 20, color: t.text),
-              ),
-            ),
-          ),
+          background: true,
+          borderRadius: 12,
+          color: t.text,
         ),
         const SizedBox(width: 16),
         Expanded(
@@ -380,31 +377,34 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
         ),
         const SizedBox(width: 12),
         // Export the report as a light-mode PDF that mirrors this screen.
-        GestureDetector(
-          onTap: _isExporting ? null : _exportPdf,
-          child: SizedBox(
-            width: 44,
-            height: 44,
-            child: GlassCard(
-              borderRadius: 12,
-              padding: EdgeInsets.zero,
-              hasMetallicBorder: true,
-              child: Center(
-                child: _isExporting
-                    ? SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(t.primary),
-                        ),
-                      )
-                    : Icon(FeatherIcons.download, size: 20, color: t.text),
+        _isExporting
+            ? SizedBox(
+                width: 44,
+                height: 44,
+                child: GlassCard(
+                  borderRadius: 12,
+                  padding: EdgeInsets.zero,
+                  hasMetallicBorder: true,
+                  child: Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(t.primary),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            : AppIconButton(
+                icon: FeatherIcons.download,
+                onTap: _exportPdf,
+                background: true,
+                borderRadius: 12,
+                color: t.text,
+                tooltip: 'Export PDF',
               ),
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -649,14 +649,18 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
+          const SizedBox(height: 5),
+          // Liquid-glass progress bar (glowing fill + track) replacing the flat
+          // Material LinearProgressIndicator. minWidth:0 lets it shrink to the
+          // narrow column beside the radar chart instead of forcing 200px.
+          SizedBox(
+            width: double.infinity,
+            child: lg.GlassProgressIndicator.linear(
               value: (value / 100).clamp(0.0, 1.0),
-              minHeight: 5,
-              backgroundColor: t.metallicBorder.withValues(alpha: 0.15),
-              valueColor: AlwaysStoppedAnimation<Color>(barColor),
+              height: 6,
+              minWidth: 0,
+              color: barColor,
+              backgroundColor: t.metallicBorder.withValues(alpha: 0.18),
             ),
           ),
         ],
@@ -665,68 +669,27 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
   }
 
   Widget _buildNavigationTabs(AppThemeColors t) {
-    return SizedBox(
-      height: 54,
-      child: GlassCard(
-        borderRadius: 30,
-        padding: const EdgeInsets.all(4),
-        hasMetallicBorder: true,
-        child: Stack(
-          children: [
-            // Sliding Indicator
-            AnimatedAlign(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOutQuart,
-              alignment: _activeTabIndex == 0
-                  ? Alignment.centerLeft
-                  : (_activeTabIndex == 1
-                        ? Alignment.center
-                        : Alignment.centerRight),
-              child: FractionallySizedBox(
-                widthFactor: 0.33,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: t.primary,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: t.primary.withValues(alpha: 0.4),
-                        blurRadius: 12,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            // Tab Items
-            Row(
-              children: [
-                Expanded(child: _buildCustomTab(0, "Summary", t)),
-                Expanded(child: _buildCustomTab(1, "Strengths", t)),
-                Expanded(child: _buildCustomTab(2, "Weaknesses", t)),
-              ],
-            ),
-          ],
-        ),
+    // Inline liquid-glass segmented switcher (same engine as the bottom nav).
+    // Switches the content area below between Summary / Strengths / To Improve.
+    return lg.GlassTabBar.inline(
+      tabs: const [
+        lg.GlassTab(label: "Summary"),
+        lg.GlassTab(label: "Strengths"),
+        lg.GlassTab(label: "To Improve"),
+      ],
+      selectedIndex: _activeTabIndex,
+      onTabSelected: (index) => setState(() => _activeTabIndex = index),
+      barHeight: 48,
+      indicatorColor: t.primary.withValues(alpha: 0.85),
+      selectedLabelColor: Colors.white,
+      unselectedLabelColor: t.textSecondary,
+      selectedLabelStyle: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.bold,
       ),
-    );
-  }
-
-  Widget _buildCustomTab(int index, String label, AppThemeColors t) {
-    final isSelected = _activeTabIndex == index;
-    return GestureDetector(
-      onTap: () => setState(() => _activeTabIndex = index),
-      behavior: HitTestBehavior.opaque,
-      child: Center(
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-            color: isSelected ? Colors.white : t.textSecondary,
-          ),
-        ),
+      unselectedLabelStyle: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
       ),
     );
   }
@@ -745,26 +708,52 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
   Widget _buildTabContent(AppThemeColors t) {
     switch (_activeTabIndex) {
       case 0: // Summary
-        return Column(
-          key: const ValueKey("summary"),
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSectionTitle(t, "Executive Summary", FeatherIcons.fileText),
-            const SizedBox(height: 16),
-            Text(
-              _report?.executiveSummary ??
-                  "Your performance report is being processed.",
-              style: TextStyle(
-                fontSize: 15,
-                height: 1.6,
-                color: t.textSecondary,
+        {
+          final dims = _report?.dimensionScores ?? const {};
+          final dimCount = dims.length;
+          final avgDim = dimCount > 0
+              ? (dims.values.reduce((a, b) => a + b) / dimCount).round()
+              : 0;
+          final answered = (_report?.transcript ?? [])
+              .where((e) => e.role.toUpperCase() != 'AI')
+              .length;
+          return Column(
+            key: const ValueKey("summary"),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionTitle(t, "Executive Summary", FeatherIcons.fileText),
+              const SizedBox(height: 16),
+              Text(
+                _report?.executiveSummary ??
+                    "Your performance report is being processed.",
+                style: TextStyle(
+                  fontSize: 15,
+                  height: 1.6,
+                  color: t.textSecondary,
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            _buildMetricRow(t, "Confidence Level", "High", t.primary),
-            _buildMetricRow(t, "Pace", "Steady", t.success),
-          ],
-        );
+              if (dimCount > 0) ...[
+                const SizedBox(height: 22),
+                _buildGlassStatBar(t, "Average across dimensions", avgDim),
+              ],
+              const SizedBox(height: 18),
+              if (dimCount > 0)
+                _buildMetricRow(
+                  t,
+                  "Dimensions evaluated",
+                  "$dimCount",
+                  t.primary,
+                ),
+              if (answered > 0)
+                _buildMetricRow(
+                  t,
+                  "Questions answered",
+                  "$answered",
+                  t.success,
+                ),
+            ],
+          );
+        }
       case 1: // Strengths
         return Column(
           key: const ValueKey("strengths"),
@@ -785,26 +774,46 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
                   []),
           ],
         );
-      case 2: // Weaknesses
-        return Column(
-          key: const ValueKey("weaknesses"),
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSectionTitle(
-              t,
-              "Areas for Improvement",
-              FeatherIcons.alertCircle,
-            ),
-            const SizedBox(height: 16),
-            if (_report?.weaknesses.isEmpty ?? true)
-              _buildBulletPoint(t, "No major weaknesses identified.", t.warning)
-            else
-              ...(_report?.weaknesses.map(
-                    (w) => _buildBulletPoint(t, w, t.warning),
-                  ) ??
-                  []),
-          ],
-        );
+      case 2: // Weaknesses + recommended next steps
+        {
+          final recs = _report?.recommendations ?? const <String>[];
+          return Column(
+            key: const ValueKey("weaknesses"),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionTitle(
+                t,
+                "Areas for Improvement",
+                FeatherIcons.alertCircle,
+              ),
+              const SizedBox(height: 16),
+              if (_report?.weaknesses.isEmpty ?? true)
+                _buildBulletPoint(
+                  t,
+                  "No major weaknesses identified.",
+                  t.warning,
+                )
+              else
+                ...(_report?.weaknesses.map(
+                      (w) => _buildBulletPoint(t, w, t.warning),
+                    ) ??
+                    []),
+              if (recs.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Divider(color: t.border.withValues(alpha: 0.15), height: 28),
+                _buildSectionTitle(
+                  t,
+                  "Recommended next steps",
+                  FeatherIcons.target,
+                ),
+                const SizedBox(height: 16),
+                ...recs.asMap().entries.map(
+                  (e) => _buildRecommendationItem(t, e.key + 1, e.value),
+                ),
+              ],
+            ],
+          );
+        }
       default:
         return const SizedBox();
     }
@@ -938,6 +947,87 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
                 fontSize: 14,
                 color: t.textSecondary,
                 height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// A labelled liquid-glass progress bar (label + percent on top, glass fill
+  /// below). Used in the Summary tab to visualise aggregate scores.
+  Widget _buildGlassStatBar(AppThemeColors t, String label, int percent) {
+    final color = _scoreColor(percent);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: TextStyle(fontSize: 13, color: t.textSecondary)),
+            Text(
+              "$percent%",
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: lg.GlassProgressIndicator.linear(
+            value: (percent / 100).clamp(0.0, 1.0),
+            height: 8,
+            minWidth: 0,
+            color: color,
+            backgroundColor: t.metallicBorder.withValues(alpha: 0.18),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// A numbered action item for the "Recommended next steps" list — a small
+  /// glowing badge with the ordinal, then the recommendation text.
+  Widget _buildRecommendationItem(AppThemeColors t, int number, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: t.primary.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+              border: Border.all(color: t.primary.withValues(alpha: 0.4)),
+            ),
+            child: Text(
+              "$number",
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: t.primary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: t.textSecondary,
+                  height: 1.5,
+                ),
               ),
             ),
           ),

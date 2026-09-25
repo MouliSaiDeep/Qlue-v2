@@ -9,6 +9,7 @@ import '../../core/theme.dart';
 import '../../core/models/resume_model.dart';
 import '../../context/resume_provider.dart';
 import '../../components/glass_card.dart';
+import '../../components/glass_controls.dart';
 import '../../components/semi_circle_gauge.dart';
 import '../../components/spectral_background.dart';
 import '../../core/network/dio_client.dart';
@@ -205,9 +206,14 @@ class _JobMatchScreenState extends State<JobMatchScreen> {
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          leading: IconButton(
-            icon: Icon(FeatherIcons.arrowLeft, color: t.text, size: 20),
-            onPressed: () => context.pop(),
+          leading: Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: AppIconButton(
+              icon: FeatherIcons.arrowLeft,
+              onTap: () => context.pop(),
+              color: t.text,
+              iconSize: 20,
+            ),
           ),
           title: Text("Job Match",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: t.text)),
@@ -318,31 +324,21 @@ class _JobMatchScreenState extends State<JobMatchScreen> {
                         }).toList(),
                       ),
                     const SizedBox(height: 18),
-                    SizedBox(
-                      width: double.infinity,
-                      child: GestureDetector(
-                        onTap: _analyzing ? null : _analyze,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(colors: t.primaryGradient),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Center(
-                            child: _analyzing
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: Colors.white))
-                                : const Text("Analyze Match",
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white)),
-                          ),
-                        ),
-                      ),
+                    AppButton(
+                      onTap: _analyzing ? null : _analyze,
+                      height: 48,
+                      borderRadius: 16,
+                      child: _analyzing
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Text("Analyze Match",
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white)),
                     ),
                   ],
                 ),
@@ -430,32 +426,12 @@ class _JobMatchScreenState extends State<JobMatchScreen> {
           ],
           const SizedBox(height: 6),
           if (eligible)
-            SizedBox(
-              width: double.infinity,
-              child: GestureDetector(
-                onTap: () => context.push(
-                    '/interview/session/new?moduleType=JD&resumeId=${_selectedResume!.resumeId}'),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: t.primaryGradient),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                          color: t.primaryGradient.last.withValues(alpha: 0.35),
-                          blurRadius: 18,
-                          offset: const Offset(0, 6)),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Text("Start Practice Interview",
-                        style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white)),
-                  ),
-                ),
-              ),
+            AppButton(
+              label: "Start Practice Interview",
+              height: 48,
+              borderRadius: 16,
+              onTap: () => context.push(
+                  '/interview/session/new?moduleType=JD&resumeId=${_selectedResume!.resumeId}'),
             )
           else
             Container(

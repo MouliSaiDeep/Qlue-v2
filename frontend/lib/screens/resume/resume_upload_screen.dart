@@ -9,6 +9,7 @@ import '../../core/theme.dart';
 import '../../core/models/resume_model.dart';
 import '../../context/resume_provider.dart';
 import '../../components/glass_card.dart';
+import '../../components/glass_controls.dart';
 import '../../components/spectral_background.dart';
 import '../../components/confirmation_dialog.dart';
 
@@ -130,7 +131,7 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
                        ],
                      )
                    ),
-                   IconButton(icon: Icon(FeatherIcons.x, color: t.textTertiary), onPressed: () => Navigator.pop(ctx))
+                   AppIconButton(icon: FeatherIcons.x, color: t.textTertiary, onTap: () => Navigator.pop(ctx))
                  ],
                ),
                const SizedBox(height: 24),
@@ -251,15 +252,14 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
     return SpectralBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        floatingActionButton: GestureDetector(
+        floatingActionButton: AppButton(
           onTap: _isUploading ? null : _handleUpload,
-          child: GlassCard(
-            borderRadius: 30,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            hasMetallicBorder: true,
-            hasGlow: true,
-            tintColor: t.primary,
-            child: const Row(
+          expand: false,
+          height: 56,
+          borderRadius: 30,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24),
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(FeatherIcons.plus, color: Colors.white, size: 20),
@@ -277,17 +277,12 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
               padding: EdgeInsets.only(top: topPadding + 16, left: 24, right: 24, bottom: 24),
               child: Row(
                 children: [
-                  GestureDetector(
+                  AppIconButton(
+                    icon: FeatherIcons.chevronLeft,
                     onTap: () => Navigator.pop(context),
-                    child: SizedBox(
-                      width: 44, height: 44,
-                      child: GlassCard(
-                        borderRadius: 12,
-                        padding: EdgeInsets.zero,
-                        hasMetallicBorder: true,
-                        child: Center(child: Icon(FeatherIcons.chevronLeft, color: t.text, size: 20)),
-                      ),
-                    ),
+                    background: true,
+                    borderRadius: 12,
+                    color: t.text,
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -391,9 +386,11 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
                                   ],
                                 ),
                               ),
-                              IconButton(
-                                icon: Icon(FeatherIcons.trash2, color: t.error.withValues(alpha: 0.6), size: 18),
-                                onPressed: () => _handleDelete(resume.resumeId),
+                              AppIconButton(
+                                icon: FeatherIcons.trash2,
+                                color: t.error.withValues(alpha: 0.6),
+                                iconSize: 18,
+                                onTap: () => _handleDelete(resume.resumeId),
                               )
                             ],
                           ),

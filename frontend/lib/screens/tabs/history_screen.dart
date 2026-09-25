@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:feather_icons/feather_icons.dart';
 import 'package:frontend/components/avatar.dart';
 import 'package:frontend/components/glass_card.dart';
+import 'package:frontend/components/glass_controls.dart';
 import 'package:frontend/components/spectral_background.dart';
 import 'package:frontend/components/staggered_fade_in.dart';
 import 'package:provider/provider.dart';
@@ -350,22 +351,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 style: TextStyle(fontSize: 13, color: t.textSecondary, height: 1.5),
               ),
               const SizedBox(height: 28),
-              GestureDetector(
+              AppButton(
                 onTap: () => context.go('/practice'),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: t.primaryGradient),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: t.primaryGradient.last.withValues(alpha: 0.35),
-                        blurRadius: 18,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: const Text(
+                expand: false,
+                height: 48,
+                borderRadius: 16,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 28),
+                  child: Text(
                     "Start an Interview",
                     style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
                   ),

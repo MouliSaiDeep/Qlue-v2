@@ -59,9 +59,12 @@ void main() {
 
       await tester.pumpWidget(createTestWidget(const ExactLoginScreen()));
 
-      // Enter credentials
-      await tester.enterText(find.byType(TextField).first, 'test@test.com');
-      await tester.enterText(find.byType(TextField).last, 'password123');
+      // Enter credentials. The inputs are SpectralInputs, which render a
+      // Cupertino-based glass field under the Liquid appearance and a Material
+      // TextField under Classic; both build an EditableText, so target that to
+      // stay appearance-agnostic.
+      await tester.enterText(find.byType(EditableText).first, 'test@test.com');
+      await tester.enterText(find.byType(EditableText).last, 'password123');
       
       // Tap Sign In button
       await tester.tap(find.text('Sign In'));

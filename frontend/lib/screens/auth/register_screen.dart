@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../context/auth_provider.dart';
 import '../../core/theme.dart';
 import '../../components/glass_card.dart';
+import '../../components/glass_controls.dart';
 import '../../components/spectral_background.dart';
 import '../../components/spectral_input.dart';
 
@@ -100,25 +101,12 @@ class _ExactRegisterScreenState extends State<ExactRegisterScreen> {
                 // Header with Back Button
                 Row(
                   children: [
-                    GestureDetector(
+                    AppIconButton(
+                      icon: FeatherIcons.chevronLeft,
                       onTap: () => context.pop(),
-                      child: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: t.bgSecondary.withValues(alpha: 0.4),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: t.metallicBorder.withValues(alpha: 0.3),
-                            width: 1,
-                          ),
-                        ),
-                        child: Icon(
-                          FeatherIcons.chevronLeft,
-                          size: 20,
-                          color: t.text,
-                        ),
-                      ),
+                      background: true,
+                      borderRadius: 12,
+                      color: t.text,
                     ),
                   ],
                 ),
@@ -199,21 +187,14 @@ class _ExactRegisterScreenState extends State<ExactRegisterScreen> {
                             ),
                           ),
                           const SizedBox(height: 32),
-                          GestureDetector(
+                          AppButton(
+                            style: AppButtonStyle.secondary,
+                            borderRadius: 18,
+                            height: 52,
                             onTap: () => context.pop(),
-                            child: Container(
-                              height: 52,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                              ),
-                              child: const Center(
-                                child: Text(
-                                  "Back to Sign In",
-                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                ),
-                              ),
+                            child: const Text(
+                              "Back to Sign In",
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                             ),
                           ),
                         ]
@@ -328,54 +309,29 @@ class _ExactRegisterScreenState extends State<ExactRegisterScreen> {
                       const SizedBox(height: 20),
 
                       // Metallic Create Button
-                      GestureDetector(
+                      AppButton(
                         onTap: _loading ? null : _handleRegister,
-                        child: Container(
-                          height: 52,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: _loading
-                                  ? [
-                                      t.primary.withValues(alpha: 0.5),
-                                      t.primary.withValues(alpha: 0.3),
-                                    ]
-                                  : t.primaryGradient,
-                            ),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.4),
-                              width: 0.8,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: t.primary.withValues(alpha: 0.3),
-                                blurRadius: 15,
-                                spreadRadius: 1,
+                        borderRadius: 18,
+                        height: 52,
+                        child: _loading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text(
+                                "Create Account",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                  fontFamily: 'Montserrat',
+                                ),
                               ),
-                            ],
-                          ),
-                          child: Center(
-                            child: _loading
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Text(
-                                    "Create Account",
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 0.5,
-                                      fontFamily: 'Montserrat',
-                                    ),
-                                  ),
-                          ),
-                        ),
                       ),
 
                       const SizedBox(height: 16),

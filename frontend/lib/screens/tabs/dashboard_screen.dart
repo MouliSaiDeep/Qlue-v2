@@ -1,10 +1,10 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:frontend/components/glass_card.dart';
+import 'package:frontend/components/glass_controls.dart';
 import 'package:frontend/components/premium_flip_card.dart';
 import 'package:frontend/components/spectral_background.dart';
 import 'package:frontend/components/spider_chart.dart';
-import 'package:frontend/components/detail_flash_card.dart';
 import 'package:frontend/core/models/dashboard_model.dart';
 import 'package:provider/provider.dart';
 import 'package:feather_icons/feather_icons.dart';
@@ -284,7 +284,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           t,
                           "Strengths",
                           summary.strengths.isNotEmpty
-                              ? summary.strengths.take(3).toList()
+                              ? summary.strengths.toList()
                               : [
                                   "Complete an interview",
                                   "to see your strengths",
@@ -299,7 +299,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           t,
                           "To Improve",
                           summary.improvements.isNotEmpty
-                              ? summary.improvements.take(3).toList()
+                              ? summary.improvements.toList()
                               : ["Complete an interview", "to see insights"],
                           FeatherIcons.trendingUp,
                           t.warning,
@@ -401,11 +401,15 @@ class _DashboardScreenState extends State<DashboardScreen>
                             color: t.bgSecondary,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                                color: t.metallicBorder.withValues(alpha: 0.1)),
+                              color: t.metallicBorder.withValues(alpha: 0.1),
+                            ),
                           ),
                           child: Text(
                             "Your recent sessions will appear here.",
-                            style: TextStyle(fontSize: 13, color: t.textTertiary),
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: t.textTertiary,
+                            ),
                           ),
                         ),
                       )
@@ -529,25 +533,14 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
               ),
               const SizedBox(height: 28),
-              GestureDetector(
+              AppButton(
                 onTap: () => context.go('/practice'),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 28,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: t.primaryGradient),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: t.primaryGradient.last.withValues(alpha: 0.35),
-                        blurRadius: 18,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: const Text(
+                expand: false,
+                height: 48,
+                borderRadius: 16,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 28),
+                  child: Text(
                     "Start an Interview",
                     style: TextStyle(
                       fontSize: 14,
@@ -891,96 +884,198 @@ class _DashboardScreenState extends State<DashboardScreen>
     IconData icon,
     Color color,
   ) {
-    final heroTag = "hero_$title";
-
-    return Hero(
-      tag: heroTag,
-      child: Material(
-        color: Colors.transparent,
-        child: GlassCard(
-          onTap: () {
-            Navigator.of(context).push(
-              PageRouteBuilder(
-                opaque: false,
-                barrierDismissible: true,
-                // GLITCH FIX: without a barrier color the dashboard stayed
-                // fully visible behind the hero flight, making the expansion
-                // look broken; a dimmed barrier + tuned timing reads as an
-                // intentional zoom.
-                barrierColor: Colors.black54,
-                transitionDuration: const Duration(milliseconds: 260),
-                reverseTransitionDuration: const Duration(milliseconds: 220),
-                pageBuilder: (context, _, _) => DetailFlashCard(
-                  title: title,
-                  items: items,
-                  icon: icon,
-                  color: color,
-                  heroTag: heroTag,
-                ),
-                transitionsBuilder:
-                    (context, animation, secondaryAnimation, child) {
-                      return FadeTransition(opacity: animation, child: child);
-                    },
-              ),
-            );
-          },
-          hasMetallicBorder: true,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return GlassCard(
+      onTap: () => _showKeyAreaPopup(t, title, items, icon, color),
+      hasMetallicBorder: true,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Icon(icon, size: 16, color: color),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: t.text,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: t.text,
                   ),
-                ],
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              const SizedBox(height: 12),
-              ...items
-                  .take(3)
-                  .map(
-                    (it) => Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 4,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: t.textTertiary,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              it,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: t.textSecondary,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
             ],
           ),
+          const SizedBox(height: 12),
+          ...items
+              .take(3)
+              .map(
+                (it) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: t.textTertiary,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          it,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: t.textSecondary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  /// Glass pop-up sheet for a dashboard key-area (Strengths / To Improve).
+  /// Replaces the old hero-flight expansion into DetailFlashCard, which
+  /// animated in a jarring way; a bottom-sheet reads as an intentional pop-up
+  /// and can show the full list (the card itself previews the first three).
+  void _showKeyAreaPopup(
+    AppThemeColors t,
+    String title,
+    List<String> items,
+    IconData icon,
+    Color color,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => AppThemeColorsProvider(
+        colors: t,
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 12,
+            right: 12,
+            bottom: 12 + MediaQuery.of(ctx).padding.bottom,
+          ),
+          child: GlassCard(
+            hasMetallicBorder: true,
+            hasGlow: true,
+            glowColor: color,
+            borderRadius: 32,
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: t.border.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(icon, size: 22, color: color),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          color: t.text,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ),
+                    AppIconButton(
+                      icon: FeatherIcons.x,
+                      onTap: () => Navigator.pop(ctx),
+                      color: t.textSecondary,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(ctx).size.height * 0.55,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final it in items) _buildPopupBullet(t, it, color),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildPopupBullet(AppThemeColors t, String text, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 7),
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color.withValues(alpha: 0.8),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.4),
+                  blurRadius: 4,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 15,
+                color: t.textSecondary,
+                height: 1.5,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

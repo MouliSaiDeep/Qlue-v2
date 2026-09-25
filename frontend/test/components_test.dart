@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/components/glass_card.dart';
 import 'package:frontend/components/avatar.dart';
 import 'package:frontend/core/theme.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lg;
 import 'package:network_image_mock/network_image_mock.dart';
 import 'dart:io';
 
@@ -27,7 +28,9 @@ void main() {
       );
 
       expect(find.text('Inside Glass'), findsOneWidget);
-      expect(find.byType(BackdropFilter), findsOneWidget);
+      // Liquid is the default style (no AppearanceProvider in tests), so the
+      // card renders the library glass surface rather than a raw BackdropFilter.
+      expect(find.byType(lg.GlassContainer), findsOneWidget);
     });
 
     testWidgets('Avatar should render correct state and name', (WidgetTester tester) async {

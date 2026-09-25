@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/notifications.dart';
 import 'package:feather_icons/feather_icons.dart';
 import '../../core/theme.dart';
-import '../../components/glass_card.dart';
+import '../../components/glass_controls.dart';
 import '../../components/spectral_background.dart';
 
 class HelpSupportScreen extends StatefulWidget {
@@ -67,18 +67,12 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
               padding: EdgeInsets.only(top: topPadding + 16, bottom: 20, left: 20, right: 20),
               child: Row(
                 children: [
-                  GestureDetector(
+                  AppIconButton(
+                    icon: FeatherIcons.chevronLeft,
                     onTap: () => Navigator.of(context).pop(),
-                    child: SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: GlassCard(
-                        borderRadius: 12,
-                        padding: EdgeInsets.zero,
-                        hasMetallicBorder: true,
-                        child: Center(child: Icon(FeatherIcons.chevronLeft, size: 20, color: t.text)),
-                      ),
-                    ),
+                    background: true,
+                    borderRadius: 12,
+                    color: t.text,
                   ),
                   const SizedBox(width: 16),
                   Text("Help & Support", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: -0.5, color: t.text)),
@@ -160,17 +154,13 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                             ),
                           ),
                           const SizedBox(height: 16),
-                          ElevatedButton(
-                            onPressed: _sending ? null : _sendMessage,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF2563EB), foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                              elevation: 0,
-                            ),
+                          AppButton(
+                            onTap: _sending ? null : _sendMessage,
+                            color: const Color(0xFF2563EB),
+                            borderRadius: 14,
                             child: _sending
                                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                : const Text('Send Message', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                : const Text('Send Message', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                           ),
                         ],
                       ),

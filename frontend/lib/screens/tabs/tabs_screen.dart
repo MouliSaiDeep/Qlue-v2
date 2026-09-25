@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:feather_icons/feather_icons.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lg;
 import '../../core/theme.dart';
-import '../../components/glass_card.dart';
 import '../../context/dashboard_provider.dart';
 
 class TabsScreen extends StatefulWidget {
@@ -104,88 +104,60 @@ class _TabsScreenState extends State<TabsScreen> with WidgetsBindingObserver {
       body: Stack(
         children: [
           widget.child,
+          // Floating liquid-glass tab bar. Hidden while the keyboard is open so
+          // it never sits on top of a focused text field.
           if (MediaQuery.of(context).viewInsets.bottom == 0)
             Align(
               alignment: Alignment.bottomCenter,
-              child: RepaintBoundary(
-                child: GlassCard(
-                  margin: const EdgeInsets.only(bottom: 30, left: 24, right: 24),
-                  borderRadius: 40,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                  hasGlow: true,
-                  glowColor: t.primary,
-                  glowRadius: 50,
-                  blurSigma: 15,
-                  hasMetallicBorder: true,
-                  child: SizedBox(
-                    height: 72,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildNavItem(0, FeatherIcons.home, "Performance", t, currentIndex),
-                        _buildNavItem(1, FeatherIcons.zap, "Practice", t, currentIndex),
-                        _buildNavItem(2, FeatherIcons.clock, "Previous", t, currentIndex),
-                      ],
+              child: SafeArea(
+                top: false,
+                child: RepaintBoundary(
+                  // GlassTabBar.bottom draws the whole capsule: the frosted
+                  // liquid-glass track, the sliding jelly/gooey selection lens
+                  // (spring settle + concave-lens pinch + jelly-bloom expansion),
+                  // and icon-above-label items whose labels stay visible. It
+                  // supplies its own side/bottom margins, so it needs the full
+                  // screen width and no outer padding.
+                  child: lg.GlassTabBar.bottom(
+                    tabs: const [
+                      lg.GlassTab(
+                          icon: Icon(FeatherIcons.home), label: 'Performance'),
+                      lg.GlassTab(
+                          icon: Icon(FeatherIcons.zap), label: 'Practice'),
+                      lg.GlassTab(
+                          icon: Icon(FeatherIcons.clock), label: 'Previous'),
+                    ],
+                    selectedIndex: currentIndex,
+                    onTabSelected: (index) {
+                      TabsScreen.lastIndex = currentIndex;
+                      TabsScreen.setIndex(context, index);
+                    },
+                    // Active tab rides a green accent glass lens with white
+                    // glyphs. Plain green-on-frosted-glass washed out against
+                    // the light indicator, so the pill itself carries the accent
+                    // and the icon+label stay crisp white on top of it.
+                    indicatorColor: t.primary.withValues(alpha: 0.8),
+                    selectedIconColor: Colors.white,
+                    selectedLabelColor: Colors.white,
+                    unselectedIconColor: t.iconDefault,
+                    unselectedLabelColor: t.textTertiary,
+                    // Near-transparent dark glass — a high tint reads as a milky
+                    // slab instead of see-through glass, especially on the
+                    // Skia/Windows fallback path.
+                    settings: lg.LiquidGlassSettings(
+                      thickness: 24,
+                      blur: 4,
+                      glassColor: Colors.white
+                          .withValues(alpha: t.isDark ? 0.06 : 0.10),
+                      lightIntensity: 0.4,
+                      refractiveIndex: 1.5,
+                      saturation: 1.1,
                     ),
                   ),
                 ),
               ),
             ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildNavItem(int index, IconData icon, String label, AppThemeColors t, int currentIndex) {
-    final isSelected = currentIndex == index;
-    
-    return GestureDetector(
-      onTap: () {
-        TabsScreen.lastIndex = currentIndex;
-        TabsScreen.setIndex(context, index);
-      },
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeOutCubic,
-        padding: EdgeInsets.symmetric(
-          horizontal: isSelected ? 22 : 12,
-          vertical: 12,
-        ),
-        decoration: BoxDecoration(
-          color: isSelected ? t.primary.withValues(alpha: 0.18) : Colors.transparent,
-          borderRadius: BorderRadius.circular(30),
-          border: isSelected ? Border.all(color: t.primary.withValues(alpha: 0.4), width: 1) : null,
-          boxShadow: isSelected ? [
-            BoxShadow(
-              color: t.primary.withValues(alpha: 0.25),
-              blurRadius: 15,
-              spreadRadius: 1,
-            )
-          ] : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? Colors.white : t.iconDefault.withValues(alpha: 0.5),
-              size: 22,
-            ),
-            if (isSelected) ...[
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 14,
-                  letterSpacing: 0.2,
-                ),
-              ),
-            ],
-          ],
-        ),
       ),
     );
   }

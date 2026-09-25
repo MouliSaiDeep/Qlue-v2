@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'glass_card.dart';
+import 'glass_controls.dart';
 import '../core/theme.dart';
 
 class ConfirmationDialog extends StatelessWidget {
@@ -97,45 +98,36 @@ class ConfirmationDialog extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: GestureDetector(
+                  child: AppButton(
+                    style: AppButtonStyle.secondary,
                     onTap: () => Navigator.of(context).pop(false),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: t.bgSecondary,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: t.border),
-                      ),
-                      child: Text(
-                        cancelLabel,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: t.textSecondary,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
+                    borderRadius: 12,
+                    height: 46,
+                    child: Text(
+                      cancelLabel,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: t.textSecondary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: GestureDetector(
+                  child: AppButton(
+                    color: confirmColor ?? t.primary,
                     onTap: () => Navigator.of(context).pop(true),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: confirmColor ?? t.primary,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        confirmLabel,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+                    borderRadius: 12,
+                    height: 46,
+                    child: Text(
+                      confirmLabel,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
                       ),
                     ),
                   ),

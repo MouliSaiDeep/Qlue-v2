@@ -5,7 +5,7 @@ import '../../core/theme.dart';
 import '../../core/models/resume_model.dart';
 import '../../context/resume_provider.dart';
 import '../../components/spectral_background.dart';
-import '../../components/glass_card.dart';
+import '../../components/glass_controls.dart';
 import '../../components/confirmation_dialog.dart';
 import '../interview/interview_session_screen.dart';
 
@@ -150,31 +150,20 @@ class ResumeDetailScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        GestureDetector(
+                        AppIconButton(
+                          icon: FeatherIcons.chevronLeft,
                           onTap: () => Navigator.of(context).pop(),
-                          child: SizedBox(
-                            width: 44,
-                            height: 44,
-                            child: GlassCard(
-                              borderRadius: 12,
-                              padding: EdgeInsets.zero,
-                              hasMetallicBorder: true,
-                              child: Center(child: Icon(FeatherIcons.chevronLeft, size: 20, color: Colors.white)),
-                            ),
-                          ),
+                          background: true,
+                          borderRadius: 12,
+                          color: Colors.white,
                         ),
-                        GestureDetector(
+                        AppIconButton(
+                          icon: FeatherIcons.trash2,
                           onTap: () => _handleDelete(context),
-                          child: SizedBox(
-                            width: 44,
-                            height: 44,
-                            child: GlassCard(
-                              borderRadius: 12,
-                              padding: EdgeInsets.zero,
-                              hasMetallicBorder: true,
-                              child: const Center(child: Icon(FeatherIcons.trash2, size: 18, color: Colors.white)),
-                            ),
-                          ),
+                          background: true,
+                          borderRadius: 12,
+                          iconSize: 18,
+                          color: Colors.white,
                         ),
                       ],
                     ),

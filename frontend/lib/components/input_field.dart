@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lg;
 import '../../core/theme.dart';
+import '../../context/appearance_provider.dart';
 
 class InputField extends StatefulWidget {
   final IconData? icon;
@@ -57,6 +60,17 @@ class _InputFieldState extends State<InputField> {
   @override
   Widget build(BuildContext context) {
     final t = AppThemeColors.of(context);
+    bool liquid = true;
+    bool reduceMotion = false;
+    try {
+      final a = context.watch<AppearanceProvider>();
+      liquid = a.isLiquid;
+      reduceMotion = a.reduceMotion;
+    } catch (_) {}
+    return liquid ? _buildLiquid(t, reduceMotion) : _buildClassic(t);
+  }
+
+  Widget _buildClassic(AppThemeColors t) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -109,6 +123,40 @@ class _InputFieldState extends State<InputField> {
               if (widget.right != null) widget.right!,
             ],
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLiquid(AppThemeColors t, bool reduceMotion) {
+    final labelStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: t.textSecondary,
+          letterSpacing: 0.3,
+          fontSize: 12,
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(widget.label, style: labelStyle),
+        const SizedBox(height: 8),
+        lg.GlassTextField(
+          focusNode: _focusNode,
+          placeholder: widget.placeholder,
+          onChanged: widget.onChangeText,
+          obscureText: widget.secure,
+          keyboardType: widget.keyboard,
+          height: 52,
+          useOwnLayer: true,
+          quality: reduceMotion ? lg.GlassQuality.minimal : lg.GlassQuality.standard,
+          glowColor: t.primary,
+          shape: lg.LiquidRoundedSuperellipse(borderRadius: widget.borderRadius),
+          prefixIcon: widget.icon != null
+              ? Icon(widget.icon, size: 17, color: t.iconDefault)
+              : null,
+          suffixIcon: widget.right,
+          textStyle: TextStyle(fontSize: 15, color: t.text),
+          placeholderStyle: TextStyle(fontSize: 15, color: t.placeholder),
         ),
       ],
     );

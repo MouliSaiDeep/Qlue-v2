@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:feather_icons/feather_icons.dart';
 import 'glass_card.dart';
+import 'glass_controls.dart';
 import '../core/theme.dart';
 
 enum NotificationType { success, error, info }
@@ -132,13 +133,12 @@ class _SpectralNotificationState extends State<SpectralNotification>
                       ),
                     ),
                   ),
-                  GestureDetector(
+                  AppIconButton(
+                    icon: FeatherIcons.x,
                     onTap: () => _controller.reverse().then((_) => widget.onDismiss()),
-                    child: Icon(
-                      FeatherIcons.x,
-                      color: t.textTertiary,
-                      size: 16,
-                    ),
+                    color: t.textTertiary,
+                    size: 32,
+                    iconSize: 16,
                   ),
                 ],
               ),

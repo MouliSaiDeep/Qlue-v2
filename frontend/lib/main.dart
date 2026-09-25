@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'core/env.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
@@ -23,6 +24,15 @@ void main() async {
 
     // Disable runtime fetching to use local bundled fonts
     GoogleFonts.config.allowRuntimeFetching = false;
+
+    // Pre-warm the liquid-glass shaders so the first glass surface (the bottom
+    // nav bar) renders without a white flash. Guarded on its own so a shader
+    // pre-load failure (e.g. an unsupported GPU) can never blank the whole app.
+    try {
+      await LiquidGlassWidgets.initialize();
+    } catch (e) {
+      debugPrint('[LiquidGlass] shader pre-warm skipped: $e');
+    }
 
     await Firebase.initializeApp(
       options: FirebaseOptions(
@@ -47,7 +57,15 @@ void main() async {
               : Env.googleClientId),
     );
 
-    runApp(const QlueApp());
+    // Wrap the app in the liquid-glass infrastructure. `brightnessResolver`
+    // bridges Material's ThemeMode into the glass brightness cascade so the
+    // nav bar's glass follows the app's light/dark theme under MaterialApp.
+    runApp(
+      LiquidGlassWidgets.wrap(
+        child: const QlueApp(),
+        brightnessResolver: Theme.maybeBrightnessOf,
+      ),
+    );
   } catch (e, stack) {
     // Any failure above (bad env.json, Firebase misconfig, Google Sign-In
     // init) previously left runApp uncalled — i.e. a silent blank screen.

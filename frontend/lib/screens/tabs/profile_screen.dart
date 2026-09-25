@@ -16,6 +16,7 @@ import '../../core/notifications.dart';
 import '../../core/update_service.dart';
 import '../profile/help_support_screen.dart';
 import '../../components/glass_card.dart';
+import '../../components/glass_controls.dart';
 import '../../components/avatar.dart';
 import '../../components/spectral_background.dart';
 
@@ -388,7 +389,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Text("GLASS INTENSITY",
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold,
                       letterSpacing: 1, color: t.textTertiary)),
-              Slider(
+              AppSlider(
                 value: appearance.glassIntensity,
                 min: 0.6, max: 1.4,
                 activeColor: t.primary,
@@ -415,7 +416,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           style: TextStyle(fontSize: 11, color: t.textTertiary)),
                     ],
                   ),
-                  Switch(
+                  AppSwitch(
                     value: appearance.reduceMotion,
                     activeColor: t.primary,
                     onChanged: (v) => appearance.setReduceMotion(v),
@@ -691,9 +692,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       ],
                                     ),
                                   ),
-                                  IconButton(
-                                    onPressed: () => _playPreview(v['name']!),
-                                    icon: Icon(FeatherIcons.playCircle, color: t.primary),
+                                  AppIconButton(
+                                    icon: FeatherIcons.playCircle,
+                                    onTap: () => _playPreview(v['name']!),
+                                    color: t.primary,
                                     tooltip: 'Preview Voice',
                                   ),
                                 ],
@@ -841,8 +843,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onChangeText: (v) => newSkill = v,
                 ),
                 const SizedBox(height: 12),
-                ElevatedButton(
-                  onPressed: () {
+                AppButton(
+                  label: 'Add to Profile',
+                  borderRadius: 12,
+                  onTap: () {
                     if (newSkill.trim().isNotEmpty && !localSkills.contains(newSkill.trim())) {
                       setModalState(() {
                         localSkills.add(newSkill.trim());
@@ -850,11 +854,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       });
                     }
                   },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: t.primary, foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text('Add to Profile'),
                 ),
                 
                 const SizedBox(height: 24),
@@ -905,18 +904,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () {
+                AppButton(
+                  label: 'Save Skills',
+                  color: t.accentGreen,
+                  borderRadius: 12,
+                  onTap: () {
                     auth.updateUserProfile(skills: localSkills);
                     Navigator.pop(ctx);
                     Notify.success(context, 'Skills saved!');
                   },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: t.accentGreen,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text('Save Skills'),
                 ),
                 const SizedBox(height: 12),
               ],
@@ -956,18 +952,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onChangeText: (v) => _detailController.text = v,
               ),
               const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () {
+              AppButton(
+                label: 'Save Changes',
+                borderRadius: 14,
+                onTap: () {
                   onSave(_detailController.text.trim());
                   Navigator.pop(ctx);
                   Notify.success(context, '$title updated!');
                 },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: t.primary, foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-                child: const Text('Save Changes', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -1034,22 +1026,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: rating > 0 ? () {
-                      Navigator.pop(ctx);
-                      Notify.success(context, 'Thank you for your feedback!');
-                    } : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2563EB), foregroundColor: Colors.white,
-                      disabledBackgroundColor: t.border, disabledForegroundColor: t.textTertiary,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      elevation: 0,
-                    ),
-                    child: const Text('Submit', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
+                AppButton(
+                  label: 'Submit',
+                  color: const Color(0xFF2563EB),
+                  borderRadius: 14,
+                  onTap: rating > 0 ? () {
+                    Navigator.pop(ctx);
+                    Notify.success(context, 'Thank you for your feedback!');
+                  } : null,
                 ),
                 const SizedBox(height: 8),
                 SizedBox(
@@ -1133,21 +1117,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
               const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    _downloadAndInstall(update);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2563EB), foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    elevation: 0,
-                  ),
-                  child: const Text('Update now', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                ),
+              AppButton(
+                label: 'Update now',
+                color: const Color(0xFF2563EB),
+                borderRadius: 14,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _downloadAndInstall(update);
+                },
               ),
               const SizedBox(height: 8),
               SizedBox(
