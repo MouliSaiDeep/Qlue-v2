@@ -458,16 +458,19 @@ class _AIModulesScreenState extends State<AIModulesScreen>
     Color glowColor;
     switch (tag.toLowerCase()) {
       case 'resume':
-        glowColor = t.accentGreen;
+        glowColor = t.moduleResume;
         break;
       case 'hr':
-        glowColor = Colors.orangeAccent;
+        glowColor = t.moduleHR;
         break;
       case 'website':
         glowColor = t.moduleWeb;
         break;
       case 'intro':
-        glowColor = t.accentGreen;
+        glowColor = t.moduleIntro;
+        break;
+      case 'jd':
+        glowColor = t.moduleJobMatch;
         break;
       default:
         glowColor = t.primary;

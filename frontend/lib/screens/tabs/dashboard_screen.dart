@@ -224,7 +224,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                               "Intro",
                               "${byModule['INTRO'] ?? 0} Sessions",
                               FeatherIcons.mic,
-                              t.accentGreen,
+                              t.moduleIntro,
                             ),
                             back: _buildModuleStats(
                               t,

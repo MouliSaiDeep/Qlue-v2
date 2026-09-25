@@ -82,6 +82,8 @@ class AppThemeColors {
   final Color moduleHRLight;
   final Color moduleWeb;
   final Color moduleWebLight;
+  final Color moduleIntro;
+  final Color moduleJobMatch;
   final Color tabBar;
   final Color tabBarBorder;
   final Color inputBg;
@@ -123,6 +125,8 @@ class AppThemeColors {
     required this.moduleHRLight,
     required this.moduleWeb,
     required this.moduleWebLight,
+    required this.moduleIntro,
+    required this.moduleJobMatch,
     required this.tabBar,
     required this.tabBarBorder,
     required this.inputBg,
@@ -188,6 +192,8 @@ class AppThemeColors {
     moduleHRLight: Color(0x1AFF2D55),
     moduleWeb: Color.fromARGB(255, 44, 40, 247),
     moduleWebLight: Color.fromARGB(255, 8, 4, 251),
+    moduleIntro: Color(0xFF34C759),
+    moduleJobMatch: Color(0xFFFF9500),
     tabBar: Color(0xFFFFFFFF),
     tabBarBorder: Color(0xFFE5E5E5),
     inputBg: Color(0xFFFAFAFA),
@@ -233,6 +239,8 @@ class AppThemeColors {
     moduleHRLight: Color(0x1FFF375F),
     moduleWeb: Color(0xFF5E5CE6),
     moduleWebLight: Color(0x1F5E5CE6),
+    moduleIntro: Color(0xFF30D158),
+    moduleJobMatch: Color(0xFFFF9F0A),
     tabBar: Color(0xFF000000),
     tabBarBorder: Color(0xFF262626),
     inputBg: Color(0xFF121212),
