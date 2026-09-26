@@ -1,5 +1,6 @@
 const firebase = require('../../lib/firebase');
 const axios = require('axios');
+const { getFirebaseApiKey } = require('../../lib/secrets');
 
 /**
  * AWS Lambda Handler: POST /auth/register
@@ -86,9 +87,15 @@ exports.handler = async (event) => {
             // We continue because the user is successfully created in Firebase
         }
 
-        const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
+        // Load the Firebase Web API key (env in local/tests, SSM in prod).
+        let FIREBASE_API_KEY = null;
+        try {
+            FIREBASE_API_KEY = await getFirebaseApiKey();
+        } catch (keyErr) {
+            console.warn("Could not load FIREBASE_API_KEY from env or SSM (/qlue/firebase-api-key):", keyErr.message);
+        }
         if (!FIREBASE_API_KEY) {
-            console.warn("FIREBASE_API_KEY not found in env. Email verification skipped.");
+            console.warn("FIREBASE_API_KEY not found. Email verification skipped.");
             return {
                 statusCode: 201,
                 body: JSON.stringify({

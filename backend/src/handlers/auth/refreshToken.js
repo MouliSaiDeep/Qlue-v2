@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { getFirebaseApiKey } = require('../../lib/secrets');
 
 /**
  * AWS Lambda Handler: POST /auth/refresh
@@ -15,7 +16,7 @@ exports.handler = async (event) => {
             };
         }
 
-        const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
+        const FIREBASE_API_KEY = await getFirebaseApiKey();
         if (!FIREBASE_API_KEY) {
             throw new Error("Internal Configuration Error: Missing Firebase API Key");
         }

@@ -64,6 +64,23 @@ async function getFirebaseServiceAccount() {
   return getSecret('/qlue/firebase-service-account');
 }
 
+/**
+ * Firebase Web API key used for the Identity Toolkit REST calls
+ * (signInWithPassword / sendOobCode / secure-token refresh).
+ *
+ * Env-first so local dev (backend/.env) and the unit tests keep working
+ * without hitting SSM. In the deployed Lambdas FIREBASE_API_KEY is NOT set as
+ * an environment variable, so it falls back to SSM Parameter Store — the same
+ * store the service account is loaded from. This key is embeddable by design
+ * (it already ships in the client app), so a plain SSM String parameter is fine.
+ */
+async function getFirebaseApiKey() {
+  if (process.env.FIREBASE_API_KEY) {
+    return process.env.FIREBASE_API_KEY;
+  }
+  return getSecret('/qlue/firebase-api-key');
+}
+
 async function getBedrockConfig() {
   if (process.env.MOCK_BEDROCK_CONFIG) {
     return process.env.MOCK_BEDROCK_CONFIG;
@@ -89,6 +106,7 @@ async function getFCMServerKey() {
 module.exports = {
   getSecret,
   getFirebaseServiceAccount,
+  getFirebaseApiKey,
   getBedrockConfig,
   getScraperApiKey,
   getFCMServerKey
