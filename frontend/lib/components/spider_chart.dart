@@ -2,7 +2,15 @@ import 'dart:math' show pi, cos, sin, min;
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
 
-class SpiderChart extends StatelessWidget {
+/// Animated radar/spider chart.
+///
+/// The chart smoothly morphs between value sets whenever [data] changes — a
+/// new dashboard refresh, or the user switching the module in the dropdown —
+/// so updates are visible instead of snapping in place. Axes are taken from
+/// the incoming (target) data, and each dimension's value is tweened from what
+/// is currently on screen to the new value (dimensions that only exist in the
+/// new set grow out from the centre).
+class SpiderChart extends StatefulWidget {
   final Map<String, double> data;
   final double maxValue;
   final double size;
@@ -15,16 +23,94 @@ class SpiderChart extends StatelessWidget {
   });
 
   @override
+  State<SpiderChart> createState() => _SpiderChartState();
+}
+
+class _SpiderChartState extends State<SpiderChart>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _animation;
+
+  // Values the current tween starts from (what was last on screen) and ends at.
+  late Map<String, double> _begin;
+  late Map<String, double> _end;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    );
+    _animation = CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
+    _end = Map<String, double>.from(widget.data);
+    // First paint grows the polygon out from the centre.
+    _begin = {for (final k in _end.keys) k: 0.0};
+    _controller.forward();
+  }
+
+  @override
+  void didUpdateWidget(covariant SpiderChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_mapsEqual(oldWidget.data, widget.data)) {
+      // Re-tween from whatever is currently drawn so mid-flight changes stay
+      // smooth instead of jumping.
+      _begin = _currentFrame();
+      _end = Map<String, double>.from(widget.data);
+      _controller.forward(from: 0.0);
+    }
+  }
+
+  /// The interpolated values for the current animation position, over the union
+  /// of the begin/end dimensions (missing keys count as 0).
+  Map<String, double> _currentFrame() {
+    final v = _animation.value;
+    final keys = <String>{..._begin.keys, ..._end.keys};
+    return {
+      for (final k in keys)
+        k: (_begin[k] ?? 0.0) + ((_end[k] ?? 0.0) - (_begin[k] ?? 0.0)) * v,
+    };
+  }
+
+  static bool _mapsEqual(Map<String, double> a, Map<String, double> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (final entry in a.entries) {
+      if (b[entry.key] != entry.value) return false;
+    }
+    return true;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final t = AppThemeColors.of(context);
     return SizedBox(
-      width: size,
-      height: size,
-      child: CustomPaint(
-        painter: SpiderChartPainter(
-          data: data,
-          maxValue: maxValue,
-          t: t,
+      width: widget.size,
+      height: widget.size,
+      child: RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _animation,
+          builder: (context, _) {
+            final v = _animation.value;
+            // Axes follow the target set; values lerp begin -> end.
+            final frame = <String, double>{
+              for (final k in _end.keys)
+                k: (_begin[k] ?? 0.0) + ((_end[k] ?? 0.0) - (_begin[k] ?? 0.0)) * v,
+            };
+            return CustomPaint(
+              painter: SpiderChartPainter(
+                data: frame,
+                maxValue: widget.maxValue,
+                t: t,
+              ),
+            );
+          },
         ),
       ),
     );
@@ -96,7 +182,7 @@ class SpiderChartPainter extends CustomPainter {
       canvas.drawLine(center, Offset(dx, dy), axisPaint);
 
       // label
-      final labelRadius = radius * 1.3; 
+      final labelRadius = radius * 1.3;
       final labelDx = center.dx + labelRadius * cos(angle);
       final labelDy = center.dy + labelRadius * sin(angle);
 
@@ -152,7 +238,7 @@ class SpiderChartPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
     canvas.drawPath(dataPath, strokePaint);
-    
+
     // Draw points on vertices
     final pointPaint = Paint()
       ..color = t.primary
@@ -163,7 +249,7 @@ class SpiderChartPainter extends CustomPainter {
       final dataRadius = radius * normalizedValue;
       final dx = center.dx + dataRadius * cos(angle);
       final dy = center.dy + dataRadius * sin(angle);
-      
+
       // Paint white border around point
       canvas.drawCircle(Offset(dx, dy), 5.0, Paint()..color = t.card);
       // Internal point
@@ -173,6 +259,13 @@ class SpiderChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant SpiderChartPainter oldDelegate) {
-    return oldDelegate.data != data || oldDelegate.t != t || oldDelegate.maxValue != maxValue;
+    // Content comparison, NOT reference: getDimensionsForModule (and the
+    // animation frames) hand us a fresh Map each build, so an identity check
+    // would either always repaint or, if a caller ever memoized the map,
+    // silently stop repainting. Compare values so we repaint exactly when the
+    // rendered shape actually changes.
+    return oldDelegate.maxValue != maxValue ||
+        oldDelegate.t != t ||
+        !_SpiderChartState._mapsEqual(oldDelegate.data, data);
   }
 }

@@ -868,6 +868,8 @@ class _DashboardScreenState extends State<DashboardScreen>
             DropdownMenuItem(value: "hr", child: Text("HR")),
             DropdownMenuItem(value: "website", child: Text("Website")),
             DropdownMenuItem(value: "intro", child: Text("Intro")),
+            // Backend key is "JD"; getDimensionsForModule upper-cases the value.
+            DropdownMenuItem(value: "jd", child: Text("Job Match")),
           ],
           onChanged: (v) {
             if (v != null) setState(() => _selectedRadar = v);

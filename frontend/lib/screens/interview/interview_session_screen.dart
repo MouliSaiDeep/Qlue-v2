@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:frontend/context/auth_provider.dart';
 import 'package:frontend/context/appearance_provider.dart';
 import 'package:go_router/go_router.dart';
-import 'dot_matrix_painter.dart';
+import 'particle_sphere.dart';
 import '../../core/theme.dart';
 import '../../features/interview/providers/interview_provider.dart';
 import 'package:provider/provider.dart';
@@ -27,17 +26,26 @@ class InterviewSessionScreen extends StatefulWidget {
   State<InterviewSessionScreen> createState() => _InterviewSessionScreenState();
 }
 
-class _InterviewSessionScreenState extends State<InterviewSessionScreen> with TickerProviderStateMixin {
-  
-  late AnimationController _animationController;
-  late AnimationController _intensityController;
-  
-  double _time = 0;
-  double _intensity = 0.0;
-  
+class _InterviewSessionScreenState extends State<InterviewSessionScreen> {
+  // Maps the active module to its accent color (used while the AI speaks).
+  Color _moduleAccentColor(AppThemeColors t, String? moduleType) {
+    switch (moduleType) {
+      case 'HR':
+        return t.moduleHR;
+      case 'WEBSITE':
+        return t.moduleWeb;
+      case 'INTRO':
+        return t.moduleIntro;
+      case 'JD':
+        return t.moduleJobMatch;
+      case 'RESUME':
+      default:
+        return t.moduleResume;
+    }
+  }
+
   bool _isEnding = false;
   bool _hasNavigated = false;
-  bool _isDisposed = false; // FE-BUG #17 FIX: guard for doWhile after dispose
 
   late InterviewProvider _provider;
   late VoidCallback _providerListener;
@@ -76,30 +84,8 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
 
     _provider = context.read<InterviewProvider>();
 
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(days: 1),
-    )..addListener(() {
-        if (!mounted) return;
-        setState(() => _time += 0.016);
-      });
-    // Reduce-motion (Profile -> Appearance) freezes the ambient dot-matrix
-    // animation; the bubble still renders its liquid-glass dots statically.
-    if (!context.read<AppearanceProvider>().reduceMotion) {
-      _animationController.repeat();
-    }
-
-    _intensityController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    )..addListener(() {
-        if (!mounted) return;
-        setState(() => _intensity = _intensityController.value);
-      });
-
     _providerListener = () {
       if (mounted) {
-        _simulateIntensity(_provider.currentPhase);
         if (_provider.isConnecting && _statusTimer == null) {
           _startStatusTimer();
         } else if (!_provider.isConnecting && _statusTimer != null) {
@@ -171,36 +157,10 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
     );
   }
 
-  bool _isSimulating = false;
-
-  void _simulateIntensity(InterviewPhase phase) {
-    // FE-BUG #17 FIX: Check _isDisposed to stop doWhile after widget is disposed
-    if (_isSimulating || !mounted || _isDisposed) return;
-    _isSimulating = true;
-    
-    Future.doWhile(() async {
-      if (!mounted) return false;
-      final currentPhase = context.read<InterviewProvider>().currentPhase;
-      if (_isDisposed || (currentPhase != InterviewPhase.speaking && currentPhase != InterviewPhase.listening)) {
-        _isSimulating = false;
-        return false;
-      }
-      final target = 0.1 + math.Random().nextDouble() * (currentPhase == InterviewPhase.speaking ? 0.4 : 0.8);
-      if (mounted && !_isDisposed) {
-        _intensityController.animateTo(target, duration: const Duration(milliseconds: 500), curve: Curves.easeInOut);
-      }
-      await Future.delayed(const Duration(milliseconds: 600));
-      return true;
-    });
-  }
-
   @override
   void dispose() {
     _statusTimer?.cancel();
-    _isDisposed = true; // FE-BUG #17 FIX: flag before cancelling controllers
     _provider.removeListener(_providerListener);
-    _animationController.dispose();
-    _intensityController.dispose();
     super.dispose();
   }
 
@@ -290,35 +250,10 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
       userText = provider.finalTranscript;
     }
 
-    // Determine sphere color
-    Color sphereColor;
-    bool isProcessing = provider.currentPhase == InterviewPhase.processing;
-    
-    if (isConnecting) {
-      sphereColor = Colors.white70; // Off-white glow
-    } else if (isAiSpeaking) {
-      sphereColor = t.emeraldPrimary; // Green
-    } else if (isListening) {
-      sphereColor = Colors.orangeAccent; // Orange
-    } else if (isProcessing) {
-      sphereColor = t.primary; // Processing color (blue/purple)
-    } else {
-      sphereColor = Colors.white;
-    }
-
-    // Determine dot matrix mode from current phase
-    DotMatrixMode dotMode;
-    if (isConnecting) {
-      dotMode = DotMatrixMode.glow;
-    } else if (isAiSpeaking) {
-      dotMode = DotMatrixMode.radiation;
-    } else if (isListening) {
-      dotMode = DotMatrixMode.accretion;
-    } else if (isProcessing) {
-      dotMode = DotMatrixMode.random;
-    } else {
-      dotMode = DotMatrixMode.glow;
-    }
+    // The selected module's accent color drives the bubble while the AI speaks;
+    // listening/idle fall back to a soft off-white (handled in ParticleSphere).
+    final moduleAccent =
+        _moduleAccentColor(t, provider.moduleType ?? widget.moduleType);
 
     return PopScope(
       canPop: false,
@@ -330,21 +265,6 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
         backgroundColor: Colors.black,
         body: Stack(
           children: [
-            // Spectral Background
-            Positioned.fill(
-              child: CustomPaint(
-                painter: AiDotMatrixPainter(
-                  time: _time,
-                  intensity: _intensity,
-                  baseColor: sphereColor,
-                  mode: dotMode,
-                  tapOffset: null,
-                  tapTime: 0,
-                ),
-                size: Size.infinite,
-              ),
-            ),
- 
             // Safe area content
             SafeArea(
               child: Column(
@@ -430,8 +350,16 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> with Ti
                   // SPACER - pushes content to center/bottom
                   const Spacer(),
  
-                  // CENTER SPHERE AREA (empty, sphere is in background)
-                  const SizedBox(height: 200),
+                  // CENTER SPHERE — particle bubble reacts to speak/listen state
+                  SizedBox(
+                    height: 320,
+                    child: ParticleSphere(
+                      moduleColor: moduleAccent,
+                      isSpeaking: isAiSpeaking,
+                      isListening: isListening,
+                      animate: !context.read<AppearanceProvider>().reduceMotion,
+                    ),
+                  ),
  
                   const Spacer(),
  
