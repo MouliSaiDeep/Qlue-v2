@@ -3,6 +3,7 @@ version = 0.1
 [default.build.parameters]
 cached = true
 parallel = true
+use_container = true
 
 [default.deploy.parameters]
 stack_name = "qlue-dev"
@@ -11,7 +12,8 @@ s3_prefix = "qlue-dev"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
 image_repositories = []
-disable_rollback = true
+disable_rollback = false
+parameter_overrides = "PaidAttemptDailyLimit=50 MonthlyBudgetUsd=50"
 
 [default.global.parameters]
 region = "us-east-1"
@@ -21,6 +23,6 @@ stack_name = "qlue-season8-prod"
 resolve_s3 = true
 s3_prefix = "qlue-season8-prod"
 region = "us-east-1"
-confirm_changeset = false
+confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
 image_repositories = []

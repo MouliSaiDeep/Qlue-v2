@@ -24,6 +24,12 @@ abstract class Env {
   // Google sign-in silently fails right after the account picker.
   static const String googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
 
+  /// Optional fallback address shown on the in-app Help & Support screen. The
+  /// form now submits through the backend (POST /support) and stays in-app; this
+  /// address is only surfaced as "you can also email us at …" text if a submit
+  /// fails. Safe to leave empty.
+  static const String supportEmail = String.fromEnvironment('SUPPORT_EMAIL');
+
   /// Fails fast with a clear message if the build was made without
   /// --dart-define-from-file (all values would silently be empty strings,
   /// producing confusing network/auth errors at runtime instead).

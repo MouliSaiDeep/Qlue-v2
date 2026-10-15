@@ -32,9 +32,9 @@ describe('exit-intent detection (processUserInput)', () => {
   });
 
   it('still terminates on a genuine, deliberate exit statement', async () => {
-    expect((await submit("I'm done.")).shouldTerminate).toBe(true);
+    expect((await submit("I want to end the interview.")).shouldTerminate).toBe(true);
     expect((await submit('Please end the interview.')).shouldTerminate).toBe(true);
-    expect((await submit('Goodbye')).shouldTerminate).toBe(true);
+    expect((await submit('Goodbye')).shouldTerminate).toBe(false);
   });
 });
 

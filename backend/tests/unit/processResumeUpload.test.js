@@ -64,7 +64,7 @@ describe('processResumeUpload handler', () => {
     const result = await handler(event);
 
     expect(result.statusCode).toBe(202);
-    expect(updateResumeParsingResult).toHaveBeenCalledWith('test-resume-id', 'PARSING');
+    expect(updateResumeParsingResult).toHaveBeenCalledWith('test-resume-id', 'PARSING', null, null, 'test-user-id', undefined);
     expect(lambdaMock.commandCalls(InvokeCommand).length).toBe(1);
   });
 
@@ -100,6 +100,6 @@ describe('processResumeUpload handler', () => {
 
     await handler(event);
 
-    expect(updateResumeParsingResult).toHaveBeenCalledWith('test-resume-id', 'PARSED', expect.any(Object));
+    expect(updateResumeParsingResult).toHaveBeenCalledWith('test-resume-id', 'PARSED', expect.any(Object), null, 'test-user-id', undefined);
   });
 });

@@ -23,6 +23,15 @@ const ERROR_CODES = {
   TOKEN_EXPIRED: 'TOKEN_EXPIRED',
   TOKEN_INVALID: 'TOKEN_INVALID',
   ACTIVE_SESSION_EXISTS: 'ACTIVE_SESSION_EXISTS',
+  QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
+  // R-02: a global/per-action admission cutoff ("stop switch"). A hard, operator-
+  // controlled refusal of paid work — distinct from QUOTA_EXCEEDED (a per-user
+  // daily cap) and from a cost ALARM (which only notifies, it does not block).
+  SERVICE_PAUSED: 'SERVICE_PAUSED',
+  // R-03: the caller's account is being deleted (tombstoned DELETING). Paid and
+  // stateful entry points reject new work with this so a request cannot keep
+  // spending or writing rows while the account teardown is in flight.
+  ACCOUNT_DELETING: 'ACCOUNT_DELETING',
   RESUME_NOT_PARSED: 'RESUME_NOT_PARSED',
   INVALID_MODULE_TYPE: 'INVALID_MODULE_TYPE',
   RESUME_LIMIT_EXCEEDED: 'RESUME_LIMIT_EXCEEDED',

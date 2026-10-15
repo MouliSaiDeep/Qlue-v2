@@ -1,5 +1,7 @@
-const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const diagnostics=require('../../lib/logger').safeConsole;
+const { DynamoDBDocumentClient } = require('@aws-sdk/lib-dynamodb');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { queryAllItems } = require('../../lib/paginate');
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -35,15 +37,16 @@ exports.handler = async (event) => {
             expVals[':cutoff'] = cutoff;
         }
 
-        const sessionCmd = new QueryCommand({
+        const sessionParams = {
             TableName: SESSIONS_TABLE,
             IndexName: 'GSI_UserIdStartedAt',
             KeyConditionExpression: keyCond,
             ExpressionAttributeValues: expVals
-        });
+        };
 
-        const res = await docClient.send(sessionCmd);
-        const sessions = res.Items || [];
+        // BE-BUG #18 FIX: drain every page so the radar reflects all sessions
+        // in the period, not just the first 1MB of them.
+        const sessions = await queryAllItems(docClient, sessionParams);
 
         // Radar Chart Data aggregation
         // BUG FIX: JD had no bucket, so job-match sessions were dropped by the
@@ -60,6 +63,7 @@ exports.handler = async (event) => {
         const counts = { OVERALL: {}, RESUME: {}, WEBSITE: {}, HR: {}, INTRO: {}, JD: {} };
 
         for (const session of sessions) {
+            if (session.discarded || session.feedbackExpected === false) continue;
             const mod = session.moduleType;
             if (!mod || !dimensionsBreakdown[mod] || !session.accumulatedScores) continue;
 
@@ -89,7 +93,7 @@ exports.handler = async (event) => {
             body: JSON.stringify({ userId, period, radarData: dimensionsBreakdown })
         };
     } catch (err) {
-        console.error('getModuleStats failed:', err);
+        diagnostics.error('getModuleStats failed:', err);
         return { statusCode: 500, body: JSON.stringify({ error: 'INTERNAL_ERROR', message: 'Could not load module stats. Please try again.' }) };
     }
 };

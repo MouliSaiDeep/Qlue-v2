@@ -1,3 +1,4 @@
+const diagnostics=require('../../lib/logger').safeConsole;
 /**
  * Lambda handler for sending FCM push notifications when feedback is ready.
  */
@@ -8,13 +9,14 @@ exports.handler = async (event) => {
   const { userId, sessionId, overallScore, moduleType } = event;
 
   try {
-    console.info(`Preparing notification for user ${userId}`);
+    await require('../../lib/deletionJob').assertNotDeleting(userId);
+    diagnostics.info(`Preparing notification for user ${userId}`);
 
     // 1. Fetch user record to get fcmToken
     const { getUserById } = require('../../models/user');
     const user = await getUserById(userId);
     if (!user || !user.fcmToken) {
-      console.warn(`No FCM token found for user ${userId}. Skipping notification.`);
+      diagnostics.warn(`No FCM token found for user ${userId}. Skipping notification.`);
       return { success: false, error: 'No FCM token' };
     }
     const fcmToken = user.fcmToken;
@@ -27,32 +29,48 @@ exports.handler = async (event) => {
 
     const data = {
       sessionId,
+      userId,
+      feedbackId:event.feedbackId||sessionId,
       moduleType,
       type: 'FEEDBACK_READY',
       click_action: 'FLUTTER_NOTIFICATION_CLICK'
     };
 
-    console.info(`Sending FCM to user ${userId}...`);
-    const fcmResult = await sendNotification(fcmToken, notification, data);
+    diagnostics.info(`Sending FCM to user ${userId}...`);
+    if(event.attemptId&&!await require('../../lib/feedbackAttempt').currentAttempt(event)) return {success:false,stale:true};
+    const fcmResult = await require('../../lib/deadline').bounded(()=>sendNotification(fcmToken, notification, data),{label:'pushDelivery'});
 
     if (fcmResult.success) {
-      console.info(`Notification sent successfully to ${userId}`);
+      diagnostics.info(`Notification sent successfully to ${userId}`);
     } else {
-      console.warn(`FCM delivery failed for ${userId}: ${fcmResult.error}`);
+      diagnostics.warn(`FCM delivery failed for ${userId}: ${fcmResult.error}`);
+      // BE-BUG #18 FIX: actually remove a dead token instead of only logging a
+      // "should be cleaned up" warning. Conditional on the token still matching
+      // so a token uploaded after this send (refresh / account switch) is not
+      // wiped. Cleanup failure must not fail the notification handler.
       if (fcmResult.isStaleToken) {
-        console.info(`FCM token for user ${userId} is stale. Flagging for removal.`);
+        try {
+          const { clearFcmToken } = require('../../models/user');
+          const cleanup = await clearFcmToken(userId, { ifMatches: fcmToken });
+          diagnostics.info(
+            `Stale FCM token for user ${userId} ${cleanup.skipped ? 'already rotated' : 'removed'}.`
+          );
+        } catch (cleanupErr) {
+          diagnostics.error(`Failed to clear stale FCM token for ${userId}:`, cleanupErr.name);
+        }
+      } else {
+        throw new Error('Transient notification delivery failure');
       }
     }
 
     // 3. Log notification in DB
     // [DEFERRED] Skip as Notification model is not yet defined/accessible.
-    console.info(`[DEFERRED] Logging notification record for user ${userId}`);
+    diagnostics.info(`[DEFERRED] Logging notification record for user ${userId}`);
 
     return { success: fcmResult.success };
 
   } catch (error) {
-    console.error(`Notification handler failed for user ${userId}:`, error);
-    // Best-effort delivery: don't throw to stop Lambda retries unless it's a transient failure
-    return { success: false, error: error.message };
+    diagnostics.error(`Notification handler failed for user ${userId}:`, error);
+    throw error;
   }
 };

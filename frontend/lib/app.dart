@@ -1,3 +1,4 @@
+import 'screens/interview/interview_screen_awake.dart';
 import 'package:flutter/material.dart';
 import 'package:frontend/screens/interview/feedback_report_screen.dart';
 import 'package:go_router/go_router.dart';
@@ -36,31 +37,37 @@ CustomTransitionPage _buildSlideTransitionPage({
       // If this page is the one being navigated TO
       final lastIndex = TabsScreen.lastIndex;
       final slideInFromRight = targetIndex > lastIndex;
-      final beginIncoming = slideInFromRight ? const Offset(1.0, 0.0) : const Offset(-1.0, 0.0);
-      
+      final beginIncoming = slideInFromRight
+          ? const Offset(1.0, 0.0)
+          : const Offset(-1.0, 0.0);
+
       final incomingTransition = animation.drive(
-        Tween(begin: beginIncoming, end: Offset.zero).chain(CurveTween(curve: Curves.easeOutQuart))
+        Tween(
+          begin: beginIncoming,
+          end: Offset.zero,
+        ).chain(CurveTween(curve: Curves.easeOutQuart)),
       );
 
       // 2. OUTGOING SLIDE (from secondaryAnimation)
       // If this page is the one being navigated AWAY FROM
       // If we are moving to a higher index, slide this page to the left
       final beginOutgoing = Offset.zero;
-      final endOutgoing = targetIsHigher ? const Offset(-1.0, 0.0) : const Offset(1.0, 0.0);
-      
+      final endOutgoing = targetIsHigher
+          ? const Offset(-1.0, 0.0)
+          : const Offset(1.0, 0.0);
+
       final outgoingTransition = secondaryAnimation.drive(
-        Tween(begin: beginOutgoing, end: endOutgoing).chain(CurveTween(curve: Curves.easeOutQuart))
+        Tween(
+          begin: beginOutgoing,
+          end: endOutgoing,
+        ).chain(CurveTween(curve: Curves.easeOutQuart)),
       );
 
       return SlideTransition(
         position: incomingTransition,
-        child: SlideTransition(
-          position: outgoingTransition,
-          child: child,
-        ),
+        child: SlideTransition(position: outgoingTransition, child: child),
       );
     },
-
   );
 }
 
@@ -71,7 +78,8 @@ class _SplashScreen extends StatefulWidget {
   State<_SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<_SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends State<_SplashScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
 
@@ -82,10 +90,10 @@ class _SplashScreenState extends State<_SplashScreen> with SingleTickerProviderS
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
-    _animation = Tween<double>(begin: 0.5, end: 1.0).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeInOut,
-    ));
+    _animation = Tween<double>(
+      begin: 0.5,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -118,6 +126,7 @@ class _SplashScreenState extends State<_SplashScreen> with SingleTickerProviderS
 
 GoRouter buildAppRouter(AuthProvider authProvider) {
   return GoRouter(
+    observers: [interviewRouteObserver],
     initialLocation: '/splash',
     refreshListenable: authProvider,
     redirect: (context, state) {
@@ -126,8 +135,9 @@ GoRouter buildAppRouter(AuthProvider authProvider) {
       }
 
       final isAuthenticated = authProvider.isAuthenticated;
-      final isAuthPage = state.matchedLocation == '/login' || 
-                         state.matchedLocation == '/register';
+      final isAuthPage =
+          state.matchedLocation == '/login' ||
+          state.matchedLocation == '/register';
 
       if (state.matchedLocation == '/splash') {
         return isAuthenticated ? '/dashboard' : '/login';
@@ -136,7 +146,7 @@ GoRouter buildAppRouter(AuthProvider authProvider) {
       if (!isAuthenticated && !isAuthPage) {
         return '/login';
       }
-      
+
       if (isAuthenticated && isAuthPage) {
         return '/dashboard';
       }
@@ -200,7 +210,7 @@ GoRouter buildAppRouter(AuthProvider authProvider) {
           final resumeId = state.uri.queryParameters['resumeId'];
           final websiteUrl = state.uri.queryParameters['websiteUrl'];
           final moduleType = state.uri.queryParameters['moduleType'];
-          
+
           return InterviewSessionScreen(
             interviewId: sessionId,
             resumeId: resumeId,
@@ -225,10 +235,7 @@ GoRouter buildAppRouter(AuthProvider authProvider) {
         builder: (context, state) {
           final sessionId = state.pathParameters['sessionId']!;
           final session = state.extra as SessionModel?;
-          return FeedbackReportScreen(
-            session: session,
-            sessionId: sessionId,
-          );
+          return FeedbackReportScreen(session: session, sessionId: sessionId);
         },
       ),
     ],

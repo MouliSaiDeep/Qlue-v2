@@ -1,12 +1,49 @@
+const diagnostics=require('../../lib/logger').safeConsole;
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, GetCommand, QueryCommand } = require("@aws-sdk/lib-dynamodb");
+const { getTranscriptBySession } = require('../../models/transcript');
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
 
 const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions'; // BE-BUG #11 FIX: was SESSIONS_TABLE_NAME
 const FEEDBACK_TABLE = process.env.FEEDBACK_TABLE || 'qlue-feedback';
-const TRANSCRIPTS_TABLE = process.env.TRANSCRIPTS_TABLE || 'qlue-transcripts';
+
+async function getCurrentFeedback(session) {
+    // The session owns the current attempt. Retained historical reports must
+    // not turn a pending retry back into a failure or replace its final result.
+    if (session.feedbackExpected === false || session.feedbackStatus === 'PENDING') return null;
+    const belongs = report => report && report.sessionId === session.sessionId
+        && (report.userId === undefined || report.userId === session.userId)
+        && (!session.feedbackAttemptId || report.attemptId === session.feedbackAttemptId);
+    const feedbackId = session.feedbackId || (session.feedbackAttemptId
+        ? `${session.sessionId}#${session.feedbackAttemptId}` : null);
+    if (feedbackId) {
+        const result = await require('../../lib/deadline').sendBounded(docClient, new GetCommand({
+            TableName: FEEDBACK_TABLE, Key: {feedbackId}, ConsistentRead: true
+        }));
+        return belongs(result.Item) ? result.Item : null;
+    }
+
+    // Genuine legacy sessions may lack both pointers. Read every query page,
+    // then select the latest owned report; the GSI has no chronological sort key.
+    const reports = [];
+    let key;
+    do {
+        const result = await require('../../lib/deadline').sendBounded(docClient, new QueryCommand({
+            TableName: FEEDBACK_TABLE, IndexName: 'GSI_SessionId',
+            KeyConditionExpression: 'sessionId = :sid',
+            ExpressionAttributeValues: {':sid':session.sessionId},
+            ...(key ? {ExclusiveStartKey:key} : {})
+        }));
+        reports.push(...(result.Items || []).filter(belongs));
+        key = result.LastEvaluatedKey;
+    } while (key);
+    const timestamp = report => Number(report.generatedAt) || Date.parse(report.generatedAt) || 0;
+    reports.sort((a,b) => timestamp(b)-timestamp(a)
+        || String(b.feedbackId).localeCompare(String(a.feedbackId)));
+    return reports[0] || null;
+}
 
 /**
  * AWS Lambda Handler: GET /dashboard/session/{sessionId}
@@ -32,9 +69,10 @@ exports.handler = async (event) => {
         // 1. Get Session
         const sessionCmd = new GetCommand({
             TableName: SESSIONS_TABLE,
-            Key: { sessionId }
+            Key: { sessionId },
+            ConsistentRead: true
         });
-        const sessionRes = await docClient.send(sessionCmd);
+        const sessionRes = await require('../../lib/deadline').sendBounded(docClient,sessionCmd);
         const session = sessionRes.Item;
 
         if (!session || session.userId !== userId) {
@@ -45,36 +83,15 @@ exports.handler = async (event) => {
         }
 
         // 2. Get Associated Feedback (if any)
-        const feedbackCmd = new QueryCommand({
-            TableName: FEEDBACK_TABLE,
-            IndexName: 'GSI_SessionId',
-            KeyConditionExpression: 'sessionId = :sid',
-            ExpressionAttributeValues: {
-                ':sid': sessionId
-            },
-            Limit: 1
-        });
-        const feedbackRes = await docClient.send(feedbackCmd);
-        const feedback = feedbackRes.Items?.[0] || null;
+        const feedback = await getCurrentFeedback(session);
 
         // 3. Get Transcript
-        const transcriptCmd = new QueryCommand({
-            TableName: TRANSCRIPTS_TABLE,
-            IndexName: 'GSI_SessionIdTurnIndex',
-            KeyConditionExpression: 'sessionId = :sid',
-            ExpressionAttributeValues: {
-                ':sid': sessionId
-            },
-            ScanIndexForward: true // Ascending by turnIndex
-        });
-        const transcriptRes = await docClient.send(transcriptCmd);
-        let transcript = transcriptRes.Items || [];
-        // Sort transcripts explicitly by turnIndex then timestamp
-        transcript.sort((a, b) => {
-            const turnDiff = (a.turnIndex || 0) - (b.turnIndex || 0);
-            if (turnDiff !== 0) return turnDiff;
-            return (a.timestamp || 0) - (b.timestamp || 0);
-        });
+        // I-08: delegate to the model, which paginates the GSI (a single page
+        // caps at 1MB, truncating long interviews) and orders with the shared
+        // comparator. The previous inline sort tie-broke by subtracting ISO
+        // strings — `(a.timestamp||0) - (b.timestamp||0)` is NaN for strings, so
+        // same-turnIndex USER/AI pairs could appear in either order in the report.
+        const transcript = await getTranscriptBySession(sessionId);
 
         return {
             statusCode: 200,
@@ -86,7 +103,7 @@ exports.handler = async (event) => {
         };
 
     } catch (error) {
-        console.error('Get Session Detail Error:', error);
+        diagnostics.error('Get Session Detail Error:', error);
         return {
             statusCode: 500,
             body: JSON.stringify({ error: 'SERVER_ERROR', message: 'Something went wrong. Please try again.' })

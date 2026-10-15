@@ -1,86 +1,99 @@
-name: Deploy Qlue Backend
+name: Verify Backend and Prepare Migration
 
+# Main pushes run checks only. No job in this workflow deploys or assumes an AWS role.
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'backend/**'
-      - '.github/workflows/deploy.yml'
+    branches: [main]
+    paths: ['backend/**', 'audit/*.cjs', '.github/workflows/deploy.yml']
+  pull_request:
+    paths: ['backend/**', 'audit/*.cjs', '.github/workflows/deploy.yml']
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Deploy target'
-        required: true
-        default: 'dev'
-        type: choice
-        options: [dev, prod]
 
 permissions:
-  id-token: write
   contents: read
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Native ARM64 avoids mistaking emulator startup timeouts for target behavior.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '24'
+          cache: npm
           cache-dependency-path: backend/package-lock.json
       - name: Install dependencies
         working-directory: backend
         run: npm ci
       - name: Run Jest
         working-directory: backend
-        run: npm run test -- --coverage --passWithNoTests
+        run: npm test -- --runInBand --coverage --collectCoverageFrom='src/**/*.js'
+      - name: Audit production dependencies
+        working-directory: backend
+        run: npm audit --omit=dev --audit-level=high
+      - name: Audit shipped Lambda layer
+        working-directory: backend/layers/dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - uses: aws-actions/setup-sam@v2
+      - name: Audit delivery layer
+        working-directory: backend/layers/delivery
+        run: npm audit --omit=dev --audit-level=high
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+      - name: Validate canonical SAM template
+        working-directory: backend
+        run: sam validate --lint --template-file template.yaml --region us-east-1
+      - name: Build actual arm64 deployment artifacts
+        working-directory: backend
+        run: sam build --use-container --no-cached
+      - name: Reject oversized or development-heavy Lambda packages
+        run: node audit/verify-lambda-size.cjs
+      - name: Verify packaged dependencies
+        run: node audit/verify-packaged.cjs
+      - name: Test with packaged production dependencies in Linux arm64
+        run: docker run --rm --platform linux/arm64 --entrypoint node -v "$PWD:/workspace" -w /workspace/backend public.ecr.aws/lambda/nodejs:24 node_modules/jest/bin/jest.js --runInBand --no-cache --resolver=/workspace/backend/tests/helpers/layerResolver.cjs
+      - name: Run Linux arm64 native parser
+        run: docker run --rm --platform linux/arm64 --entrypoint node -v "$PWD:/workspace:ro" -w /workspace public.ecr.aws/lambda/nodejs:24 audit/layer-smoke.cjs
+      - name: Verify packaged Linux arm64 delivery runtime and model
+        run: docker run --rm --platform linux/arm64 --entrypoint node -v "$PWD:/workspace:ro" -w /workspace public.ecr.aws/lambda/nodejs:24 audit/delivery-layer-smoke.cjs
 
-  # Build and deploy in ONE job: the previous split relied on
-  # upload-artifact, which silently excludes hidden directories like
-  # .aws-sam by default — the deploy job was downloading an empty artifact.
-  deploy-dev:
-    if: github.event_name == 'push' || inputs.environment == 'dev'
+  prepare-migration:
+    if: github.event_name == 'workflow_dispatch'
     needs: [test]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - uses: aws-actions/setup-sam@v2
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/setup-node@v5
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-deploy-role
-          # Must match samconfig.toml and where the SSM parameters live.
-          aws-region: us-east-1
-      - name: SAM Build
+          node-version: '24'
+      - run: npm ci
         working-directory: backend
-        run: sam build
-      - name: SAM Deploy (dev / default stack)
-        working-directory: backend
-        # samconfig.toml has [default] and [prod] environments; there is no
-        # [dev], so the default environment IS dev (stack qlue-dev).
-        run: sam deploy --no-confirm-changeset --no-fail-on-empty-changeset
-
-  # Prod deploys are MANUAL ONLY (Actions tab -> Run workflow -> prod).
-  # Note: the DynamoDB tables use fixed names, so dev and prod stacks
-  # cannot coexist in the same account/region — only run this if the
-  # prod stack is the one that owns the tables.
-  deploy-prod:
-    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'prod'
-    needs: [test]
-    runs-on: ubuntu-latest
-    environment:
-      name: production
-    steps:
-      - uses: actions/checkout@v5
       - uses: aws-actions/setup-sam@v2
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: docker/setup-qemu-action@v3
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-deploy-role
-          aws-region: us-east-1
-      - name: SAM Build
+          platforms: arm64
+      - name: Generate initial application migration with every schedule paused
+        run: node audit/prepare-paused-migration.cjs
+      - name: Validate paused migration
         working-directory: backend
-        run: sam build
-      - name: SAM Deploy to Prod
+        run: sam validate --lint --template-file template-migration.yaml --region us-east-1
+      - name: Build paused migration for review only
         working-directory: backend
-        run: sam deploy --config-env prod --no-confirm-changeset --no-fail-on-empty-changeset
+        run: sam build --use-container --no-cached --template-file template-migration.yaml
+      - name: Check Lambda extracted package size before upload
+        run: node audit/verify-lambda-size.cjs
+      - name: Save review artifacts; operator must adopt logs and index first
+        uses: actions/upload-artifact@v4
+        with:
+          name: paused-backend-review-${{ github.sha }}
+          include-hidden-files: true
+          path: |
+            backend/.aws-sam/build
+            backend/template-migration.yaml
+            audit/backend-rollout-runbook.md
+            audit/prepare-log-adoption.cjs
+          if-no-files-found: error

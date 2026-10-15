@@ -4,6 +4,10 @@ import 'package:frontend/context/auth_provider.dart';
 import 'package:frontend/context/appearance_provider.dart';
 import 'package:go_router/go_router.dart';
 import 'particle_sphere.dart';
+import 'interview_recovery_controls.dart';
+import 'interview_screen_awake.dart';
+import 'interview_transcript.dart';
+import '../../shared/services/screen_awake_service.dart';
 import '../../core/theme.dart';
 import '../../features/interview/providers/interview_provider.dart';
 import 'package:provider/provider.dart';
@@ -13,13 +17,17 @@ class InterviewSessionScreen extends StatefulWidget {
   final String? resumeId;
   final String? websiteUrl;
   final String? moduleType;
+  final String? analysisId;
+  final ScreenAwakeService? screenAwakeService;
 
   const InterviewSessionScreen({
-    super.key, 
+    super.key,
     this.interviewId,
     this.resumeId,
     this.websiteUrl,
     this.moduleType,
+    this.analysisId,
+    this.screenAwakeService,
   });
 
   @override
@@ -53,19 +61,7 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> {
   Timer? _statusTimer;
   int _messageIndex = 0;
 
-  List<String> get _loadingMessages {
-    switch (widget.moduleType) {
-      case 'RESUME':
-        return ["Analyzing your resume...", "Scanning key skills and experience...", "Preparing personalized questions..."];
-      case 'WEBSITE':
-        return ["Analyzing the study material...", "Extracting key concepts...", "Preparing tutor session..."];
-      case 'INTRO':
-        return ["Analyzing communication style...", "Preparing introduction assessment...", "Calibrating evaluation criteria..."];
-      case 'HR':
-      default:
-        return ["Analyzing behavioral patterns...", "Calibrating question difficulty...", "Preparing situational scenarios..."];
-    }
-  }
+  List<String> get _loadingMessages => const ['Preparing your interview…'];
 
   void _startStatusTimer() {
     _statusTimer?.cancel();
@@ -99,25 +95,37 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> {
     // Reset provider immediately to prevent redirect from old session state in the first build
     _provider.resetForNewSession();
 
-    // Init deferred to post-frame to ensure any async side-effects or further notifications 
+    // Init deferred to post-frame to ensure any async side-effects or further notifications
     // happen safely after the initial build.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
-      final type = widget.moduleType ?? (widget.resumeId != null ? 'RESUME' : (widget.websiteUrl != null ? 'WEBSITE' : 'HR'));
-      if (!(type == 'RESUME' || type == 'HR' || type == 'WEBSITE' || type == 'INTRO' || type == 'JD')) {
+      final type =
+          widget.moduleType ??
+          (widget.resumeId != null
+              ? 'RESUME'
+              : (widget.websiteUrl != null ? 'WEBSITE' : 'HR'));
+      if (!(type == 'RESUME' ||
+          type == 'HR' ||
+          type == 'WEBSITE' ||
+          type == 'INTRO' ||
+          type == 'JD')) {
         throw ArgumentError('Invalid moduleType');
       }
 
       // Fetch the auth provider to get the selected voice + mode. Premium mode
       // uses generative voices; cost-saver stays on the cheaper neural engine.
       final authProvider = context.read<AuthProvider>();
-      _provider.setVoice(authProvider.voiceId, voiceMode: authProvider.voiceMode);
+      _provider.setVoice(
+        authProvider.voiceId,
+        voiceMode: authProvider.voiceMode,
+      );
 
       _provider.initSession(
         type,
         resumeId: widget.resumeId,
         websiteUrl: widget.websiteUrl,
+        analysisId: widget.analysisId,
       );
     });
   }
@@ -131,15 +139,19 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> {
     });
   }
 
-
-
   void _showEndInterviewDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text("End Interview?", style: TextStyle(color: Colors.white)),
-        content: const Text("Are you sure you want to end this session?", style: TextStyle(color: Colors.white70)),
+        title: const Text(
+          "End Interview?",
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          "Are you sure you want to end this session?",
+          style: TextStyle(color: Colors.white70),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -150,7 +162,10 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> {
               Navigator.pop(context);
               _handleEnd(context.read<InterviewProvider>());
             },
-            child: const Text("END SESSION", style: TextStyle(color: Colors.redAccent)),
+            child: const Text(
+              "END SESSION",
+              style: TextStyle(color: Colors.redAccent),
+            ),
           ),
         ],
       ),
@@ -167,7 +182,29 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppThemeColors.dark;
-    final provider = context.watch<InterviewProvider>();
+    // Recognition hypotheses update only the transcript viewport. Keeping them
+    // out of this subscription avoids rebuilding the animation and controls.
+    context.select<InterviewProvider, Object>(
+      (p) => (
+        p.moduleType,
+        p.isConnecting,
+        p.currentPhase,
+        p.isSessionEnded,
+        p.feedbackExpected,
+        p.isStreamingText,
+        p.subtitleText,
+        p.finalQuestionText,
+        p.questionText,
+        p.isListening,
+        p.silenceStrikes,
+        p.replayQuestionAvailable,
+        p.canReplayQuestion,
+        p.isFinalizingTranscript,
+        p.errorMessage,
+        p.recordingNotice,
+      ),
+    );
+    final provider = context.read<InterviewProvider>();
     final isTutor = provider.moduleType == 'WEBSITE';
     final isConnecting = provider.isConnecting;
     final isAiSpeaking = provider.currentPhase == InterviewPhase.speaking;
@@ -178,7 +215,16 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> {
       _hasNavigated = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          if (isTutor) {
+          if ((provider.terminationReason == 'RECOGNITION_RECOVERY_LIMIT' ||
+                  provider.feedbackExpected == false) &&
+              provider.errorMessage != null) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(provider.errorMessage!)));
+          }
+          if (provider.feedbackExpected == false) {
+            context.go('/history');
+          } else if (isTutor) {
             context.go('/dashboard');
           } else {
             context.pushReplacement('/feedback/${provider.sessionId}');
@@ -214,7 +260,11 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> {
       } else if (isAiSpeaking) {
         statusText = "Qlue is speaking...";
       } else if (isListening) {
-        statusText = provider.silenceStrikes > 0 ? "Waiting for your response..." : "Listening...";
+        statusText = !provider.isListening
+            ? 'Getting microphone ready…'
+            : provider.silenceStrikes > 0
+            ? "Waiting for your response..."
+            : "Listening...";
       }
       if (statusText.isNotEmpty) {
         statusWidget = Text(
@@ -237,186 +287,235 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> {
         aiText = provider.subtitleText;
       } else if (provider.finalQuestionText.isNotEmpty) {
         aiText = provider.finalQuestionText;
-      } else if (provider.questionText.isNotEmpty && provider.questionText != "...") {
+      } else if (provider.questionText.isNotEmpty &&
+          provider.questionText != "...") {
         aiText = provider.questionText;
       }
     }
 
-    // Determine user text to show at bottom
-    String userText = "";
-    if (provider.isListening && provider.partialTranscript.isNotEmpty) {
-      userText = provider.partialTranscript;
-    } else if (provider.finalTranscript.isNotEmpty) {
-      userText = provider.finalTranscript;
-    }
-
     // The selected module's accent color drives the bubble while the AI speaks;
     // listening/idle fall back to a soft off-white (handled in ParticleSphere).
-    final moduleAccent =
-        _moduleAccentColor(t, provider.moduleType ?? widget.moduleType);
+    final moduleAccent = _moduleAccentColor(
+      t,
+      provider.moduleType ?? widget.moduleType,
+    );
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        _showEndInterviewDialog(context);
-      },
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: Stack(
-          children: [
-            // Safe area content
-            SafeArea(
-              child: Column(
-                children: [
-                  // TOP BAR
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return InterviewScreenAwake(
+      provider: provider,
+      service: widget.screenAwakeService,
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) {
+          if (didPop) return;
+          _showEndInterviewDialog(context);
+        },
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: Stack(
+            children: [
+              // Safe area content
+              SafeArea(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Keep v1.0.8's centered composition on ordinary phones.
+                    // Short screens and large text scroll so the current
+                    // recovery controls and transcript remain accessible.
+                    final compact =
+                        constraints.maxHeight < 780 ||
+                        MediaQuery.textScalerOf(context).scale(1) > 1.3 ||
+                        provider.errorMessage != null ||
+                        provider.recordingNotice != null ||
+                        isConnecting;
+                    final sphere = SizedBox(
+                      key: const Key('interview-sphere-slot'),
+                      height: compact
+                          ? (constraints.maxHeight *
+                                    0.25 /
+                                    MediaQuery.textScalerOf(context).scale(1))
+                                .clamp(72.0, 240.0)
+                          : 320,
+                      child: RepaintBoundary(
+                        child: ParticleSphere(
+                          moduleColor: moduleAccent,
+                          isSpeaking: isAiSpeaking,
+                          isListening: isListening,
+                          animate: !context
+                              .read<AppearanceProvider>()
+                              .reduceMotion,
+                        ),
+                      ),
+                    );
+                    final content = Column(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: t.emeraldPrimary.withValues(alpha: 0.3),
-                              width: 1,
-                            ),
+                        // TOP BAR
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 16,
                           ),
-                          child: Text(
-                            "INTERVIEW MODE",
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.w900,
-                              color: t.emeraldPrimary.withValues(alpha: 0.6),
-                              letterSpacing: 4,
-                            ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Flexible(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.5),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: t.emeraldPrimary.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    "INTERVIEW MODE",
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontFamily: 'monospace',
+                                      fontWeight: FontWeight.w900,
+                                      color: t.emeraldPrimary.withValues(
+                                        alpha: 0.6,
+                                      ),
+                                      letterSpacing: 4,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              GestureDetector(
+                                onTap: () => _showEndInterviewDialog(context),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: Colors.redAccent.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    "END",
+                                    style: TextStyle(
+                                      color: Colors.redAccent,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w900,
+                                      fontFamily: 'monospace',
+                                      letterSpacing: 2,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        GestureDetector(
-                          onTap: () => _showEndInterviewDialog(context),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: Colors.redAccent.withValues(alpha: 0.3),
-                                width: 1,
-                              ),
+
+                        // AI QUESTION TEXT (TOP) - Plain white text like initial version
+                        if (aiText.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 12,
                             ),
-                            child: Text(
-                              "END",
-                              style: TextStyle(
-                                color: Colors.redAccent,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w900,
-                                fontFamily: 'monospace',
-                                letterSpacing: 2,
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxHeight:
+                                    (MediaQuery.sizeOf(context).height * 0.23)
+                                        .clamp(96.0, 220.0),
+                              ),
+                              child: SingleChildScrollView(
+                                child: Text(
+                                  aiText,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontFamily: 'monospace',
+                                    fontWeight: FontWeight.w600,
+                                    color: isTutor
+                                        ? Colors.tealAccent
+                                        : Colors.white.withValues(alpha: 0.9),
+                                    height: 1.4,
+                                    letterSpacing: -0.5,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
                               ),
                             ),
                           ),
+
+                        if (compact && !isConnecting) const SizedBox(height: 8),
+                        if (isConnecting)
+                          const Spacer()
+                        else if (compact)
+                          sphere
+                        else
+                          Expanded(child: Center(child: sphere)),
+                        if (compact && !isConnecting) const SizedBox(height: 8),
+
+                        // USER TRANSCRIPTION (BOTTOM)
+                        const InterviewTranscript(),
+
+                        // STATUS TEXT (BOTTOM)
+                        InterviewRecoveryControls(provider: provider),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 24, top: 8),
+                          child: statusWidget,
                         ),
+
+                        // SILENCE STRIKES INDICATOR
+                        if (provider.silenceStrikes > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: List.generate(3, (index) {
+                                return Container(
+                                  width: 6,
+                                  height: 6,
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: index < provider.silenceStrikes
+                                        ? Colors.redAccent.withValues(
+                                            alpha: 0.8,
+                                          )
+                                        : Colors.white.withValues(alpha: 0.1),
+                                  ),
+                                );
+                              }),
+                            ),
+                          ),
                       ],
-                    ),
-                  ),
- 
-                  // AI QUESTION TEXT (TOP) - Plain white text like initial version
-                  if (aiText.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 180),
-                        child: SingleChildScrollView(
-                          child: Text(
-                            aiText,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.w600,
-                              color: isTutor ? Colors.tealAccent : Colors.white.withValues(alpha: 0.9),
-                              height: 1.4,
-                              letterSpacing: -0.5,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                    ),
- 
-                  // SPACER - pushes content to center/bottom
-                  const Spacer(),
- 
-                  // CENTER SPHERE — particle bubble reacts to speak/listen state
-                  SizedBox(
-                    height: 320,
-                    child: ParticleSphere(
-                      moduleColor: moduleAccent,
-                      isSpeaking: isAiSpeaking,
-                      isListening: isListening,
-                      animate: !context.read<AppearanceProvider>().reduceMotion,
-                    ),
-                  ),
- 
-                  const Spacer(),
- 
-                  // USER TRANSCRIPTION (BOTTOM)
-                  if (userText.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 100),
-                        child: SingleChildScrollView(
-                          child: Text(
-                            userText,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.w500,
-                              color: Colors.orangeAccent.withValues(alpha: 0.8),
-                              height: 1.4,
-                              letterSpacing: -0.3,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                    ),
- 
-                  // STATUS TEXT (BOTTOM)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 24, top: 8),
-                    child: statusWidget,
-                  ),
- 
-                  // SILENCE STRIKES INDICATOR
-                  if (provider.silenceStrikes > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(3, (index) {
-                          return Container(
-                            width: 6,
-                            height: 6,
-                            margin: const EdgeInsets.symmetric(horizontal: 3),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: index < provider.silenceStrikes
-                                  ? Colors.redAccent.withValues(alpha: 0.8)
-                                  : Colors.white.withValues(alpha: 0.1),
-                            ),
-                          );
-                        }),
-                      ),
-                    ),
-                ],
+                    );
+                    if (isConnecting) {
+                      // Center the starting bubble in the safe viewport,
+                      // independently of the header and reserved transcript.
+                      return Stack(
+                        children: [
+                          Center(child: sphere),
+                          content,
+                        ],
+                      );
+                    }
+                    return compact
+                        ? SingleChildScrollView(child: content)
+                        : content;
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -12,6 +12,7 @@ describe('triggerFeedbackGeneration handler', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         lambdaMock.reset();
+        ddb.docClient.send.mockImplementation(async command => ({Item: command.input.Key.sessionId ? {sessionId: command.input.Key.sessionId, userId: command.input.Key.sessionId === '123' ? '456' : 'user-123', moduleType: 'HR', discarded: command.input.Key.sessionId === '123'} : undefined}));
         process.env.ANALYZE_TRANSCRIPT_LAMBDA = ANALYZE_LAMBDA;
     });
 
@@ -30,7 +31,7 @@ describe('triggerFeedbackGeneration handler', () => {
 
         const mockTranscripts = [
             { speaker: 'ai', text: 'Hello', turnIndex: 0, timestamp: '2026-05-12T10:00:00Z' },
-            { speaker: 'user', text: 'Hi', turnIndex: 1, timestamp: '2026-05-12T10:00:05Z' }
+            { speaker: 'user', text: 'I build Node APIs and test them carefully.', turnIndex: 1, timestamp: '2026-05-12T10:00:05Z' }
         ];
 
         ddb.query.mockResolvedValue({ success: true, data: mockTranscripts });
@@ -54,7 +55,7 @@ describe('triggerFeedbackGeneration handler', () => {
         const payload = JSON.parse(Buffer.from(lambdaCall.Payload).toString());
         expect(payload.sessionId).toBe(sessionId);
         expect(payload.transcript).toContain('AI: Hello');
-        expect(payload.transcript).toContain('USER: Hi');
+        expect(payload.transcript).toContain('USER: I build Node APIs and test them carefully.');
         expect(payload.accumulatedScores).toEqual({ score: 100 });
         expect(payload.metadata.turnCount).toBe(2);
     });

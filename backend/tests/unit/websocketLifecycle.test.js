@@ -14,6 +14,8 @@ describe('WebSocket Lifecycle', () => {
     const connectionId = 'conn-123';
     const userId = 'user-123';
     const token = 'valid-token';
+    // R-10: $connect binds the connection ttl to the verified token's exp.
+    const tokenExp = Math.floor(Date.now() / 1000) + 3600;
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -26,14 +28,15 @@ describe('WebSocket Lifecycle', () => {
                 queryStringParameters: { token }
             };
 
-            verifyIdToken.mockResolvedValue({ uid: userId });
+            verifyIdToken.mockResolvedValue({ uid: userId, email_verified: true, exp: tokenExp });
             getActiveConnectionByUserId.mockResolvedValue(null);
             saveConnection.mockResolvedValue({});
 
             const result = await connect.handler(event);
 
             expect(result.statusCode).toBe(200);
-            expect(saveConnection).toHaveBeenCalledWith(connectionId, userId);
+            // R-10: the token's exp is forwarded so the row ttl follows the credential.
+            expect(saveConnection).toHaveBeenCalledWith(connectionId, userId, null, { authExpiresAt: tokenExp, emailVerified: true });
         });
 
         it('should return 401 if token is missing', async () => {
@@ -52,7 +55,7 @@ describe('WebSocket Lifecycle', () => {
                 queryStringParameters: { token }
             };
 
-            verifyIdToken.mockResolvedValue({ uid: userId });
+            verifyIdToken.mockResolvedValue({ uid: userId, email_verified: true, exp: tokenExp });
             getActiveConnectionByUserId.mockResolvedValue({ connectionId: 'old-conn', userId });
             postToConnection.mockResolvedValue(true);
             deactivateConnection.mockResolvedValue({});

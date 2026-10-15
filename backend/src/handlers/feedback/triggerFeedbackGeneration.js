@@ -1,3 +1,4 @@
+const diagnostics=require('../../lib/logger').safeConsole;
 /**
  * SNS Trigger handler to start the feedback generation pipeline.
  */
@@ -9,35 +10,58 @@ const TRANSCRIPT_TABLE = process.env.TRANSCRIPTS_TABLE || 'qlue-transcripts';
 const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions';
 
 exports.handler = async (event) => {
+  // A malformed or incomplete notification is non-retryable and is skipped, but
+  // a transient failure (failed transcript READ, failed downstream invoke) is
+  // remembered and rethrown after the loop so SNS/Lambda retries and, once
+  // exhausted, the DLQ captures it — feedback is never silently lost. (Finding 9.)
+  let retryableError = null;
+
   for (const record of event.Records) {
+    let snsMessage;
     try {
-      const snsMessage = JSON.parse(record.Sns.Message);
-      const { sessionId, userId, moduleType, contextRef } = snsMessage;
+      snsMessage = JSON.parse(record.Sns.Message);
+    } catch (parseErr) {
+      diagnostics.error('Skipping unparseable SNS record (non-retryable):', parseErr.name);
+      continue;
+    }
 
-      if (!sessionId || !userId || !moduleType) {
-        console.error('Missing required fields in SNS message:', snsMessage);
-        continue;
-      }
+    const { sessionId, userId, moduleType, contextRef } = snsMessage;
+    if (!sessionId || !userId || !moduleType) {
+      diagnostics.error('Missing required fields in SNS message; skipping (non-retryable)');
+      continue;
+    }
 
+    try {
+      const live = await require('../../lib/feedbackAttempt').currentAttempt(snsMessage);
+      if (!live) continue;
       // 1. Query all Transcript records for the session
-      console.info(`Fetching transcripts for session: ${sessionId}`);
-      const transcriptResult = await ddb.query(
-        TRANSCRIPT_TABLE,
-        'sessionId = :sid',
-        {
-          values: { ':sid': sessionId },
-          index: 'GSI_SessionIdTurnIndex',
-          scanIndexForward: true // Sort by turnIndex
-        }
-      );
-
-      if (!transcriptResult.success || !transcriptResult.data || transcriptResult.data.length === 0) {
-        console.warn(`No transcripts found for session ${sessionId}. Skipping analysis.`);
+      diagnostics.info(`Fetching transcripts for session: ${sessionId}`);
+      const transcriptResult={success:true,data:[]};let key;
+      do {
+        const page=await ddb.query(TRANSCRIPT_TABLE,'sessionId = :sid',{values:{':sid':sessionId},index:'GSI_SessionIdTurnIndex',scanIndexForward:true,exclusiveStartKey:key});
+        if(!page.success) throw new Error('Transcript query failed');
+        transcriptResult.data.push(...(page.data||[]));key=page.lastEvaluatedKey;
+      }while(key);
+      transcriptResult.data.sort(require('../../models/transcript').compareTranscripts);
+      // An index may lag the atomic turn commit. Retry instead of permanently
+      // acknowledging an incomplete conversation.
+      const selected=require('../../lib/feedbackTranscript').select(live,transcriptResult.data);
+      // A FAILED read is NOT "no transcripts" — swallowing it as empty loses the
+      // feedback forever. Throw so the pipeline retries and, after exhaustion,
+      // the DLQ surfaces it. A genuinely empty (but successful) query is a
+      // completed-but-answerless session and is skipped without error.
+      if (!transcriptResult.success) {
+        throw new Error(`Transcript query failed for session ${sessionId}: ${transcriptResult.error?.message || 'unknown error'}`);
+      }
+      if (!transcriptResult.data || transcriptResult.data.length === 0) {
+        diagnostics.warn(`No transcripts found for session ${sessionId}. Nothing to analyze; skipping.`);
+        if (!live.discarded) throw new Error('Transcript index has not caught up');
         continue;
       }
 
       // 2. Build complete transcript text
-      const fullTranscript = transcriptResult.data
+      if(!selected.answers.length) continue;
+      const fullTranscript = selected.rows
         .map(t => `${(t.speaker || 'UNKNOWN').toUpperCase()}: ${t.text}`)
         .join('\n\n');
 
@@ -51,17 +75,22 @@ exports.handler = async (event) => {
           accumulatedScores = sessionResult.data.accumulatedScores;
         }
       } catch (scoreErr) {
-        console.warn(`Could not fetch accumulated scores for ${sessionId}:`, scoreErr.message);
+        diagnostics.warn(`Could not fetch accumulated scores for ${sessionId}:`, scoreErr.name);
       }
 
       // 3. Invoke analyzeTranscript asynchronously
       const payload = {
         sessionId,
+        attemptId: snsMessage.attemptId,
         userId,
         moduleType,
         transcript: fullTranscript,
         accumulatedScores,
         contextRef,
+        assessmentContext:require('../../lib/feedbackTranscript').assessmentContext(live),
+        acceptedAnswers:selected.answers,
+        transcriptAdmission:selected.legacy?'LEGACY_FILTERED':'ACCEPTED_IDS',
+        ...(snsMessage.retryReportId?{retryReportId:snsMessage.retryReportId}:{}),
         metadata: {
           turnCount: transcriptResult.data.length,
           startTime: transcriptResult.data[0].timestamp,
@@ -69,20 +98,26 @@ exports.handler = async (event) => {
         }
       };
 
-      console.info(`Triggering analysis for session ${sessionId}`);
+      diagnostics.info(`Triggering analysis for session ${sessionId}`);
       const command = new InvokeCommand({
         FunctionName: process.env.ANALYZE_TRANSCRIPT_LAMBDA, // read lazily for configurability/testability
         InvocationType: 'Event', // Async
         Payload: Buffer.from(JSON.stringify(payload))
       });
 
-      await lambdaClient.send(command);
-      console.info(`Feedback pipeline started for session ${sessionId}`);
+      await require('../../lib/deadline').sendBounded(lambdaClient,command);
+      diagnostics.info(`Feedback pipeline started for session ${sessionId}`);
 
     } catch (error) {
-      console.error('Error processing SNS record:', error);
-      // Don't throw to avoid SNS retries for a single bad record in a batch
+      // Transient/downstream failure: remember it and keep processing the rest
+      // of the batch, then rethrow after the loop so the delivery is retried.
+      diagnostics.error(`Retryable failure in feedback trigger for session ${sessionId}:`, error.name);
+      retryableError = error;
     }
+  }
+
+  if (retryableError) {
+    throw retryableError;
   }
 
   return { success: true };

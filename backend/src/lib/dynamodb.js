@@ -1,3 +1,4 @@
+const diagnostics=require('./logger').safeConsole;
 // Standardizing on AWS SDK v3
 /**
  * Application wrappers for AWS DynamoDB Document Client.
@@ -54,7 +55,7 @@ async function withRetry(operation, maxRetries = 3, baseDelayMs = 200) {
         throw error;
       }
       const delay = baseDelayMs * Math.pow(2, attempt);
-      console.debug(`DynamoDB transient error (${error.name}). Retrying in ${delay}ms...`);
+      diagnostics.debug(`DynamoDB transient error (${error.name}). Retrying in ${delay}ms...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
@@ -65,33 +66,65 @@ async function withRetry(operation, maxRetries = 3, baseDelayMs = 200) {
  * module.exports.docClient.send directly.
  */
 function send(command) {
-  return module.exports.docClient.send(command);
+  return require('./deadline').sendBounded(module.exports.docClient,command,{finish:true});
 }
 
-async function get(tableName, key) {
-  console.debug(`DDB GET | ${tableName} | Key: ${JSON.stringify(key)}`);
+async function fencedSend(command, userId, parentChecks = []) {
+  if (!userId) throw new Error('Writer identity is required');
+  const input = command.input;
+  const operations = input.TransactItems || [{ [command.constructor.name.replace('Command','')]: { ...input } }];
+  for (const operation of operations) {
+    for (const [name,value] of Object.entries(operation)) { operation[name] = {...value}; delete operation[name].ReturnValues; }
+  }
   try {
-    const response = await withRetry(() => send(new GetCommand({ TableName: tableName, Key: key })));
+    await send(new TransactWriteCommand({ TransactItems: [require('./deletionJob').deletionFence(userId), ...parentChecks, ...operations] }));
+  } catch (error) {
+    if (error.name === 'TransactionCanceledException' && error.CancellationReasons?.some(reason => reason.Code === 'ConditionalCheckFailed')) {
+      error.name = 'ConditionalCheckFailedException';
+    }
+    throw error;
+  }
+  if (input.ReturnValues && input.Key) {
+    const result = await send(new GetCommand({TableName:input.TableName,Key:input.Key,ConsistentRead:true}));
+    return { Attributes: result.Item };
+  }
+  return {};
+}
+
+async function get(tableName, key, options={}) {
+  // Log attribute NAMES only — values are user data / ids (finding 6).
+  diagnostics.debug(`DDB GET | ${tableName} | Keys: ${Object.keys(key || {}).join(',')}`);
+  try {
+    const response = await withRetry(() => send(new GetCommand({ TableName: tableName, Key: key,...(options.consistentRead?{ConsistentRead:true}:{}) })));
     return { success: true, data: response.Item };
   } catch (error) {
-    console.error(`DDB GET Error | ${tableName}`, error);
+    diagnostics.error(`DDB GET Error | ${tableName}`, error);
     return { success: false, error };
   }
 }
 
-async function put(tableName, item) {
-  console.debug(`DDB PUT | ${tableName} | PKs: ${JSON.stringify(item)}`);
+async function put(tableName, item, options = {}) {
+  // Log attribute NAMES only — the item holds user data (finding 6).
+  diagnostics.debug(`DDB PUT | ${tableName} | Attrs: ${Object.keys(item || {}).join(',')}`);
   try {
-    await withRetry(() => send(new PutCommand({ TableName: tableName, Item: item })));
+    const params = { TableName: tableName, Item: item };
+    // Optional conditional write (e.g. attribute_not_exists(pk)) so a caller can
+    // make an at-least-once retry idempotent. A ConditionalCheckFailedException
+    // is surfaced as { success:false, error } — NOT retried by withRetry — so
+    // the caller can treat "already written" as an idempotent success.
+    if (options.condition) params.ConditionExpression = options.condition;
+    if (options.names) params.ExpressionAttributeNames = options.names;
+    if (options.values) params.ExpressionAttributeValues = options.values;
+    await withRetry(() => item.userId ? fencedSend(new PutCommand(params), item.userId, options.parentChecks || []) : send(new PutCommand(params)));
     return { success: true };
   } catch (error) {
-    console.error(`DDB PUT Error | ${tableName}`, error);
+    diagnostics.error(`DDB PUT Error | ${tableName}`, error);
     return { success: false, error };
   }
 }
 
-async function update(tableName, key, updateExpression, expressionAttributeValues, expressionAttributeNames = null) {
-  console.debug(`DDB UPDATE | ${tableName}`);
+async function update(tableName, key, updateExpression, expressionAttributeValues, expressionAttributeNames = null, options = {}) {
+  diagnostics.debug(`DDB UPDATE | ${tableName}`);
   try {
     const params = {
       TableName: tableName,
@@ -103,27 +136,35 @@ async function update(tableName, key, updateExpression, expressionAttributeValue
     if (expressionAttributeNames) {
       params.ExpressionAttributeNames = expressionAttributeNames;
     }
-    const response = await withRetry(() => send(new UpdateCommand(params)));
+    // Optional ConditionExpression (e.g. only clear an fcmToken if it still
+    // equals the stale one) — a ConditionalCheckFailedException is NOT
+    // retryable, so it surfaces as { success:false, error } for the caller.
+    if (options.condition) {
+      params.ConditionExpression = options.condition;
+    }
+    if (key.userId && !options.allowDeletion) params.ConditionExpression = `attribute_exists(userId)${params.ConditionExpression ? ' AND (' + params.ConditionExpression + ')' : ''}`;
+    const uid = options.userId || key.userId;
+    const response = await withRetry(() => uid && !options.allowDeletion ? fencedSend(new UpdateCommand(params), uid, options.parentChecks || []) : send(new UpdateCommand(params)));
     return { success: true, data: response.Attributes };
   } catch (error) {
-    console.error(`DDB UPDATE Error | ${tableName}`, error);
+    diagnostics.error(`DDB UPDATE Error | ${tableName}`, error);
     return { success: false, error };
   }
 }
 
 async function remove(tableName, key) {
-  console.debug(`DDB DELETE | ${tableName}`);
+  diagnostics.debug(`DDB DELETE | ${tableName}`);
   try {
     await withRetry(() => send(new DeleteCommand({ TableName: tableName, Key: key })));
     return { success: true };
   } catch (error) {
-    console.error(`DDB DELETE Error | ${tableName}`, error);
+    diagnostics.error(`DDB DELETE Error | ${tableName}`, error);
     return { success: false, error };
   }
 }
 
 async function query(tableName, keyCondition, options = {}) {
-  console.debug(`DDB QUERY | ${tableName}`);
+  diagnostics.debug(`DDB QUERY | ${tableName}`);
   try {
     const params = {
       TableName: tableName,
@@ -133,18 +174,20 @@ async function query(tableName, keyCondition, options = {}) {
       ...(options.index && { IndexName: options.index }),
       ...(options.filter && { FilterExpression: options.filter }),
       ...(options.limit && { Limit: options.limit }),
+      ...(options.projection && { ProjectionExpression: options.projection }),
+      ...(options.exclusiveStartKey && { ExclusiveStartKey: options.exclusiveStartKey }),
       ...(options.scanIndexForward !== undefined && { ScanIndexForward: options.scanIndexForward })
     };
     const response = await withRetry(() => send(new QueryCommand(params)));
     return { success: true, data: response.Items, lastEvaluatedKey: response.LastEvaluatedKey };
   } catch (error) {
-    console.error(`DDB QUERY Error | ${tableName}`, error);
+    diagnostics.error(`DDB QUERY Error | ${tableName}`, error);
     return { success: false, error };
   }
 }
 
 async function scan(tableName, filterExpression = null, values = null, names = null) {
-  console.debug(`DDB SCAN | ${tableName}`);
+  diagnostics.debug(`DDB SCAN | ${tableName}`);
   try {
     const params = { TableName: tableName };
     if (filterExpression) params.FilterExpression = filterExpression;
@@ -153,13 +196,13 @@ async function scan(tableName, filterExpression = null, values = null, names = n
     const response = await withRetry(() => send(new ScanCommand(params)));
     return { success: true, data: response.Items };
   } catch (error) {
-    console.error(`DDB SCAN Error | ${tableName}`, error);
+    diagnostics.error(`DDB SCAN Error | ${tableName}`, error);
     return { success: false, error };
   }
 }
 
 async function batchGet(tableName, keys) {
-  console.debug(`DDB BATCH-GET | ${tableName}`);
+  diagnostics.debug(`DDB BATCH-GET | ${tableName}`);
   // Only handles up to 100 per AWS limits
   try {
     const params = {
@@ -170,13 +213,13 @@ async function batchGet(tableName, keys) {
     const response = await withRetry(() => send(new BatchGetCommand(params)));
     return { success: true, data: response.Responses[tableName] };
   } catch (error) {
-    console.error(`DDB BATCH-GET Error | ${tableName}`, error);
+    diagnostics.error(`DDB BATCH-GET Error | ${tableName}`, error);
     return { success: false, error };
   }
 }
 
 async function batchWrite(tableName, putItems = [], deleteKeys = []) {
-  console.debug(`DDB BATCH-WRITE | ${tableName}`);
+  diagnostics.debug(`DDB BATCH-WRITE | ${tableName}`);
   // Handles up to 25 items combined
   try {
     const requests = [];
@@ -189,24 +232,25 @@ async function batchWrite(tableName, putItems = [], deleteKeys = []) {
     const response = await withRetry(() => send(command));
     return { success: true, unprocessedItems: response.UnprocessedItems };
   } catch (error) {
-    console.error(`DDB BATCH-WRITE Error | ${tableName}`, error);
+    diagnostics.error(`DDB BATCH-WRITE Error | ${tableName}`, error);
     return { success: false, error };
   }
 }
 
 async function transactWrite(items) {
-  console.debug(`DDB TRANSACT-WRITE`);
+  diagnostics.debug(`DDB TRANSACT-WRITE`);
   try {
     await withRetry(() => send(new TransactWriteCommand({ TransactItems: items })));
     return { success: true };
   } catch (error) {
-    console.error(`DDB TRANSACT-WRITE Error`, error);
+    diagnostics.error(`DDB TRANSACT-WRITE Error`, error);
     return { success: false, error };
   }
 }
 
 module.exports = {
   docClient,
+  fencedSend,
   withRetry,
   get,
   put,

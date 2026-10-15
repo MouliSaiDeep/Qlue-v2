@@ -1,22 +1,73 @@
-name: Release Android APK
+name: Verify and Release Android APK
 
 # Cut a release by pushing a version tag, for example:
 #   git tag v1.0.0 && git push origin v1.0.0
-# This builds the release APK and publishes it to GitHub Releases as Qlue.apk.
+# Tags verify, build, and publish a signed APK.
 # Everything (release tag, name, notes) is derived from the pushed tag.
 on:
   push:
     tags:
       - 'v*'
 
-# Lets softprops/action-gh-release create the release and upload the asset
-# using the built-in GITHUB_TOKEN. No external secrets are needed to publish.
+# Publish releases only after verification succeeds.
+
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-and-release:
+  # Gate: a tag must pass frontend analyze/tests AND backend tests + dependency
+  # audit before publishing an APK (users
+  # obtain public updates from GitHub Releases), so a red build must never ship.
+  verify:
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # ---- Frontend: static analysis + widget/unit tests ----
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.2
+          channel: stable
+          cache: true
+      - name: Flutter dependencies
+        working-directory: frontend
+        run: flutter pub get
+      - name: Flutter analyze
+        working-directory: frontend
+        run: flutter analyze
+      - name: Flutter test
+        working-directory: frontend
+        run: flutter test
+
+      # ---- Backend: unit/integration tests + dependency audit ----
+      # The APK talks to this backend; align the Node major with the Lambda
+      # runtime (nodejs24.x) so the gate exercises the shipped engine.
+      - name: Set up Node 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - name: Backend install
+        working-directory: backend
+        run: npm ci
+      - name: Backend tests
+        working-directory: backend
+        run: npm test -- --runInBand
+      - name: Backend prod dependency audit (fail on high/critical)
+        working-directory: backend
+        run: npm audit --omit=dev --audit-level=high
+      - name: Shipped Lambda layer audit (fail on high/critical)
+        working-directory: backend/layers/dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  build-release-apk:
+    needs: [verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     defaults:
       run:
         # The Flutter project lives in frontend/, not the repo root, so every
@@ -115,6 +166,7 @@ jobs:
           VERSION_CODE=$(( ${MAJ:-0} * 10000 + ${MIN:-0} * 100 + ${PAT:-0} ))
           flutter build apk --release \
             --dart-define-from-file=env.json \
+            --dart-define=SPEECH_REVIEW=false \
             --build-name="$VERSION" \
             --build-number="$VERSION_CODE"
           echo "Built app version $VERSION (versionCode $VERSION_CODE)"
@@ -122,12 +174,43 @@ jobs:
       - name: Rename APK to Qlue.apk
         run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Qlue.apk
 
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        # Triggered by a tag push, so the release is created for that tag
-        # (github.ref_name, e.g. v1.0.0) with auto-generated notes. GITHUB_TOKEN
-        # is used automatically. Path is relative to the repo root.
+      - name: Verify production speech reachability and universal packaging
+        run: |
+          node ../audit/verify-release-reachability.cjs
+          python3 ../audit/verify-release-apk.py build/app/outputs/flutter-apk/Qlue.apk
+
+      - name: Smoke-check built APK
+        # Integrity gate before saving the review artifact: the artifact must
+        # exist, be a non-trivial valid ZIP (APKs are ZIPs), and contain an
+        # AndroidManifest. Catches a truncated/corrupt build before users get it.
+        run: |
+          APK=build/app/outputs/flutter-apk/Qlue.apk
+          test -f "$APK" || { echo "::error::APK missing at $APK"; exit 1; }
+          SIZE=$(stat -c%s "$APK")
+          echo "APK size: $SIZE bytes"
+          test "$SIZE" -gt 5000000 || { echo "::error::APK suspiciously small ($SIZE bytes)"; exit 1; }
+          unzip -t "$APK" >/dev/null || { echo "::error::APK is not a valid archive"; exit 1; }
+          unzip -l "$APK" | grep -q "AndroidManifest.xml" || { echo "::error::APK missing AndroidManifest.xml"; exit 1; }
+          echo "APK smoke check passed"
+
+      - name: Save signed release APK
+        uses: actions/upload-artifact@v4
         with:
-          files: frontend/build/app/outputs/flutter-apk/Qlue.apk
-          generate_release_notes: true
-          fail_on_unmatched_files: true
+          name: Qlue-${{ github.ref_name }}
+          path: frontend/build/app/outputs/flutter-apk/Qlue.apk
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          cd ..
+          if gh release view "$TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; retaining its published APK."
+            exit 0
+          fi
+          gh release create "$TAG" frontend/build/app/outputs/flutter-apk/Qlue.apk \
+            --repo "$REPOSITORY" --verify-tag --title "Qlue ${TAG#v}" \
+            --notes-file "releases/${TAG#v}.md" --latest

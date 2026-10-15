@@ -33,7 +33,7 @@ describe('dynamodb lib', () => {
         docClient.send.mockResolvedValue({});
         const result = await put('test-table', { id: '1', name: 'test' });
         expect(result.success).toBe(true);
-        expect(docClient.send).toHaveBeenCalledWith(expect.any(PutCommand));
+        expect(docClient.send).toHaveBeenCalledWith(expect.any(PutCommand),expect.objectContaining({abortSignal:expect.any(AbortSignal)}));
     });
 
     it('query should return items', async () => {
@@ -47,7 +47,7 @@ describe('dynamodb lib', () => {
         docClient.send.mockResolvedValue({});
         const result = await transactWrite([{ Put: { TableName: 't', Item: {} } }]);
         expect(result.success).toBe(true);
-        expect(docClient.send).toHaveBeenCalledWith(expect.any(TransactWriteCommand));
+        expect(docClient.send).toHaveBeenCalledWith(expect.any(TransactWriteCommand),expect.objectContaining({abortSignal:expect.any(AbortSignal)}));
     });
 
     it('should retry on ProvisionedThroughputExceededException', async () => {

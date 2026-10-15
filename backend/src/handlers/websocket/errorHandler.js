@@ -1,3 +1,4 @@
+const diagnostics=require('../../lib/logger').safeConsole;
 /**
  * Utility to push error messages via WebSocket.
  */
@@ -19,11 +20,11 @@ async function pushError(connectionId, errorCode, message, recoverable, suggeste
     }
   };
 
-  console.error(`Pushing error to ${connectionId}: [${errorCode}] ${message}`);
+  diagnostics.error(`Pushing error to ${connectionId}: [${errorCode}]`);
   const success = await postToConnection(connectionId, errorPayload);
   
   if (!success) {
-    console.warn(`Failed to push error to ${connectionId}. Connection might be stale.`);
+    diagnostics.warn(`Failed to push error to ${connectionId}. Connection might be stale.`);
   }
 
   return success;

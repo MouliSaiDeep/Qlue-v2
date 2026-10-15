@@ -23,6 +23,7 @@ exports.handler = async (event) => {
   const { sessionId, userId, moduleType, transcript, contextRef, metadata } = event;
 
   try {
+    if (!await require('../../lib/feedbackAttempt').currentAttempt(event)) return {success:true,stale:true};
     console.info(`Starting Bedrock analysis for session ${sessionId} (${moduleType})`);
     
     // 1. Identify dimensions
@@ -56,6 +57,7 @@ exports.handler = async (event) => {
     // but usually, it's just a formula. We'll pass raw scores to the report generator.
     
     const nextPayload = {
+      attemptId: event.attemptId,
       sessionId,
       userId,
       moduleType,
@@ -72,7 +74,7 @@ exports.handler = async (event) => {
       Payload: Buffer.from(JSON.stringify(nextPayload))
     });
 
-    await lambdaClient.send(command);
+    await require('../../lib/deadline').sendBounded(lambdaClient,command);
     
     return { success: true, sessionId, scores: finalScores };
 
@@ -81,3 +83,6 @@ exports.handler = async (event) => {
     throw error; // Rethrow for Lambda retries if needed
   }
 };
+
+const stableHandler=exports.handler;
+exports.handler=(event,context)=>require('../../lib/deadline').withDeadline(context,()=>stableHandler(event),{maxMs:60000,userId:event.userId});

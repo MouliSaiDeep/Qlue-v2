@@ -63,3 +63,38 @@ frontend/test_output*.txt
 # Environment configuration (real values live only on your machine)
 frontend/env.json
 frontend/.env
+
+# Read-only downloaded release binary used for upgrade verification.
+audit/vad-evidence-2026-10-03/distributed-v1.0.8.apk
+audit/vad-evidence-2026-10-03/private-migration/
+audit/remaining-fixes-evidence-2026-10-03/private-migration/
+audit/deployment-evidence-2026-10-04/private/
+backend/template-rollout.yaml
+backend/template-managed-auth.yaml
+backend/template-migration.yaml
+/audit/pause-four-seconds-2026-10-05/private/
+/audit/transcription-repair-2026-10-05/private/
+/audit/interview-observation-2026-10-07/private/
+/audit/interview-observation-2026-10-07/audio-fixtures/*.pcm
+/audit/delivery-analysis-2026-10-09/layer-artifact/
+/audit/delivery-deploy-2026-10-09/private/
+/audit/feedback-failure-2026-10-09/private/
+/backend/template-delivery-deploy.yaml
+
+# Isolated local release reproduction; private inputs are supplied transiently.
+/audit/release-candidate-2026-10-09/reproduction-source/
+
+# Encoded signing material is private too.
+**/*.jks.base64.txt
+
+# Short-path clean SAM reproduction on Windows.
+/.rc/
+
+# Private backend rollout checkpoint and review templates.
+/audit/release-candidate-2026-10-09/deployment/private/
+
+/audit/stable-backend-2026-10-10/deployment/private/
+
+/audit/full-stable-2026-10-11/private/
+
+/audit/full-stable-2026-10-11/deployment/private/

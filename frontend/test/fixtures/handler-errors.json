@@ -1,0 +1,98 @@
+{
+  "session_init": {
+    "type": "turn_error",
+    "payload": {
+      "code": 429,
+      "category": "THROTTLED",
+      "retryable": true,
+      "terminal": false,
+      "error": "The service is busy. Recovery will retry automatically.",
+      "timestamp": 0,
+      "sessionId": "s",
+      "turnId": "q0",
+      "requestId": "req-1",
+      "operation": "session_init"
+    }
+  },
+  "session_reconnect": {
+    "type": "turn_error",
+    "payload": {
+      "code": 429,
+      "category": "THROTTLED",
+      "retryable": true,
+      "terminal": false,
+      "error": "The service is busy. Recovery will retry automatically.",
+      "timestamp": 0,
+      "sessionId": "s",
+      "turnId": "q0",
+      "requestId": "req-1",
+      "operation": "session_reconnect"
+    }
+  },
+  "turn_submit": {
+    "type": "turn_error",
+    "payload": {
+      "code": 429,
+      "category": "THROTTLED",
+      "retryable": true,
+      "terminal": false,
+      "error": "The service is busy. Recovery will retry automatically.",
+      "timestamp": 0,
+      "sessionId": "s",
+      "clientTurnId": "answer-1",
+      "turnId": "q0",
+      "requestId": "req-1",
+      "operation": "turn_submit"
+    }
+  },
+  "malformed": {
+    "type": "turn_error",
+    "payload": {
+      "code": 400,
+      "category": "INVALID_REQUEST",
+      "retryable": false,
+      "terminal": true,
+      "error": "Malformed message payload",
+      "timestamp": 0
+    }
+  },
+  "forbidden": {
+    "type": "turn_error",
+    "payload": {
+      "code": 403,
+      "category": "FORBIDDEN",
+      "retryable": false,
+      "terminal": true,
+      "error": "Forbidden: Session does not belong to this user",
+      "timestamp": 0,
+      "sessionId": "s",
+      "operation": "session_reconnect"
+    }
+  },
+  "missing": {
+    "type": "turn_error",
+    "payload": {
+      "code": 404,
+      "category": "SESSION_NOT_FOUND",
+      "retryable": false,
+      "terminal": true,
+      "error": "Session not found",
+      "timestamp": 0,
+      "sessionId": "s",
+      "operation": "session_reconnect"
+    }
+  },
+  "terminal": {
+    "type": "turn_error",
+    "payload": {
+      "code": 409,
+      "category": "RECOVERY_EXHAUSTED",
+      "retryable": false,
+      "terminal": true,
+      "error": "Interview recovery stopped on the server. Please end the interview.",
+      "timestamp": 0,
+      "sessionId": "s",
+      "operation": "session_reconnect"
+    }
+  }
+}

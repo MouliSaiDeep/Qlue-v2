@@ -115,6 +115,16 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
 
         // The endpoint returns {session, feedback, transcript}
         var feedbackData = data['feedback'];
+        if (feedbackData == null &&
+            data['session']?['feedbackExpected'] == false) {
+          if (!mounted) return;
+          setState(() {
+            _isLoading = false;
+            _errorMessage =
+                'No answer was accepted in this interview. Your received text is available in History.';
+          });
+          return;
+        }
         if (feedbackData != null) {
           // FE-BUG FIX: Inject transcript into feedbackData so the model parser can find it
           // Ensure feedbackData is modifiable

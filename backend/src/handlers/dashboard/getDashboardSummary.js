@@ -1,5 +1,7 @@
-const { DynamoDBDocumentClient, QueryCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
+const diagnostics=require('../../lib/logger').safeConsole;
+const { DynamoDBDocumentClient, GetCommand } = require('@aws-sdk/lib-dynamodb');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { queryAllItems } = require('../../lib/paginate');
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -43,7 +45,9 @@ exports.handler = async (event) => {
         // Session items carry itemData (resume summaries, scraped website
         // content, etc.), so an unprojected query transferred kilobytes per
         // session that were immediately discarded.
-        const sessionCmd = new QueryCommand({
+        // BE-BUG #18 FIX: aggregate over EVERY page (queryAllItems), not just
+        // the first 1MB — otherwise heavy users' totals/averages were truncated.
+        const sessionParams = {
             TableName: SESSIONS_TABLE,
             IndexName: 'GSI_UserIdStartedAt',
             KeyConditionExpression: 'userId = :uid',
@@ -51,7 +55,7 @@ exports.handler = async (event) => {
                 ':uid': userId
             },
             ProjectionExpression: 'moduleType, accumulatedScores, discarded'
-        });
+        };
 
         const userCmd = new GetCommand({
             TableName: USERS_TABLE,
@@ -59,12 +63,12 @@ exports.handler = async (event) => {
         });
 
         // Execute Queries Concurrently
-        const [sessionData, userData] = await Promise.all([
-            docClient.send(sessionCmd),
-            docClient.send(userCmd)
+        const [allSessions, userData] = await Promise.all([
+            queryAllItems(docClient, sessionParams),
+            require('../../lib/deadline').sendBounded(docClient,userCmd)
         ]);
 
-        const sessions = (sessionData.Items || []).filter(x => !x.discarded); // discarded sessions never count
+        const sessions = allSessions.filter(x => !x.discarded); // discarded sessions never count
         const userProfile = userData.Item || null;
         const globalInsights = userProfile?.globalInsights || null;
 
@@ -128,7 +132,7 @@ exports.handler = async (event) => {
         };
 
     } catch (err) {
-        console.error('getDashboardSummary Failed:', err);
+        diagnostics.error('getDashboardSummary Failed:', err);
         // Detail stays in CloudWatch; clients get a generic message so internal
         // table names and SDK errors are not echoed back over the API.
         return { statusCode: 500, body: JSON.stringify({ error: 'INTERNAL_ERROR', message: 'Could not load your dashboard. Please try again.' }) };

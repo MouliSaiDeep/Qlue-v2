@@ -1,3 +1,4 @@
+const diagnostics=require('../../lib/logger').safeConsole;
 const { getTranscriptBySession } = require('../../models/transcript');
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, GetCommand } = require("@aws-sdk/lib-dynamodb");
@@ -33,7 +34,7 @@ exports.handler = async (event) => {
             TableName: SESSIONS_TABLE,
             Key: { sessionId }
         });
-        const sessionRes = await docClient.send(sessionCmd);
+        const sessionRes = await require('../../lib/deadline').sendBounded(docClient,sessionCmd);
         const session = sessionRes.Item;
 
         if (!session || session.userId !== userId) {
@@ -55,7 +56,7 @@ exports.handler = async (event) => {
         };
 
     } catch (error) {
-        console.error('Get Transcript Error:', error);
+        diagnostics.error('Get Transcript Error:', error);
         return {
             statusCode: 500,
             body: JSON.stringify({ error: 'SERVER_ERROR', message: 'Something went wrong. Please try again.' })

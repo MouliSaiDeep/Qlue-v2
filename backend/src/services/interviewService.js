@@ -1,3 +1,4 @@
+const diagnostics=require('../lib/logger').safeConsole;
 const { getSession, updateSessionState } = require('../models/session');
 const { SPEAKERS, saveTranscript, getTranscriptBySession } = require('../models/transcript');
 const { INTERVIEW_STATES } = require('../handlers/interview/controlTurnFlow');
@@ -18,7 +19,7 @@ function parseBedrockJSON(text) {
         }
         return JSON.parse(text);
     } catch (e) {
-        console.warn('[InterviewService] JSON Parse failed, returning empty object:', e.message);
+        diagnostics.warn('[InterviewService] JSON Parse failed, returning empty object:', e.name);
         return {};
     }
 }

@@ -2,6 +2,31 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Qlue AI-powered voice interview simulation mobile app.
 
+Parameters:
+  PaidAttemptDailyLimit:
+    Type: Number
+    Default: 5000
+    MinValue: 0
+    Description: Maximum global provider attempts per UTC day; includes failures and retries.
+  # Finding 13 (operational readiness): where operational alerts are delivered.
+  # Left empty by default so the stack still deploys without it, but with no
+  # address NO alarm or budget alert reaches a human — pass a real mailbox at
+  # deploy time (sam deploy --parameter-overrides OperatorEmail=ops@example.com)
+  # and confirm the SNS subscription email before relying on alerting.
+  OperatorEmail:
+    Type: String
+    Default: ""
+    Description: "Email address that receives CloudWatch alarm and budget alerts. Empty disables delivery."
+  MonthlyBudgetUsd:
+    Type: Number
+    Default: 50
+    Description: "Monthly cost budget (USD). Alerts at 80% actual and 100% forecast when OperatorEmail is set."
+
+Conditions:
+  # Only wire the email subscription / budget when an operator address is given;
+  # an empty address would otherwise fail resource creation.
+  HasOperatorEmail: !Not [!Equals [!Ref OperatorEmail, ""]]
+
 Globals:
   Function:
     Runtime: nodejs24.x
@@ -13,6 +38,9 @@ Globals:
 
     Environment:
       Variables:
+        # Firebase Admin 14 requires loading its ESM JWT dependency from CJS.
+        # Lambda disables this Node 24 feature unless explicitly enabled.
+        NODE_OPTIONS: '--experimental-require-module'
         USERS_TABLE: !Ref UsersTable
         RESUMES_TABLE: !Ref ResumesTable
         SESSIONS_TABLE: !Ref SessionsTable
@@ -21,9 +49,22 @@ Globals:
         CONCEPT_STATES_TABLE: !Ref ConceptStatesTable
         WS_CONNECTIONS_TABLE: !Ref WSConnectionsTable
         NOTIFICATIONS_TABLE: !Ref NotificationsTable
+        USAGE_TABLE: !Ref UsageTable
+        SUPPORT_TABLE: !Ref SupportTable
+        DELETION_JOBS_TABLE: !Ref DeletionJobsTable
+        ANALYSIS_JOBS_TABLE: !Ref AnalysisJobsTable
+        PAID_OPS_SWITCH_PARAMETER: !Ref PaidOpsSwitch
+        PAID_ATTEMPT_LIMIT: !Ref PaidAttemptDailyLimit
+        QLUE_PAID_OPS_DISABLED: ''
+        # In-app Help & Support destination. Email delivery is DEPLOY-GATED: it
+        # only fires once this address is a verified SES identity (see
+        # SubmitSupportFunction). Tickets are stored in SupportTable regardless.
+        SUPPORT_EMAIL: 'developersqlue@gmail.com'
         RESUMES_BUCKET: !Ref ResumesBucket
         SCRAPED_CONTENT_BUCKET: !Ref ScrapedContentBucket
         AUDIO_BUCKET: !Ref AudioBucket
+        # Derive the name to avoid an S3 notification/function dependency cycle.
+        ANSWER_AUDIO_BUCKET: !Sub '${AWS::StackName}-answers-${AWS::AccountId}-${AWS::Region}'
         FEEDBACK_TOPIC_ARN: !Ref FeedbackTriggerTopic
         WEBSOCKET_ENDPOINT: !Sub "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
         BEDROCK_MODEL_ID: 'nvidia.nemotron-super-3-120b'
@@ -35,14 +76,48 @@ Globals:
         POLLY_ALLOW_GENERATIVE: 'true'  # user preference: natural generative voices (funded by credits)
 
 Resources:
+  PaidOpsSwitch:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/qlue/${AWS::StackName}/paid-ops-disabled'
+      Type: String
+      Value: 'none'
+      Description: Runtime stop switch; all or comma-separated action names; Lambdas cache for 15 seconds.
+  DeletionJobsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
+      SSESpecification: { SSEEnabled: true }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+      AttributeDefinitions: [{ AttributeName: userId, AttributeType: S }]
+      KeySchema: [{ AttributeName: userId, KeyType: HASH }]
+  AnalysisJobsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification: { SSEEnabled: true }
+      AttributeDefinitions: [{ AttributeName: jobId, AttributeType: S }]
+      KeySchema: [{ AttributeName: jobId, KeyType: HASH }]
+      TimeToLiveSpecification: { AttributeName: expiresAt, Enabled: true }
   # ==============================================================================
   # DYNAMODB TABLES
   # ==============================================================================
   UsersTable:
     Type: AWS::DynamoDB::Table
+    # Finding 13: durable user data. Retain on stack delete/replace and enable
+    # deletion protection so an accidental teardown or table replacement can
+    # never drop production data. (Blocks `sam delete` until manually disabled.)
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: qlue-users
       BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       SSESpecification:
@@ -56,9 +131,13 @@ Resources:
 
   ResumesTable:
     Type: AWS::DynamoDB::Table
+    # Finding 13: durable data — retain + deletion protection.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: qlue-resumes
       BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       SSESpecification:
@@ -85,13 +164,23 @@ Resources:
 
   SessionsTable:
     Type: AWS::DynamoDB::Table
+    # Finding 13: durable data — retain + deletion protection.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: qlue-sessions
       BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       SSESpecification:
         SSEEnabled: true
+      # TTL backstop: only the per-user active-session LOCK# items carry
+      # expiresAt, so this reclaims an orphaned lock if explicit release ever
+      # fails. Real session rows have no expiresAt and are never TTL-deleted.
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
       AttributeDefinitions:
         - AttributeName: sessionId
           AttributeType: S
@@ -101,6 +190,14 @@ Resources:
           AttributeType: N
         - AttributeName: activeMarker
           AttributeType: S
+        # R-05 feedback outbox: sparse index keys. These attributes exist ONLY
+        # while a feedback job is PENDING (removed on TERMINATED/ERROR or when a
+        # job is parked FAILED), so FeedbackDispatchIndex stays tiny and the
+        # scheduled dispatcher queries it rather than scanning the table.
+        - AttributeName: feedbackDispatchPending
+          AttributeType: S
+        - AttributeName: feedbackJobUpdatedAt
+          AttributeType: N
       KeySchema:
         - AttributeName: sessionId
           KeyType: HASH
@@ -121,12 +218,28 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
+        # R-05: sparse index of still-PENDING feedback jobs. Partition key is the
+        # constant marker (the pending set is tiny/transient; sharding is the
+        # documented scale-up path), sort key is the last-update time so the
+        # dispatcher can skip jobs inside the grace window and advance a cursor.
+        - IndexName: FeedbackDispatchIndex
+          KeySchema:
+            - AttributeName: feedbackDispatchPending
+              KeyType: HASH
+            - AttributeName: feedbackJobUpdatedAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
 
   TranscriptsTable:
     Type: AWS::DynamoDB::Table
+    # Finding 13: durable data — retain + deletion protection.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: qlue-transcripts
       BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       SSESpecification:
@@ -153,9 +266,13 @@ Resources:
 
   FeedbackTable:
     Type: AWS::DynamoDB::Table
+    # Finding 13: durable data — retain + deletion protection.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: qlue-feedback
       BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       SSESpecification:
@@ -192,9 +309,13 @@ Resources:
 
   ConceptStatesTable:
     Type: AWS::DynamoDB::Table
+    # Finding 13: durable data — retain + deletion protection.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: qlue-concept-states
       BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       SSESpecification:
@@ -262,9 +383,13 @@ Resources:
 
   NotificationsTable:
     Type: AWS::DynamoDB::Table
+    # Finding 13: durable data — retain + deletion protection.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: qlue-notifications
       BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       SSESpecification:
@@ -289,6 +414,60 @@ Resources:
           Projection:
             ProjectionType: ALL
 
+  # Per-user daily usage counters for quota enforcement (free tier = 10
+  # interviews/day, tier-derived in lib/quota.js). PK userId, SK date
+  # (UTC YYYY-MM-DD); one numeric attribute per action (e.g. `interview`).
+  # expiresAt (epoch seconds) TTL self-deletes stale day rows.
+  UsageTable:
+    Type: AWS::DynamoDB::Table
+    # Finding 13: quota counters back billing/abuse decisions — retain them so a
+    # teardown can't reset every user's daily usage. Deletion protection on too.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: qlue-usage
+      BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: date
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: date
+          KeyType: RANGE
+
+  SupportTable:
+    Type: AWS::DynamoDB::Table
+    # Finding 13: user-submitted support tickets are durable records (and the
+    # source of truth behind the best-effort dev-inbox email) — retain them on
+    # teardown and protect against accidental deletion.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: qlue-support
+      BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: ticketId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ticketId
+          KeyType: HASH
+
   # ==============================================================================
   # S3 BUCKETS
   # ==============================================================================
@@ -308,6 +487,15 @@ Resources:
               SSEAlgorithm: AES256
       LifecycleConfiguration:
         Rules:
+          - Id: ExpireAbandonedUploads
+            Status: Enabled
+            TagFilters:
+              - { Key: qlue-upload, Value: staging }
+            ExpirationInDays: 1
+          - Id: ExpireOverwrittenUploads
+            Status: Enabled
+            NoncurrentVersionExpiration: { NoncurrentDays: 1 }
+            AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 }
           - Id: TransitionToIA
             Status: Enabled
             Transitions:
@@ -316,7 +504,7 @@ Resources:
       CorsConfiguration:
         CorsRules:
           - AllowedHeaders: ['*']
-            AllowedMethods: ['PUT']
+            AllowedMethods: ['POST']
             AllowedOrigins: ['*']
 
   ScrapedContentBucket:
@@ -335,6 +523,15 @@ Resources:
               SSEAlgorithm: AES256
       LifecycleConfiguration:
         Rules:
+          - Id: ExpireAbandonedUploads
+            Status: Enabled
+            TagFilters:
+              - { Key: qlue-upload, Value: staging }
+            ExpirationInDays: 1
+          - Id: ExpireOverwrittenUploads
+            Status: Enabled
+            NoncurrentVersionExpiration: { NoncurrentDays: 1 }
+            AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 }
           - Id: AutoDelete
             Status: Enabled
             ExpirationInDays: 30
@@ -343,8 +540,74 @@ Resources:
       CorsConfiguration:
         CorsRules:
           - AllowedHeaders: ['*']
-            AllowedMethods: ['PUT']
+            AllowedMethods: ['POST']
             AllowedOrigins: ['*']
+
+  AnswerAudioBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-answers-${AWS::AccountId}-${AWS::Region}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireTemporaryAnswers
+            Status: Enabled
+            ExpirationInDays: 1
+            AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 }
+  AnswerAudioBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AnswerAudioBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource: [!GetAtt AnswerAudioBucket.Arn, !Sub '${AnswerAudioBucket.Arn}/*']
+            Condition: { Bool: { 'aws:SecureTransport': false } }
+  AnswerAudioFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/interview/answerAudio.handler
+      CodeUri: src/
+      MemorySize: 512
+      Timeout: 60
+      # SAM prepends the two global layers; append this isolated runtime once.
+      Layers: [!Ref DeliveryRuntimeLayer]
+      Environment:
+        Variables:
+          DELIVERY_VAD_MODEL: /opt/delivery/models/silero_vad.onnx
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - S3CrudPolicy: { BucketName: !Sub '${AWS::StackName}-answers-${AWS::AccountId}-${AWS::Region}' }
+      Events:
+        Uploaded:
+          Type: S3
+          Properties:
+            Bucket: !Ref AnswerAudioBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules: [{ Name: prefix, Value: 'answers/' }]
+  AnswerAudioFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AnswerAudioFunction}'
+      RetentionInDays: 30
 
   AudioBucket:
     Type: AWS::S3::Bucket
@@ -501,8 +764,10 @@ Resources:
     Type: AWS::Serverless::LayerVersion
     Metadata:
       BuildMethod: nodejs24.x
+      BuildArchitecture: arm64
     Properties:
       ContentUri: src/lib/
+      CompatibleArchitectures: [arm64]
       CompatibleRuntimes:
         - nodejs24.x
       RetentionPolicy: Retain
@@ -511,10 +776,25 @@ Resources:
     Type: AWS::Serverless::LayerVersion
     Metadata:
       BuildMethod: nodejs24.x
+      BuildArchitecture: arm64
+      BuildProperties:
+        UseNpmCi: true
     Properties:
       ContentUri: layers/dependencies/
+      CompatibleArchitectures: [arm64]
       CompatibleRuntimes:
         - nodejs24.x
+      RetentionPolicy: Retain
+
+  DeliveryRuntimeLayer:
+    Type: AWS::Serverless::LayerVersion
+    Metadata:
+      BuildMethod: makefile
+      BuildArchitecture: arm64
+    Properties:
+      ContentUri: layers/delivery/
+      CompatibleArchitectures: [arm64]
+      CompatibleRuntimes: [nodejs24.x]
       RetentionPolicy: Retain
 
 
@@ -526,6 +806,25 @@ Resources:
     Type: AWS::SNS::Topic
     Properties:
       TopicName: qlue-feedback-trigger
+
+  # Finding 13: a DEDICATED operational-alert topic, separate from
+  # FeedbackTriggerTopic. Alarms previously published to FeedbackTriggerTopic —
+  # which is subscribed by the feedback-generation Lambda — so a DynamoDB-throttle
+  # or 5xx alarm would have INVOKED the feedback pipeline with an alarm payload
+  # instead of paging anyone. All alarms now target this topic, and the operator
+  # email (when supplied) is the only subscriber.
+  OpsAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: qlue-ops-alerts
+
+  OpsAlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasOperatorEmail
+    Properties:
+      TopicArn: !Ref OpsAlertTopic
+      Protocol: email
+      Endpoint: !Ref OperatorEmail
 
   # ==============================================================================
   # RUNTIME CONFIGURATION
@@ -550,6 +849,10 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
@@ -574,6 +877,10 @@ Resources:
             Auth:
               Authorizer: NONE
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
@@ -598,6 +905,10 @@ Resources:
             Auth:
               Authorizer: NONE
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
@@ -617,6 +928,10 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
@@ -636,6 +951,10 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
@@ -655,8 +974,18 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
+        # R-10: logout now deactivates the user's open WebSocket connections
+        # (query GSI_UserIdIsActive + conditional UpdateItem) so a revoked
+        # credential's socket is cut off immediately, not just blocked from
+        # minting new tokens.
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WSConnectionsTable
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
 
   DeleteAccountFunction:
@@ -665,7 +994,9 @@ Resources:
       Handler: handlers/auth/deleteAccount.handler
       CodeUri: src/
       MemorySize: 512
-      Timeout: 30
+      # Full account teardown paginates every table and purges S3; give it room
+      # to finish in one invocation rather than relying on client retries.
+      Timeout: 60
       Events:
         Api:
           Type: Api
@@ -674,8 +1005,32 @@ Resources:
             Method: delete
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UsersTable
+        - S3CrudPolicy: { BucketName: !Ref AnswerAudioBucket }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - DynamoDBCrudPolicy: { TableName: !Ref DeletionJobsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref ConceptStatesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref NotificationsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref UsageTable }
+        - S3CrudPolicy: { BucketName: !Ref ResumesBucket }
+        - S3CrudPolicy: { BucketName: !Ref ScrapedContentBucket }
+        - S3CrudPolicy: { BucketName: !Ref AudioBucket }
+        # SAM S3CrudPolicy does not include version enumeration/deletion.
+        - Statement:
+            - Effect: Allow
+              Action: ['s3:ListBucketVersions']
+              Resource: [!GetAtt AnswerAudioBucket.Arn, !GetAtt ResumesBucket.Arn, !GetAtt ScrapedContentBucket.Arn, !GetAtt AudioBucket.Arn]
+            - Effect: Allow
+              Action: ['s3:DeleteObjectVersion']
+              Resource: [!Sub '${AnswerAudioBucket.Arn}/*', !Sub '${ResumesBucket.Arn}/*', !Sub '${ScrapedContentBucket.Arn}/*', !Sub '${AudioBucket.Arn}/*']
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
 
   GetUserProfileFunction:
@@ -693,6 +1048,10 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
@@ -712,6 +1071,10 @@ Resources:
             Method: put
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
@@ -731,6 +1094,10 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
@@ -750,8 +1117,39 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
+
+  # ========= SUPPORT =========
+  SubmitSupportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/support/submitSupport.handler
+      CodeUri: src/
+      MemorySize: 256
+      Timeout: 10
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['ssm:GetParameter']
+              Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/qlue/${AWS::StackName}/paid-ops-disabled'
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
+        - DynamoDBCrudPolicy: { TableName: !Ref SupportTable }
+        - DynamoDBReadPolicy: { TableName: !Ref UsersTable }
+        # DEPLOY-GATED email: harmless until SUPPORT_EMAIL is a verified SES
+        # identity. The handler stores every ticket regardless and treats a
+        # failed/again-skipped send as non-fatal.
+        - Statement: [{ Effect: Allow, Action: ['ses:SendEmail', 'ses:SendRawEmail'], Resource: '*' }]
 
   # ========= RESUME =========
   GeneratePresignedUrlFunction:
@@ -769,12 +1167,29 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref UsersTable }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
+            - Effect: Allow
+              Action: ['ssm:GetParameter']
+              Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/qlue/${AWS::StackName}/paid-ops-disabled'
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref ResumesTable
         - S3CrudPolicy:
             BucketName: !Ref ResumesBucket
+        - Statement:
+            - Effect: Allow
+              Action: ['s3:PutObjectTagging']
+              Resource: !Sub '${ResumesBucket.Arn}/resumes/*'
 
   ProcessResumeUploadFunction:
+    # Parsing promotes uploaded bytes into an immutable private object.
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers/resume/processResumeUpload.handler
@@ -789,12 +1204,31 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['ssm:GetParameter']
+              Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/qlue/${AWS::StackName}/paid-ops-disabled'
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref ResumesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
         - S3CrudPolicy:
             BucketName: !Ref ResumesBucket
+        - Statement:
+            - Effect: Allow
+              Action: ['s3:PutObjectTagging']
+              Resource: !Sub '${ResumesBucket.Arn}/resumes/*'
         - Statement:
             - Effect: Allow
               Action:
@@ -831,6 +1265,10 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref ResumesTable
         - S3CrudPolicy:
@@ -851,6 +1289,10 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref ResumesTable
         - S3CrudPolicy:
@@ -871,6 +1313,10 @@ Resources:
             Method: put
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref ResumesTable
         - S3CrudPolicy:
@@ -891,6 +1337,10 @@ Resources:
             Method: delete
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref ResumesTable
         - DynamoDBCrudPolicy:
@@ -914,6 +1364,10 @@ Resources:
             Method: put
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref ResumesTable
         - S3CrudPolicy:
@@ -934,6 +1388,10 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref ResumesTable
         - S3CrudPolicy:
@@ -945,10 +1403,13 @@ Resources:
     Properties:
       Handler: handlers/interview/initializeSession.handler
       CodeUri: src/
-      # WEBSITE module fallback path may scrape (tiered, up to render+proxy);
-      # 15s guaranteed timeouts. Cached path returns in milliseconds.
+      # WEBSITE module fallback path may scrape (tiered), but the scraper now
+      # enforces ONE total ~25s deadline across all tiers (finding 10), so the
+      # whole init stays inside API Gateway's 29s integration timeout. Capping
+      # the Lambda at 29s too means it can't keep doing paid work after the
+      # gateway has already returned 504 to the client. Cached path returns in ms.
       MemorySize: 512
-      Timeout: 60
+      Timeout: 29
       Events:
         Api:
           Type: Api
@@ -957,16 +1418,55 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['ssm:GetParameter']
+              Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/qlue/${AWS::StackName}/paid-ops-disabled'
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
         - DynamoDBCrudPolicy: { TableName: !Ref ConceptStatesTable }
         - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref UsageTable }
         - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'], Resource: '*' }]
         - SNSPublishMessagePolicy: { TopicName: !GetAtt FeedbackTriggerTopic.TopicName }
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
+
+
+  # Read-only endpoint so the client can show "N of M free interviews left
+  # today" without starting a session. Reads today's UsageTable row + the
+  # user's tier (UsersTable). No quota is consumed here.
+  GetUsageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/interview/getUsage.handler
+      CodeUri: src/
+      MemorySize: 256
+      Timeout: 10
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
+        - DynamoDBReadPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBReadPolicy: { TableName: !Ref UsageTable }
 
 
   ProcessUserInputFunction:
@@ -984,37 +1484,25 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
 
 
-  GenerateQuestionFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: handlers/interview/generateQuestion.handler
-      CodeUri: src/
-      # PERF-FIX #8: Lambda CPU scales with memory; LLM-orchestrating functions
-      # run faster (and often cheaper) at 1024MB. Timeout raised above the 45s
-      # Bedrock TTFT guard in lib/bedrock.js so the SDK abort fires first.
-      MemorySize: 1024
-      Timeout: 55
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /interview/question
-            Method: post
-            RestApiId: !Ref RestApi
-      Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref ConceptStatesTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
-        - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
-        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'], Resource: '*' }]
-        - SSMParameterReadPolicy: { ParameterName: qlue/* }
+  # R-02: the public POST /interview/question route and its dedicated Lambda
+  # (GenerateQuestionFunction) were removed. generateQuestion.handler is invoked
+  # IN-PROCESS by the async interview worker (handlers/interview/asyncWorker.js)
+  # and was never meant to be a standalone HTTP endpoint. Exposing it let any
+  # authenticated caller drive unbounded Bedrock + Polly spend OUTSIDE the
+  # interview session lifecycle and its per-interview quota. No frontend route
+  # referenced it.
 
 
   ManageContextWindowFunction:
@@ -1032,32 +1520,14 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref ConceptStatesTable }
-        - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
-        - Statement: [{ Effect: Allow, Action: ['polly:SynthesizeSpeech'], Resource: '*' }]
-        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'], Resource: '*' }]
-        - SSMParameterReadPolicy: { ParameterName: qlue/* }
-
-
-  ControlTurnFlowFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: handlers/interview/controlTurnFlow.handler
-      CodeUri: src/
-      MemorySize: 256
-      Timeout: 10
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /interview/flow
-            Method: post
-            RestApiId: !Ref RestApi
-      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
@@ -1087,6 +1557,14 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
@@ -1099,13 +1577,58 @@ Resources:
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
         - SNSPublishMessagePolicy: { TopicName: !GetAtt FeedbackTriggerTopic.TopicName }
 
+  # R-06: on-demand regeneration of a FAILED/unavailable feedback report. Clears
+  # the stale deterministic report slot and re-publishes the feedback job to the
+  # same SNS pipeline terminate uses, so a failed analysis can later become a real
+  # completed report.
+  RegenerateFeedbackFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/feedback/regenerateFeedback.handler
+      CodeUri: src/
+      MemorySize: 256
+      Timeout: 10
+      Environment:
+        Variables:
+          FEEDBACK_TOPIC_ARN: !Ref FeedbackTriggerTopic
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['ssm:GetParameter']
+              Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/qlue/${AWS::StackName}/paid-ops-disabled'
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
+        - SNSPublishMessagePolicy: { TopicName: !GetAtt FeedbackTriggerTopic.TopicName }
+
   # ==============================================================================
   # ASYNC INTERVIEW ARCHITECTURE (SQS -> WORKER -> WEBSOCKET)
   # ==============================================================================
-  # This pattern handles long-running AI generations asynchronously to avoid 
+  # This pattern handles long-running AI generations asynchronously to avoid
   # API Gateway 29s timeouts and keep the WebSocket connection responsive.
-  
+
   AsyncInterviewDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+
+  # Finding 9: the async feedback pipeline (SNS trigger + 4 chained async
+  # Lambdas invoked with InvocationType 'Event') previously had NO dead-letter
+  # path — a stage that exhausted its async retries dropped the feedback
+  # silently. Every stage now dead-letters here, so an exhausted failure is
+  # durable and alarmable (operators alarm on FeedbackDLQ depth) instead of a
+  # user staring at a report that never arrives.
+  FeedbackDLQ:
     Type: AWS::SQS::Queue
     Properties:
       MessageRetentionPeriod: 1209600
@@ -1138,7 +1661,23 @@ Resources:
           Properties:
             Queue: !GetAtt AsyncInterviewQueue.Arn
             BatchSize: 1
+            FunctionResponseTypes: [ReportBatchItemFailures]
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['ssm:GetParameter']
+              Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/qlue/${AWS::StackName}/paid-ops-disabled'
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
@@ -1164,6 +1703,10 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTable }
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
         - Statement: [{ Effect: Allow, Action: ['execute-api:ManageConnections'], Resource: '*' }]
@@ -1177,6 +1720,10 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTable }
         - Statement: [{ Effect: Allow, Action: ['execute-api:ManageConnections'], Resource: '*' }]
 
@@ -1193,6 +1740,15 @@ Resources:
           ASYNC_QUEUE_URL: !Ref AsyncInterviewQueue
           FEEDBACK_TOPIC_ARN: !Ref FeedbackTriggerTopic
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
+        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
@@ -1220,6 +1776,10 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTable }
         - Statement: [{ Effect: Allow, Action: ['execute-api:ManageConnections'], Resource: '*' }]
 
@@ -1231,10 +1791,48 @@ Resources:
       MemorySize: 256
       Timeout: 10
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTable }
         - Statement: [{ Effect: Allow, Action: ['execute-api:ManageConnections'], Resource: '*' }]
 
   # ========= FEEDBACK =========
+  # R-05 backstop: a scheduled sweep of the feedback outbox. The PRIMARY recovery
+  # for a failed/dropped publish is the racing duplicate terminate; this Lambda
+  # only catches jobs whose every terminate path died before the publish was
+  # acknowledged. It QUERIES FeedbackDispatchIndex (never scans) for PENDING jobs
+  # older than a grace window and re-publishes until acknowledged; downstream
+  # stages are idempotent so a duplicate publish is harmless.
+  DispatchFeedbackJobsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/feedback/dispatchFeedbackJobs.handler
+      CodeUri: src/
+      MemorySize: 256
+      Timeout: 60
+      Environment:
+        Variables:
+          FEEDBACK_TOPIC_ARN: !Ref FeedbackTriggerTopic
+      Events:
+        Schedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(2 minutes)
+            Description: Re-dispatch stuck PENDING feedback jobs (R-05 outbox backstop)
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+        - SNSPublishMessagePolicy: { TopicName: !GetAtt FeedbackTriggerTopic.TopicName }
+
   TriggerFeedbackGenerationFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -1242,6 +1840,11 @@ Resources:
       CodeUri: src/
       MemorySize: 256
       Timeout: 15
+      # Finding 9: an SNS delivery that exhausts its async retries dead-letters
+      # instead of vanishing.
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt FeedbackDLQ.Arn
       Environment:
         Variables:
           ANALYZE_TRANSCRIPT_LAMBDA: !Ref AnalyzeTranscriptFunction
@@ -1251,6 +1854,14 @@ Resources:
           Properties:
             Topic: !Ref FeedbackTriggerTopic
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
@@ -1272,6 +1883,10 @@ Resources:
       CodeUri: src/
       MemorySize: 1024
       Timeout: 60
+      # Finding 9: dead-letter an async stage that exhausts its retries.
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt FeedbackDLQ.Arn
       Environment:
         Variables:
           GENERATE_REPORT_LAMBDA: !Ref GenerateFeedbackReportFunction
@@ -1282,6 +1897,21 @@ Resources:
       # shape (raw payload, not an API Gateway event) that skips every
       # ownership check. The Api events have been removed.
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['ssm:GetParameter']
+              Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/qlue/${AWS::StackName}/paid-ops-disabled'
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
@@ -1305,6 +1935,14 @@ Resources:
       Timeout: 15
       # SECURITY: internal pipeline stage — see AnalyzeTranscriptFunction.
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
@@ -1322,11 +1960,30 @@ Resources:
       CodeUri: src/
       MemorySize: 1024
       Timeout: 60
+      # Finding 9: dead-letter an async stage that exhausts its retries.
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt FeedbackDLQ.Arn
       Environment:
         Variables:
           STORE_FEEDBACK_LAMBDA: !Ref StoreFeedbackReportFunction
       # SECURITY: internal pipeline stage — see AnalyzeTranscriptFunction.
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['ssm:GetParameter']
+              Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/qlue/${AWS::StackName}/paid-ops-disabled'
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
@@ -1348,11 +2005,24 @@ Resources:
       CodeUri: src/
       MemorySize: 256
       Timeout: 10
+      # Finding 9: dead-letter an async stage that exhausts its retries.
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt FeedbackDLQ.Arn
       Environment:
         Variables:
           SEND_NOTIFICATION_LAMBDA: !Ref SendFeedbackNotificationFunction
       # SECURITY: internal pipeline stage — see AnalyzeTranscriptFunction.
       Policies:
+        - S3CrudPolicy: { BucketName: !Ref AnswerAudioBucket }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
@@ -1374,8 +2044,20 @@ Resources:
       CodeUri: src/
       MemorySize: 256
       Timeout: 10
+      # Finding 9: dead-letter an async stage that exhausts its retries.
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt FeedbackDLQ.Arn
       # SECURITY: internal pipeline stage — see AnalyzeTranscriptFunction.
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
@@ -1402,6 +2084,10 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
@@ -1422,6 +2108,10 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
 
@@ -1440,6 +2130,10 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
 
@@ -1458,6 +2152,10 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
 
@@ -1478,12 +2176,28 @@ Resources:
             Stream: !GetAtt FeedbackTable.StreamArn
             StartingPosition: LATEST
             BatchSize: 1
-            FilterCriteria: 
-              Filters: 
+            FilterCriteria:
+              Filters:
                 - Pattern: "{\"eventName\": [\"INSERT\"]}"
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
+            - Effect: Allow
+              Action: ['ssm:GetParameter']
+              Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/qlue/${AWS::StackName}/paid-ops-disabled'
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
+        - DynamoDBReadPolicy: { TableName: !Ref SessionsTable }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
         - Statement:
             - Effect: Allow
               Action:
@@ -1505,6 +2219,10 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
@@ -1525,6 +2243,10 @@ Resources:
             Method: get
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
 
@@ -1535,7 +2257,12 @@ Resources:
       Handler: handlers/scraper/fetchAndCleanContent.handler
       CodeUri: src/
       MemorySize: 512
-      Timeout: 30
+      # API Gateway's REST integration timeout is ~29s and is NOT raised by
+      # raising the Lambda timeout (finding 10). The scraper enforces one total
+      # deadline across its tiers, so cap this handler at 29s to match the
+      # gateway rather than leaving it to spend credits on a request the client
+      # can no longer receive.
+      Timeout: 29
       Events:
         Api:
           Type: Api
@@ -1544,6 +2271,22 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['ssm:GetParameter']
+              Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/qlue/${AWS::StackName}/paid-ops-disabled'
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
+        - DynamoDBReadPolicy: { TableName: !Ref UsersTable }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
         - S3CrudPolicy: { BucketName: !Ref ScrapedContentBucket }
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
 
@@ -1552,10 +2295,18 @@ Resources:
     Properties:
       Handler: handlers/jd/analyzeJobMatch.handler
       CodeUri: src/
+      Environment:
+        Variables:
+          ANALYSIS_WORKER_LAMBDA: !Ref AnalysisWorkerFunction
       MemorySize: 1024
-      # JS-rendering + residential-proxy scrape tiers can take 30s+; give the
-      # scrape escalation and the LLM comparison enough headroom.
-      Timeout: 90
+      # The scrape escalation now shares ONE total ~25s deadline (it no longer
+      # restarts a fresh 30s allowance per tier), and JD PDF OCR is deadline-
+      # bounded too, so the whole analysis fits inside API Gateway's ~29s
+      # integration timeout. Cap the Lambda at 29s to match: raising only the
+      # Lambda timeout would not move the gateway deadline (finding 10), it would
+      # just keep spending scrape.do/Bedrock credits on a request the client has
+      # already seen 504 for.
+      Timeout: 29
       Events:
         Api:
           Type: Api
@@ -1564,6 +2315,23 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['ssm:GetParameter']
+              Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/qlue/${AWS::StackName}/paid-ops-disabled'
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
+        - DynamoDBCrudPolicy: { TableName: !Ref AnalysisJobsTable }
+        - LambdaInvokePolicy: { FunctionName: !Ref AnalysisWorkerFunction }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
         - DynamoDBReadPolicy: { TableName: !Ref ResumesTable }
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
@@ -1587,13 +2355,33 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref UsersTable }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
+            - Effect: Allow
+              Action: ['ssm:GetParameter']
+              Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/qlue/${AWS::StackName}/paid-ops-disabled'
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
         - S3CrudPolicy: { BucketName: !Ref ScrapedContentBucket }
+        - Statement:
+            - Effect: Allow
+              Action: ['s3:PutObjectTagging']
+              Resource: !Sub '${ScrapedContentBucket.Arn}/jd/*'
 
   ValidateWebsiteFunction:
+    # Validations run as durable jobs; this route only admits work.
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers/website/validateWebsite.handler
       CodeUri: src/
+      Environment:
+        Variables:
+          ANALYSIS_WORKER_LAMBDA: !Ref AnalysisWorkerFunction
       MemorySize: 512
       Timeout: 30
       Events:
@@ -1604,6 +2392,24 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['ssm:GetParameter']
+              Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/qlue/${AWS::StackName}/paid-ops-disabled'
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
+        - DynamoDBCrudPolicy: { TableName: !Ref AnalysisJobsTable }
+        - LambdaInvokePolicy: { FunctionName: !Ref AnalysisWorkerFunction }
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem']
+              Resource: !GetAtt UsageTable.Arn
         - S3CrudPolicy: { BucketName: !Ref ScrapedContentBucket }
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel'], Resource: '*' }]
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
@@ -1611,6 +2417,10 @@ Resources:
   # ==============================================================================
   # CLOUDWATCH ALARMS
   # ==============================================================================
+  # Finding 13: every alarm now routes to the dedicated OpsAlertTopic (not the
+  # feedback-generation topic) so a firing alarm pages the operator instead of
+  # silently invoking the feedback pipeline — and alarms that previously had no
+  # AlarmActions at all now notify someone.
   LambdaErrorRateAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -1622,6 +2432,26 @@ Resources:
       EvaluationPeriods: 1
       Threshold: 5
       ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OpsAlertTopic
+      OKActions:
+        - !Ref OpsAlertTopic
+
+  LambdaThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Lambda invocations are being throttled (concurrency limit)"
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OpsAlertTopic
 
   DynamoDBThrottledRequestsAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -1634,8 +2464,9 @@ Resources:
       EvaluationPeriods: 1
       Threshold: 1
       ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
       AlarmActions:
-        - !Ref FeedbackTriggerTopic
+        - !Ref OpsAlertTopic
 
   APIGateway5xxErrorRateAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -1648,8 +2479,24 @@ Resources:
       EvaluationPeriods: 1
       Threshold: 5
       ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
       AlarmActions:
-        - !Ref FeedbackTriggerTopic
+        - !Ref OpsAlertTopic
+
+  APIGatewayLatencyP99Alarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "API Gateway p99 latency > 5s"
+      Namespace: AWS/ApiGateway
+      MetricName: Latency
+      ExtendedStatistic: p99
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 5000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OpsAlertTopic
 
   WebSocketConnectionDropRateAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -1662,6 +2509,9 @@ Resources:
       EvaluationPeriods: 1
       Threshold: 10
       ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OpsAlertTopic
 
   BedrockInvocationLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -1674,6 +2524,9 @@ Resources:
       EvaluationPeriods: 1
       Threshold: 30000
       ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OpsAlertTopic
 
   PollySynthesisFailureAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -1686,6 +2539,648 @@ Resources:
       EvaluationPeriods: 1
       Threshold: 1
       ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OpsAlertTopic
+
+  # Finding 9 + 13: the dead-letter queues MUST be watched — a message landing
+  # here is feedback/interview work that exhausted its retries. Any depth > 0 is
+  # a durable failure an operator has to drain, so page immediately.
+  FeedbackDLQDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Feedback pipeline dead-letter queue has messages (exhausted retries)"
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt FeedbackDLQ.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OpsAlertTopic
+      OKActions:
+        - !Ref OpsAlertTopic
+
+  AsyncInterviewDLQDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Async interview dead-letter queue has messages (exhausted retries)"
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt AsyncInterviewDLQ.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OpsAlertTopic
+      OKActions:
+        - !Ref OpsAlertTopic
+
+  AsyncInterviewQueueBacklogAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Async interview queue backlog: oldest message > 2min (worker stalled)"
+      Namespace: AWS/SQS
+      MetricName: ApproximateAgeOfOldestMessage
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt AsyncInterviewQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 120
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OpsAlertTopic
+
+  # Finding 13: cost guardrail for a free public launch. Alerts the operator at
+  # 80% of actual spend and when spend is FORECAST to exceed the budget, so a
+  # runaway (e.g. Bedrock/Polly abuse) is caught before the bill lands. Only
+  # created when an operator email is supplied.
+  CostBudget:
+    Type: AWS::Budgets::Budget
+    Condition: HasOperatorEmail
+    Properties:
+      Budget:
+        BudgetName: qlue-monthly-cost
+        BudgetLimit:
+          Amount: !Ref MonthlyBudgetUsd
+          Unit: USD
+        TimeUnit: MONTHLY
+        BudgetType: COST
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref OperatorEmail
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref OperatorEmail
+
+  DeletionWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/auth/deletionWorker.handler
+      CodeUri: src/
+      MemorySize: 512
+      Timeout: 120
+      Policies:
+        - S3CrudPolicy: { BucketName: !Ref AnswerAudioBucket }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - DynamoDBCrudPolicy: { TableName: !Ref DeletionJobsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref TranscriptsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref ConceptStatesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref NotificationsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref UsageTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref SupportTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref WSConnectionsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref DeletionJobsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref AnalysisJobsTable }
+        - S3CrudPolicy: { BucketName: !Ref ResumesBucket }
+        - S3CrudPolicy: { BucketName: !Ref ScrapedContentBucket }
+        - S3CrudPolicy: { BucketName: !Ref AudioBucket }
+        - Statement:
+            - Effect: Allow
+              Action: ['s3:ListBucketVersions']
+              Resource: [!GetAtt AnswerAudioBucket.Arn, !GetAtt ResumesBucket.Arn, !GetAtt ScrapedContentBucket.Arn, !GetAtt AudioBucket.Arn]
+            - Effect: Allow
+              Action: ['s3:DeleteObjectVersion']
+              Resource: [!Sub '${AnswerAudioBucket.Arn}/*', !Sub '${ResumesBucket.Arn}/*', !Sub '${ScrapedContentBucket.Arn}/*', !Sub '${AudioBucket.Arn}/*']
+        - SSMParameterReadPolicy: { ParameterName: qlue/* }
+      Events:
+        Sweep:
+          Type: Schedule
+          Properties: { Schedule: rate(1 minute), Enabled: true }
+  RecoverTurnsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Environment:
+        Variables:
+          ASYNC_QUEUE_URL: !Ref AsyncInterviewQueue
+      Handler: handlers/interview/recoverTurns.handler
+      CodeUri: src/
+      MemorySize: 512
+      Timeout: 60
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+        - SQSSendMessagePolicy: { QueueName: !GetAtt AsyncInterviewQueue.QueueName }
+      Events:
+        Sweep:
+          Type: Schedule
+          Properties: { Schedule: rate(1 minute), Enabled: true }
+  RecoverFeedbackFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/feedback/recoverFeedback.handler
+      CodeUri: src/
+      MemorySize: 512
+      Timeout: 60
+      Policies:
+        - S3CrudPolicy: { BucketName: !Ref AnswerAudioBucket }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt SessionsTable.Arn
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref FeedbackTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - SSMParameterReadPolicy: { ParameterName: qlue/* }
+      Events:
+        Sweep:
+          Type: Schedule
+          Properties: { Schedule: rate(1 minute), Enabled: true }
+  AnalysisWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-analysis-worker'
+      Handler: handlers/jd/analysisWorker.handler
+      CodeUri: src/
+      Environment:
+        Variables:
+          ANALYSIS_WORKER_LAMBDA: !Sub '${AWS::StackName}-analysis-worker'
+      MemorySize: 512
+      Timeout: 120
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - DynamoDBCrudPolicy: { TableName: !Ref AnalysisJobsTable }
+        - DynamoDBReadPolicy: { TableName: !Ref ResumesTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - S3ReadPolicy: { BucketName: !Ref ScrapedContentBucket }
+        - LambdaInvokePolicy: { FunctionName: !Sub '${AWS::StackName}-analysis-worker' }
+        - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel', 'textract:StartDocumentTextDetection', 'textract:GetDocumentTextDetection'], Resource: '*' }]
+        - SSMParameterReadPolicy: { ParameterName: qlue/* }
+      Events:
+        Sweep:
+          Type: Schedule
+          Properties: { Schedule: rate(1 minute), Enabled: true }
+  GetAnalysisJobFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/jd/getAnalysisJob.handler
+      CodeUri: src/
+      MemorySize: 512
+      Timeout: 10
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - DynamoDBReadPolicy: { TableName: !Ref AnalysisJobsTable }
+  ValidateTokenFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ValidateTokenFunction}'
+      RetentionInDays: 30
+  RegisterUserFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${RegisterUserFunction}'
+      RetentionInDays: 30
+  LoginUserFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${LoginUserFunction}'
+      RetentionInDays: 30
+  LoginWithGoogleFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${LoginWithGoogleFunction}'
+      RetentionInDays: 30
+  RefreshTokenFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${RefreshTokenFunction}'
+      RetentionInDays: 30
+  LogoutUserFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${LogoutUserFunction}'
+      RetentionInDays: 30
+  DeleteAccountFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${DeleteAccountFunction}'
+      RetentionInDays: 30
+  GetUserProfileFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GetUserProfileFunction}'
+      RetentionInDays: 30
+  UpdateUserProfileFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${UpdateUserProfileFunction}'
+      RetentionInDays: 30
+  SyncUserFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${SyncUserFunction}'
+      RetentionInDays: 30
+  UpdateFcmTokenFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${UpdateFcmTokenFunction}'
+      RetentionInDays: 30
+  SubmitSupportFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${SubmitSupportFunction}'
+      RetentionInDays: 30
+  GeneratePresignedUrlFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GeneratePresignedUrlFunction}'
+      RetentionInDays: 30
+  ProcessResumeUploadFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProcessResumeUploadFunction}'
+      RetentionInDays: 30
+  GetResumeListFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GetResumeListFunction}'
+      RetentionInDays: 30
+  GetResumeDetailFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GetResumeDetailFunction}'
+      RetentionInDays: 30
+  UpdateResumeParsedDataFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${UpdateResumeParsedDataFunction}'
+      RetentionInDays: 30
+  DeleteResumeFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${DeleteResumeFunction}'
+      RetentionInDays: 30
+  SetActiveResumeFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${SetActiveResumeFunction}'
+      RetentionInDays: 30
+  ValidateResumeHashFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ValidateResumeHashFunction}'
+      RetentionInDays: 30
+  InitializeSessionFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${InitializeSessionFunction}'
+      RetentionInDays: 30
+  GetUsageFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GetUsageFunction}'
+      RetentionInDays: 30
+  ProcessUserInputFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProcessUserInputFunction}'
+      RetentionInDays: 30
+  ManageContextWindowFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ManageContextWindowFunction}'
+      RetentionInDays: 30
+  TerminateSessionFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${TerminateSessionFunction}'
+      RetentionInDays: 30
+  RegenerateFeedbackFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${RegenerateFeedbackFunction}'
+      RetentionInDays: 30
+  AsyncInterviewWorkerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AsyncInterviewWorkerFunction}'
+      RetentionInDays: 30
+  ConnectHandlerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ConnectHandlerFunction}'
+      RetentionInDays: 30
+  DisconnectHandlerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${DisconnectHandlerFunction}'
+      RetentionInDays: 30
+  SendTextHandlerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${SendTextHandlerFunction}'
+      RetentionInDays: 30
+  StateUpdateHandlerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${StateUpdateHandlerFunction}'
+      RetentionInDays: 30
+  ErrorHandlerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ErrorHandlerFunction}'
+      RetentionInDays: 30
+  DispatchFeedbackJobsFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${DispatchFeedbackJobsFunction}'
+      RetentionInDays: 30
+  TriggerFeedbackGenerationFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${TriggerFeedbackGenerationFunction}'
+      RetentionInDays: 30
+  AnalyzeTranscriptFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AnalyzeTranscriptFunction}'
+      RetentionInDays: 30
+  ComputeModuleScoresFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ComputeModuleScoresFunction}'
+      RetentionInDays: 30
+  GenerateFeedbackReportFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GenerateFeedbackReportFunction}'
+      RetentionInDays: 30
+  StoreFeedbackReportFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${StoreFeedbackReportFunction}'
+      RetentionInDays: 30
+  SendFeedbackNotificationFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${SendFeedbackNotificationFunction}'
+      RetentionInDays: 30
+  GetDashboardSummaryFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GetDashboardSummaryFunction}'
+      RetentionInDays: 30
+  GetScoreTrendsFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GetScoreTrendsFunction}'
+      RetentionInDays: 30
+  GetModuleStatsFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GetModuleStatsFunction}'
+      RetentionInDays: 30
+  GetSessionHistoryFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GetSessionHistoryFunction}'
+      RetentionInDays: 30
+  UpdateGlobalProfileFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${UpdateGlobalProfileFunction}'
+      RetentionInDays: 30
+  GetSessionDetailFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GetSessionDetailFunction}'
+      RetentionInDays: 30
+  GetTranscriptFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GetTranscriptFunction}'
+      RetentionInDays: 30
+  FetchAndCleanContentFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${FetchAndCleanContentFunction}'
+      RetentionInDays: 30
+  AnalyzeJobMatchFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AnalyzeJobMatchFunction}'
+      RetentionInDays: 30
+  GenerateJdUploadUrlFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GenerateJdUploadUrlFunction}'
+      RetentionInDays: 30
+  ValidateWebsiteFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ValidateWebsiteFunction}'
+      RetentionInDays: 30
+  DeletionWorkerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${DeletionWorkerFunction}'
+      RetentionInDays: 30
+  RecoverTurnsFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${RecoverTurnsFunction}'
+      RetentionInDays: 30
+  RecoverFeedbackFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${RecoverFeedbackFunction}'
+      RetentionInDays: 30
+  AnalysisWorkerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AnalysisWorkerFunction}'
+      RetentionInDays: 30
+  GetAnalysisJobFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${GetAnalysisJobFunction}'
+      RetentionInDays: 30
+
+  RecoverResumesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/resume/recoverResumes.handler
+      CodeUri: src/
+      Timeout: 60
+      Environment:
+        Variables:
+          RESUME_WORKER_LAMBDA: !Ref ProcessResumeUploadFunction
+      Events:
+        Sweep:
+          Type: Schedule
+          Properties: { Schedule: 'rate(2 minutes)' }
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+            - Effect: Allow
+              Action: ['lambda:InvokeFunction']
+              Resource: !GetAtt ProcessResumeUploadFunction.Arn
+  RecoverResumesFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${RecoverResumesFunction}'
+      RetentionInDays: 30
 
 Outputs:
   RestApiUrl:

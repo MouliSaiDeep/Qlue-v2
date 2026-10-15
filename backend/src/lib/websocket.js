@@ -1,3 +1,4 @@
+const diagnostics=require('./logger').safeConsole;
 /**
  * WebSocket API Gateway helpers and connection managers.
  */
@@ -5,7 +6,7 @@ const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws
 const { NodeHttpHandler } = require('@smithy/node-http-handler');
 const ddb = require('./dynamodb');
 
-const WS_CONNECTIONS_TABLE = process.env.WS_CONNECTIONS_TABLE;
+const WS_CONNECTIONS_TABLE = process.env.WS_CONNECTIONS_TABLE || 'qlue-ws-connections';
 
 // Cache the clients by endpoint to avoid reallocation per request since lambda may handle requests from multiple stages
 const apigwClients = new Map();
@@ -94,12 +95,17 @@ class StaleConnectionError extends Error {
 async function postToConnection(connectionId, data) {
   const endpoint = process.env.WEBSOCKET_ENDPOINT;
   if (!endpoint) {
-    console.error('WEBSOCKET_ENDPOINT is not set');
+    diagnostics.error('WEBSOCKET_ENDPOINT is not set');
     return false;
   }
 
   const client = getApiClient(endpoint);
   const payload = typeof data === 'string' ? data : JSON.stringify(data);
+  if(Buffer.byteLength(payload)>32*1024) throw new Error('WebSocket frame exceeds 32 KiB');
+  const live=await ddb.get(WS_CONNECTIONS_TABLE,{connectionId},{consistentRead:true});
+  if(!live.success) throw live.error || new Error('Connection authorization read failed');
+  if(!live.data || !['true',true].includes(live.data.isActive) || (live.data.ttl && live.data.ttl<=Math.floor(Date.now()/1000))) return false;
+  await require('./deletionJob').assertNotDeleting(live.data.userId);
 
   try {
     const command = new PostToConnectionCommand({
@@ -107,15 +113,15 @@ async function postToConnection(connectionId, data) {
       Data: Buffer.from(payload)
     });
     
-    await client.send(command);
+    await require('./deadline').sendBounded(client,command,{label:'socketDelivery'});
     return true;
   } catch (error) {
     if (error.$metadata?.httpStatusCode === 410 || error.name === 'GoneException' || error.name === 'StaleConnectionError') {
-      console.warn(`Connection ${connectionId} is stale. Deregistering.`);
+      diagnostics.warn(`Connection ${connectionId} is stale. Deregistering.`);
       await deregisterConnection(connectionId);
       throw new StaleConnectionError(connectionId);
     } else {
-      console.error(`Post to connection ${connectionId} failed`, error);
+      diagnostics.error(`Post to connection ${connectionId} failed`, error);
       throw error;
     }
   }
@@ -127,7 +133,7 @@ async function postToConnection(connectionId, data) {
 async function broadcastToUser(userId, data) {
   const connectionId = await getActiveConnection(userId);
   if (!connectionId) {
-    console.debug(`No active websocket connection found for user ${userId}`);
+    diagnostics.debug(`No active websocket connection found for user ${userId}`);
     return false;
   }
 

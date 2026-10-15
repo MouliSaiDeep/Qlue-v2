@@ -1,4 +1,15 @@
-const { getSessionById, updateSessionState, INTERVIEW_STATES } = require('../../models/session');
+/**
+ * Interview turn state machine — shared helpers only.
+ *
+ * This module previously also exported a Lambda `handler` for a public
+ * `/interview/flow` route, but the trailing `module.exports = {...}` clobbered
+ * that export, so the route was dead (its handler resolved to undefined). The
+ * route and its function have been removed from template.yaml; leaving an
+ * unguarded session-mutation endpoint enabled would have been worse than
+ * removing it. Only the pure transition helpers remain, consumed by
+ * services/interviewService.js and the interview workers.
+ */
+const { INTERVIEW_STATES } = require('../../models/session');
 
 const VALID_TRANSITIONS = {
   INITIALIZING: ['AI_SPEAKING', 'TERMINATED', 'ERROR'],
@@ -18,47 +29,6 @@ function transitionState(currentState, newState) {
   }
   return newState;
 }
-
-exports.handler = async (event) => {
-  try {
-    const body = JSON.parse(event.body || '{}');
-    const { sessionId, newState, metadata = {} } = body;
-
-    if (!sessionId || !newState) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'sessionId and newState are required' })
-      };
-    }
-
-    const session = await getSessionById(sessionId);
-    if (!session) {
-      return {
-        statusCode: 404,
-        body: JSON.stringify({ error: 'Session not found' })
-      };
-    }
-
-    const validatedState = transitionState(session.currentState, newState);
-    await updateSessionState(sessionId, validatedState, null, metadata);
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify({
-        sessionId,
-        previousState: session.currentState,
-        newState: validatedState
-      })
-    };
-
-  } catch (error) {
-    console.error('Control Turn Flow Error:', error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: error.message })
-    };
-  }
-};
 
 module.exports = {
   INTERVIEW_STATES,

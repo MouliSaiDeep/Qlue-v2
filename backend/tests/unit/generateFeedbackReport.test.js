@@ -11,6 +11,8 @@ const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 const { mockClient } = require('aws-sdk-client-mock');
 const { handler } = require('../../src/handlers/feedback/generateFeedbackReport');
 
+const { DynamoDBDocumentClient, GetCommand } = require('@aws-sdk/lib-dynamodb');
+const dbMock = mockClient(DynamoDBDocumentClient);
 const lambdaMock = mockClient(LambdaClient);
 
 jest.mock('../../src/lib/bedrock');
@@ -18,6 +20,8 @@ jest.mock('../../src/lib/bedrock');
 describe('generateFeedbackReport handler', () => {
   beforeEach(() => {
     lambdaMock.reset();
+    dbMock.reset();
+    dbMock.on(GetCommand).callsFake(input => ({Item: input.Key.sessionId ? {sessionId: input.Key.sessionId, userId: 'user123'} : undefined}));
     jest.clearAllMocks();
     process.env.FEEDBACK_MODEL_ID = 'test-feedback-model';
     buildFeedbackPrompt.mockReturnValue({ messages: [] });

@@ -1,18 +1,24 @@
-const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const diagnostics=require('../../lib/logger').safeConsole;
+const { DynamoDBDocumentClient } = require('@aws-sdk/lib-dynamodb');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { queryAllItems } = require('../../lib/paginate');
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const docClient = DynamoDBDocumentClient.from(client);
 
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE_NAME || 'qlue-sessions';
+// BE-BUG #18 FIX: was `SESSIONS_TABLE_NAME` — an env var that is never set, so
+// this always fell back to the literal 'qlue-sessions' and broke the moment the
+// real table name differed from the default.
+const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions';
 
-function getCutoffDate(periodStr) {
+// Numeric epoch-ms cutoff for GSI_UserIdStartedAt (sort key `startedAt`, type N).
+function getCutoffTimestamp(periodStr) {
     const now = new Date();
     if (periodStr === '7d') now.setDate(now.getDate() - 7);
     else if (periodStr === '30d') now.setDate(now.getDate() - 30);
     else if (periodStr === '90d') now.setDate(now.getDate() - 90);
-    else return null; 
-    return now.toISOString();
+    else return null;
+    return now.getTime();
 }
 
 function calculateAggregateScore(scoresObj) {
@@ -34,33 +40,38 @@ exports.handler = async (event) => {
 
         if (!userId) return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized.' }) };
 
-        const cutoff = getCutoffDate(period);
-        
-        // Use UserDateIndex (GSI: Partition=userId, Sort=startTime)
+        const cutoff = getCutoffTimestamp(period);
+
+        // BE-BUG #18 FIX: was IndexName 'UserDateIndex' with a `startTime >=`
+        // (ISO string) condition — that index does NOT exist in the stack, so
+        // every trends query threw. Use the real GSI_UserIdStartedAt and its
+        // numeric `startedAt` sort key.
         let keyCond = 'userId = :uid';
         const expVals = { ':uid': userId };
 
         if (cutoff) {
-            keyCond += ' AND startTime >= :cutoff';
+            keyCond += ' AND startedAt >= :cutoff';
             expVals[':cutoff'] = cutoff;
         }
 
-        const sessionCmd = new QueryCommand({
+        const sessionParams = {
             TableName: SESSIONS_TABLE,
-            IndexName: 'UserDateIndex',
+            IndexName: 'GSI_UserIdStartedAt',
             KeyConditionExpression: keyCond,
             ExpressionAttributeValues: expVals
-        });
+        };
 
-        const res = await docClient.send(sessionCmd);
-        const sessions = res.Items || [];
+        // Drain all pages so long-range trends aren't truncated at 1MB.
+        const sessions = await queryAllItems(docClient, sessionParams);
 
         // Formatting for UI Trend Line
         const trends = sessions
-            .filter(s => s.accumulatedScores && Object.keys(s.accumulatedScores).length > 0)
+            .filter(s => !s.discarded && s.feedbackExpected !== false && s.accumulatedScores && Object.keys(s.accumulatedScores).length > 0)
             .map(s => ({
                 sessionId: s.sessionId,
-                date: s.startTime,
+                // `startTime` is the ISO display timestamp; fall back to the
+                // numeric startedAt if an older item lacks it.
+                date: s.startTime || (s.startedAt ? new Date(s.startedAt).toISOString() : null),
                 moduleType: s.moduleType,
                 score: calculateAggregateScore(s.accumulatedScores)
             }));
@@ -71,7 +82,7 @@ exports.handler = async (event) => {
             body: JSON.stringify({ userId, period, trends })
         };
     } catch (err) {
-        console.error('getScoreTrends failed:', err);
+        diagnostics.error('getScoreTrends failed:', err);
         return { statusCode: 500, body: JSON.stringify({ error: 'INTERNAL_ERROR', message: 'Could not load score trends. Please try again.' }) };
     }
 };

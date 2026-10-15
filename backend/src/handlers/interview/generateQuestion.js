@@ -1,4 +1,6 @@
+const diagnostics=require('../../lib/logger').safeConsole;
 const { invokeModel } = require('../../lib/bedrock');
+const { compareTranscripts } = require('../../models/transcript');
 
 // BE-BUG #24 FIX: Use BEDROCK_MODEL_ID env var — was hardcoded to wrong model
 const DEFAULT_BEDROCK_MODEL_ID = process.env.BEDROCK_MODEL_ID || 'nvidia.nemotron-super-3-120b';
@@ -93,11 +95,13 @@ ${projects.length ? `Projects:\n${projects.join('\n')}` : ''}`;
 
 function formatConversationHistory(transcripts, aiName = 'AI') {
   if (!Array.isArray(transcripts) || transcripts.length === 0) return '';
+  // I-08: order with the shared comparator so a USER answer and the AI turn that
+  // share a turnIndex are always rendered USER-before-AI (the old inline sort
+  // tie-broke on `new Date(timestamp)`, which is unstable for same-turn pairs
+  // and ignored the current answer's logical position).
   return transcripts
-    .sort((a, b) => {
-      const turnDiff = (a.turnIndex || 0) - (b.turnIndex || 0);
-      return turnDiff !== 0 ? turnDiff : new Date(a.timestamp) - new Date(b.timestamp);
-    })
+    .slice()
+    .sort(compareTranscripts)
     .map(t => {
       const speaker = t.speaker === 'AI' ? `${aiName} (Interviewer)` : 'Candidate';
       const safeText = (t.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -216,8 +220,10 @@ Respond with ONLY what ${aiName} says using the || format.`;
  */
 function buildJdPrompt(resumeData, jdSummary, turnIndex, conversationHistory = [], aiName = 'Emma', relevance = null) {
   const resumeSummary = extractResumeSummary(resumeData);
+  // I-08: order deterministically (USER before same-turn AI) before rendering;
+  // this builder previously joined the raw array with no sort at all.
   const historyText = conversationHistory.length > 0
-    ? conversationHistory.map(t => `${t.speaker}: ${t.text}`).join('\n')
+    ? conversationHistory.slice().sort(compareTranscripts).map(t => `${t.speaker}: ${t.text}`).join('\n')
     : 'No previous conversation.';
 
   let relevanceNote = '';
@@ -325,12 +331,34 @@ Respond with ONLY what ${aiName} says using the || format.`;
 
 /**
  * SELF-INTRO MODULE
- * AI acts as a career coach/tutor. First asks "Tell me about yourself", 
- * then based on the user's response gives suggestions on what to include.
+ * AI acts as a career coach/tutor across an explicit, deterministic three-stage
+ * flow (I-01): OPENER asks "Tell me about yourself"; COACHING gives verbal
+ * feedback and asks for an improved attempt; CLOSING delivers final remarks with
+ * NO further question. The stage is now driven by the session's persisted
+ * introStage (passed in as `introStage`), not by turnIndex — silence re-prompts
+ * and retries must never advance it. `turnIndex` is retained only as a
+ * backward-compatible fallback for callers that have not been updated.
  */
-function buildIntroPrompt(turnIndex, conversationHistory = [], aiName = 'Emma') {
+function buildIntroPrompt(turnIndex, conversationHistory = [], aiName = 'Emma', introStage = null) {
   const historyText = formatConversationHistory(conversationHistory, aiName);
-  const isFirstTurn = turnIndex === 0;
+
+  // Resolve the coaching stage. Prefer the explicit introStage; otherwise fall
+  // back to the legacy turnIndex mapping (0 = opener, 1 = coaching, 2+ = close).
+  let stage = introStage;
+  if (!stage) {
+    stage = turnIndex === 0 ? 'OPENER' : (turnIndex === 1 ? 'COACHING' : 'CLOSING');
+  }
+
+  let stageInstruction;
+  if (stage === 'OPENER') {
+    stageInstruction = 'Directly ask the candidate: "Tell me about yourself." No small talk, no casual greetings, no filler.';
+  } else if (stage === 'COACHING') {
+    stageInstruction = 'STAGE 2 - VERBAL FEEDBACK: Analyze their introduction carefully. Give your feedback OUT LOUD right now: name the strongest part of their intro, then the 1-2 most important things to ADD or improve (e.g., "Add your years of experience", "Mention a key achievement with metrics", "Connect your background to the target role"). Then ask them to deliver their improved introduction incorporating your feedback.';
+  } else {
+    // CLOSING — must be a deterministic closing statement, never a question
+    // (I-01: a turn that expects no answer must not leave the user hanging).
+    stageInstruction = 'STAGE 3 - CLOSING: They have just delivered their improved introduction. In one sentence, tell them the most noticeable improvement compared to their first attempt. Then close warmly: tell them the session is complete and their detailed score and report are being prepared. Do NOT ask another question.';
+  }
 
   return `You are ${aiName}, a highly supportive career coach from Qlue helping a candidate perfect their self-introduction for interviews.
 
@@ -353,11 +381,7 @@ ${historyText || '(This is the beginning of the session)'}
 </conversation_history>
 
 <turn_instruction>
-${isFirstTurn 
-  ? 'Directly ask the candidate: \"Tell me about yourself.\" No small talk, no casual greetings, no filler.' 
-  : (turnIndex === 1 
-      ? 'STAGE 2 - VERBAL FEEDBACK: Analyze their introduction carefully. Give your feedback OUT LOUD right now: name the strongest part of their intro, then the 1-2 most important things to ADD or improve (e.g., \"Add your years of experience\", \"Mention a key achievement with metrics\", \"Connect your background to the target role\"). Then ask them to deliver their improved introduction incorporating your feedback.' 
-      : 'STAGE 3 - CLOSING: They have just delivered their improved introduction. In one sentence, tell them the most noticeable improvement compared to their first attempt. Then close warmly: tell them the session is complete and their detailed score and report are being prepared. Do NOT ask another question.')}
+${stageInstruction}
 </turn_instruction>
 
 Respond with ONLY what ${aiName} says using the || format.`;
@@ -420,14 +444,18 @@ function cleanAIResponse(rawText) {
 exports.handler = async (event) => {
   try {
     const body = typeof event.body === 'string' ? JSON.parse(event.body || '{}') : (event.body || {});
-    const { sessionId, moduleType, resumeData, jdSummary, websiteContent, targetConcept, userData, turnIndex, conversationHistory, voiceId, currentDimension, isFinalTurn } = body;
+    const { sessionId, moduleType, resumeData, jdSummary, websiteContent, targetConcept, userData, turnIndex, conversationHistory, voiceId, currentDimension, isFinalTurn, introStage } = body;
 
     const aiName = getAiPersona(voiceId);
 
     // Grab the user's most recent statement for relevance analysis
     let userLatestTranscript = '';
     if (Array.isArray(conversationHistory)) {
-        const lastUserTurn = conversationHistory.filter(t => t.speaker !== 'AI').pop();
+        // I-08: sort before taking the last USER turn so "most recent" is by the
+        // deterministic sequence, not array arrival order (which can misplace the
+        // current answer under GSI lag).
+        const ordered = conversationHistory.slice().sort(compareTranscripts);
+        const lastUserTurn = ordered.filter(t => t.speaker !== 'AI').pop();
         if (lastUserTurn) userLatestTranscript = lastUserTurn.text;
     }
     const relevance = analyzeResponseRelevance(userLatestTranscript);
@@ -436,7 +464,9 @@ exports.handler = async (event) => {
     // WRAP-UP: when the turn cap is reached, deliver a natural closing
     // statement instead of yet another question.
     if (isFinalTurn && ['RESUME', 'HR', 'JD', 'WEBSITE'].includes(moduleType)) {
-      const historyText = (conversationHistory || []).map(t => `${t.speaker}: ${t.text}`).join('\n');
+      // I-08: order deterministically so the closing acknowledgment reflects the
+      // candidate's actual final answer rather than a mis-ordered tail.
+      const historyText = (conversationHistory || []).slice().sort(compareTranscripts).map(t => `${t.speaker}: ${t.text}`).join('\n');
       prompt = `You are ${aiName}, a professional interviewer concluding an interview session.
 
 <conversation_history>
@@ -464,7 +494,8 @@ The interview is now complete. Briefly acknowledge the candidate's final answer,
         prompt = buildJdPrompt(resumeData, jdSummary, turnIndex, conversationHistory, aiName, relevance);
         break;
       case 'INTRO':
-        prompt = buildIntroPrompt(turnIndex, conversationHistory, aiName);
+      case 'SELF_INTRO':
+        prompt = buildIntroPrompt(turnIndex, conversationHistory, aiName, introStage);
         break;
       case 'RESUME':
       default:
@@ -473,6 +504,8 @@ The interview is now complete. Briefly acknowledge the candidate's final answer,
     }
     }
 
+    prompt += `\n<speech_recognition_context>\nThe candidate's words come from automatic speech recognition and may contain mistakes. Garbled, incomplete or ambiguous text, requests to repeat the question, and complaints that the microphone or transcription is not working are NOT off-topic behavior. In those cases, do not emit [OFFTOPIC], threaten termination, or infer poor interview ability. Briefly acknowledge the communication problem and ask the candidate to repeat or clarify their answer to the current question. Do not invent the missing answer. This instruction takes priority over off-topic warnings above.\n</speech_recognition_context>`;
+
     let rawResponse = '';
     const namePrefixRegex = new RegExp(`^${aiName}:\\s*`, 'i');
 
@@ -480,9 +513,9 @@ The interview is now complete. Briefly acknowledge the candidate's final answer,
         const { invokeModelStream } = require('../../lib/bedrock');
         rawResponse = await invokeModelStream(DEFAULT_BEDROCK_MODEL_ID, {
             messages: [{ role: 'user', content: [{ text: prompt }] }]
-        }, (token) => {
+        }, async (token) => {
             let cleanedToken = token.replace(namePrefixRegex, '');
-            body.onToken(cleanedToken);
+            await body.onToken(cleanedToken);
         });
     } else {
         const result = await invokeModel(DEFAULT_BEDROCK_MODEL_ID, {
@@ -497,11 +530,12 @@ The interview is now complete. Briefly acknowledge the candidate's final answer,
     return {
       statusCode: 200,
       body: JSON.stringify({
-        question: cleanedResponse
+        question: cleanedResponse,
+        expectsAnswer: !(introStage === 'CLOSING' || isFinalTurn)
       })
     };
   } catch (error) {
-    console.error('Generate Question Error:', error);
+    diagnostics.error('Generate Question Error:', error);
     return {
       statusCode: 500,
       body: JSON.stringify({ error: error.message })

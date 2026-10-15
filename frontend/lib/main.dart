@@ -53,8 +53,8 @@ void main() async {
       serverClientId: kIsWeb
           ? null
           : (Env.googleWebClientId.isNotEmpty
-              ? Env.googleWebClientId
-              : Env.googleClientId),
+                ? Env.googleWebClientId
+                : Env.googleClientId),
     );
 
     // Wrap the app in the liquid-glass infrastructure. `brightnessResolver`
@@ -94,8 +94,11 @@ class _StartupErrorApp extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.error_outline,
-                      color: Colors.redAccent, size: 48),
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.redAccent,
+                    size: 48,
+                  ),
                   const SizedBox(height: 16),
                   const Text(
                     'Qlue failed to start',
@@ -121,6 +124,8 @@ class _StartupErrorApp extends StatelessWidget {
   }
 }
 
+String? _interviewOwner;
+
 class QlueApp extends StatelessWidget {
   const QlueApp({super.key});
 
@@ -129,7 +134,17 @@ class QlueApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => InterviewProvider()),
+        ChangeNotifierProxyProvider<AuthProvider, InterviewProvider>(
+          create: (_) => InterviewProvider(),
+          update: (_, auth, interview) {
+            final uid = auth.currentUser?.uid;
+            if (uid != _interviewOwner) {
+              _interviewOwner = uid;
+              interview!.resetForUser(uid);
+            }
+            return interview!;
+          },
+        ),
         ChangeNotifierProvider(create: (_) => ResumeProvider()),
         ChangeNotifierProvider(create: (_) => DashboardProvider()),
         ChangeNotifierProvider(create: (_) => AppearanceProvider()),

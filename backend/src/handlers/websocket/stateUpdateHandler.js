@@ -1,3 +1,4 @@
+const diagnostics=require('../../lib/logger').safeConsole;
 /**
  * Utility to push session state updates via WebSocket.
  */
@@ -9,7 +10,7 @@ const { MESSAGE_TYPES } = require('../../lib/websocketMessages');
  * State updates are no longer sent over WebSocket as separate messages.
  */
 async function pushStateUpdate(connectionId, sessionId, previousState, currentState, turnIndex, questionText = null) {
-  console.warn(`Deprecated pushStateUpdate called for session ${sessionId}. No message will be sent.`);
+  diagnostics.warn(`Deprecated pushStateUpdate called for session ${sessionId}. No message will be sent.`);
   return false;
 }
 

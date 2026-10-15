@@ -5,21 +5,24 @@
     "test": "jest"
   },
   "dependencies": {
-    "@aws-sdk/client-apigatewaymanagementapi": "^3.600.0",
-    "@aws-sdk/client-bedrock-runtime": "^3.600.0",
-    "@aws-sdk/client-dynamodb": "^3.600.0",
-    "@aws-sdk/client-lambda": "^3.600.0",
-    "@aws-sdk/client-polly": "^3.600.0",
-    "@aws-sdk/client-s3": "^3.600.0",
-    "@aws-sdk/client-sns": "^3.600.0",
-    "@aws-sdk/client-sqs": "^3.600.0",
-    "@aws-sdk/client-ssm": "^3.1079.0",
-    "@aws-sdk/client-textract": "^3.1079.0",
-    "@aws-sdk/lib-dynamodb": "^3.600.0",
-    "@aws-sdk/s3-request-presigner": "^3.600.0",
-    "@smithy/node-http-handler": "^3.0.0",
-    "axios": "^1.18.1",
-    "firebase-admin": "^14.1.0"
+    "@aws-sdk/client-apigatewaymanagementapi": "3.1079.0",
+    "@aws-sdk/client-bedrock-runtime": "3.1079.0",
+    "@aws-sdk/client-dynamodb": "3.1141.0",
+    "@aws-sdk/client-lambda": "3.1079.0",
+    "@aws-sdk/client-polly": "3.1079.0",
+    "@aws-sdk/client-s3": "3.1141.0",
+    "@aws-sdk/client-ses": "3.1144.0",
+    "@aws-sdk/client-sns": "3.1079.0",
+    "@aws-sdk/client-sqs": "3.1079.0",
+    "@aws-sdk/client-ssm": "3.1079.0",
+    "@aws-sdk/client-textract": "3.1079.0",
+    "@aws-sdk/lib-dynamodb": "3.1141.0",
+    "@aws-sdk/s3-presigned-post": "3.1141.0",
+    "@aws-sdk/s3-request-presigner": "3.1079.0",
+    "@smithy/node-http-handler": "4.12.1",
+    "axios": "1.20.0",
+    "firebase-admin": "14.5.0",
+    "pdfjs-dist": "6.3.289"
   },
   "devDependencies": {
     "aws-sdk-client-mock": "^4.1.0",
@@ -27,6 +30,8 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "jest": "^30.4.2"
+    "jest": "^30.4.2",
+    "onnxruntime-node": "1.30.0",
+    "pdf-lib": "1.17.1"
   }
 }

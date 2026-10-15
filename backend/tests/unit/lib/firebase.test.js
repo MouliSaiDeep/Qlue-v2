@@ -1,15 +1,13 @@
 let firebaseLib;
 let sdk;
 
-jest.mock('firebase-admin', () => ({
-    apps: [],
+jest.mock('firebase-admin/app', () => ({
+    getApps: jest.fn(() => []),
     initializeApp: jest.fn(() => ({})),
-    credential: {
-        cert: jest.fn(() => ({}))
-    },
-    auth: jest.fn(),
-    messaging: jest.fn()
+    cert: jest.fn(() => ({}))
 }));
+jest.mock('firebase-admin/auth', () => ({getAuth: jest.fn()}));
+jest.mock('firebase-admin/messaging', () => ({getMessaging: jest.fn()}));
 
 jest.mock('fs');
 jest.mock('../../../src/lib/secrets', () => ({
@@ -30,15 +28,9 @@ describe('firebase lib', () => {
         jest.resetModules();
         jest.clearAllMocks();
 
-        // Require the module under test first, then grab the EXACT firebase-admin
-        // mock it captured (firebase.js re-exports it as `sdk`). Configuring that
-        // same instance — instead of a second require('firebase-admin') — is what
-        // guarantees sdk.apps is the array we set here. A separate require can hand
-        // back a different mock instance in a full-suite run, leaving firebase.js's
-        // own sdk.apps undefined, which surfaced as "Firebase init failed".
         firebaseLib = require('../../../src/lib/firebase');
         sdk = firebaseLib.sdk;
-        sdk.apps = [];
+        sdk.getApps.mockReturnValue([]);
 
         mockAuth = {
             verifyIdToken: jest.fn(),
@@ -46,12 +38,12 @@ describe('firebase lib', () => {
             deleteUser: jest.fn(),
             getUserByEmail: jest.fn()
         };
-        sdk.auth.mockReturnValue(mockAuth);
+        require('firebase-admin/auth').getAuth.mockReturnValue(mockAuth);
 
         mockMessaging = {
             send: jest.fn()
         };
-        sdk.messaging.mockReturnValue(mockMessaging);
+        require('firebase-admin/messaging').getMessaging.mockReturnValue(mockMessaging);
 
         require('fs').existsSync.mockReturnValue(false);
     });
@@ -60,6 +52,15 @@ describe('firebase lib', () => {
         const auth = await firebaseLib.getAuth();
         expect(sdk.initializeApp).toHaveBeenCalled();
         expect(auth).toBe(mockAuth);
+    });
+
+    it('uses the managed credential even when a local key file exists', async () => {
+        require('fs').existsSync.mockReturnValue(true);
+        await firebaseLib.getAuth();
+        const secrets = require('../../../src/lib/secrets');
+        expect(secrets.getFirebaseServiceAccount).toHaveBeenCalledTimes(1);
+        expect(sdk.cert).toHaveBeenCalledWith(expect.objectContaining({project_id: 'test'}));
+        expect(require('fs').readFileSync).not.toHaveBeenCalled();
     });
 
     it('verifyIdToken should return decoded token', async () => {

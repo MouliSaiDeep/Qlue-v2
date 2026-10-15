@@ -1,3 +1,4 @@
+const diagnostics=require('../lib/logger').safeConsole;
 const { docClient } = require('../lib/dynamodb');
 const { UpdateCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 
@@ -16,19 +17,22 @@ const CONCEPT_STATES = {
 async function updateConceptState(sessionId, conceptId, state, attemptIncrement = 1) {
     const command = new UpdateCommand({
         TableName: CONCEPTS_TABLE,
-        Key: { sessionId, conceptId },
-        UpdateExpression: 'SET #st = :state ADD attempts :inc',
+        Key: { conceptId },
+        UpdateExpression: 'SET #st = :state, sessionId = :sid ADD attempts :inc',
         ExpressionAttributeNames: {
             '#st': 'state'
         },
         ExpressionAttributeValues: {
             ':state': state,
+            ':sid': sessionId,
             ':inc': attemptIncrement
         },
         ReturnValues: 'ALL_NEW'
     });
     
-    const res = await docClient.send(command);
+    const session = await require('./session').getSession(sessionId);
+    if(!session?.userId) throw new Error('Concept parent session is gone');
+    const res = await require('../lib/dynamodb').fencedSend(command,session.userId,[{ConditionCheck:{TableName:process.env.SESSIONS_TABLE||'qlue-sessions',Key:{sessionId},ConditionExpression:'attribute_exists(sessionId) AND currentState <> :ended',ExpressionAttributeValues:{':ended':'TERMINATED'}}}]);
     return res.Attributes;
 }
 
@@ -38,13 +42,14 @@ async function updateConceptState(sessionId, conceptId, state, attemptIncrement 
 async function getConceptsBySession(sessionId) {
     const command = new QueryCommand({
         TableName: CONCEPTS_TABLE,
+        IndexName: 'GSI_SessionIdConcept',
         KeyConditionExpression: 'sessionId = :sessionId',
         ExpressionAttributeValues: {
             ':sessionId': sessionId
         }
     });
     
-    const res = await docClient.send(command);
+    const res = await require('../lib/deadline').sendBounded(docClient,command);
     return res.Items || [];
 }
 
@@ -87,7 +92,7 @@ async function evaluateComprehension(sessionId, textTranscript, referenceMateria
             confidence: result.confidence || 0.8
         };
     } catch (err) {
-        console.error('evaluateComprehension failed:', err);
+        diagnostics.error('evaluateComprehension failed:', err);
         return { status: 'NOT_YET_COMPREHENDED', confidence: 0 };
     }
 }

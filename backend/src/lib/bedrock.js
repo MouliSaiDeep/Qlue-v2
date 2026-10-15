@@ -1,3 +1,6 @@
+const diagnostics=require('./logger').safeConsole;
+const {beforePaidCall}=require('./paidWork');
+const {sendBounded,remaining,bounded,streamBounded}=require('./deadline');
 /**
  * Amazon Bedrock Client Wrapper specifically tuned for Qlue's Nemotron-4-340b-instruct pipeline.
  */
@@ -7,7 +10,7 @@ const { getBedrockConfig } = require('./secrets');
 const { ERROR_CODES, QlueError } = require('./errors');
 
 const bedrockClient = new BedrockRuntimeClient({ 
-  region: process.env.AWS_REGION || 'us-east-1',
+  maxAttempts: 1, region: process.env.AWS_REGION || 'us-east-1',
   requestHandler: new NodeHttpHandler({
     connectionTimeout: 5000,
     requestTimeout: 50000 // Increased from 15000 to prevent LLM timeouts during generation
@@ -28,6 +31,8 @@ async function invokeModel(modelId, params, options = {}) {
     modelId: resolvedModelId,
     messages: params.messages || [],
     system: params.system ? [{ text: params.system }] : [{ text: systemPrompt }],
+    // This model's supported constrained output prevents malformed report JSON.
+    ...(params.outputConfig && resolvedModelId === 'nvidia.nemotron-super-3-120b' ? {outputConfig:params.outputConfig} : {}),
     inferenceConfig: {
       maxTokens: params.max_tokens || 1000,
       temperature: params.temperature || 0.7,
@@ -40,7 +45,8 @@ async function invokeModel(modelId, params, options = {}) {
 
   while (attempt <= maxRetries) {
     try {
-      const response = await bedrockClient.send(command);
+      await beforePaidCall('interview');
+      const response = await sendBounded(bedrockClient,command);
       
       // Standardize response format
       const responseBody = {
@@ -49,7 +55,7 @@ async function invokeModel(modelId, params, options = {}) {
       };
 
       if (options.logTokens) {
-        console.info(`[Bedrock Tokens] Input: ${responseBody.usage?.inputTokens || '?'}, Output: ${responseBody.usage?.outputTokens || '?'}`);
+        diagnostics.info(`[Bedrock Tokens] Input: ${responseBody.usage?.inputTokens || '?'}, Output: ${responseBody.usage?.outputTokens || '?'}`);
       }
 
       return responseBody;
@@ -59,7 +65,7 @@ async function invokeModel(modelId, params, options = {}) {
         if (attempt > maxRetries) {
           throw new QlueError('Bedrock Timeout after retries', ERROR_CODES.BEDROCK_TIMEOUT, 504, error.message);
         }
-        await new Promise(res => setTimeout(res, attempt * 1000));
+        await bounded(()=>new Promise(res => setTimeout(res, attempt * 1000)),{label:'modelRetry'});
         continue;
       }
       throw new QlueError('Bedrock Invocation Error', ERROR_CODES.BEDROCK_ERROR, 500, error.message);
@@ -90,31 +96,24 @@ async function invokeModelStream(modelId, params, onToken) {
 
     try {
         const abortController = new AbortController();
-        // 45s initial timeout for large model TTFT
-        let timeoutTimer = setTimeout(() => {
-            abortController.abort();
-        }, 45000);
 
-        const response = await bedrockClient.send(command, { abortSignal: abortController.signal });
+
+        await beforePaidCall('interview');
+        const response = await sendBounded(bedrockClient, command, { abortSignal: abortController.signal });
         let fullText = "";
 
-        for await (const event of response.stream) {
-            // Reset to 15s strictly for the gap between individual tokens
-            clearTimeout(timeoutTimer);
-            timeoutTimer = setTimeout(() => {
-                abortController.abort();
-            }, 15000);
-
+        for await (const event of streamBounded(response.stream,{label:'bedrockBody'})) {
+            if(remaining()<=0) {abortController.abort();throw new Error('Inference deadline exhausted');}
             if (event.contentBlockDelta) {
                 const token = event.contentBlockDelta.delta.text;
                 fullText += token;
-                if (onToken) onToken(token);
+                if (onToken) await onToken(token);
             }
         }
-        clearTimeout(timeoutTimer);
+
         return fullText;
     } catch (error) {
-        console.error('Bedrock Streaming Error:', error);
+        diagnostics.error('Bedrock Streaming Error:', error);
         if (error.name === 'AbortError' || error.message === 'BEDROCK_TIMEOUT' || error.name === 'TimeoutError') {
             throw new QlueError('Bedrock stream timed out after 15 seconds of inactivity.', 'BEDROCK_TIMEOUT', 504, error.message);
         }

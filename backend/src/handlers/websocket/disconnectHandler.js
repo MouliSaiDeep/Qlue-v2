@@ -1,3 +1,4 @@
+const diagnostics=require('../../lib/logger').safeConsole;
 /**
  * WebSocket $disconnect route handler.
  * Implements Stranded State Revert to prevent Ghost Speaking Lockout.
@@ -19,7 +20,7 @@ exports.handler = async (event) => {
       const activeSession = await getActiveSessionForUser(connectionRecord.userId);
       if (activeSession) {
         sessionId = activeSession.sessionId;
-        console.warn(`[Disconnect Guard] No sessionId on connectionRecord, found active session ${sessionId} via userId ${connectionRecord.userId}`);
+        diagnostics.warn(`[Disconnect Guard] No sessionId on connectionRecord, found active session ${sessionId} via userId ${connectionRecord.userId}`);
       }
     }
 
@@ -30,13 +31,13 @@ exports.handler = async (event) => {
       // If the connection drops while the DB is locked, the audio stream is dead.
       // Revert to USER_RESPONDING so the UI unlocks when the user reconnects.
       if (session && (session.currentState === INTERVIEW_STATES.AI_SPEAKING || session.currentState === INTERVIEW_STATES.PROCESSING_RESPONSE)) {
-        console.warn(`[Disconnect Guard] Session ${sessionId} stranded in ${session.currentState}. Reverting to USER_RESPONDING.`);
+        diagnostics.warn(`[Disconnect Guard] Session ${sessionId} stranded in ${session.currentState}. Reverting to USER_RESPONDING.`);
 
         // Try/catch suppresses conditional check failures if Bedrock is actively moving the state
         try {
           await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, session.currentState, { message: 'Connection dropped. Reverted.' });
         } catch (err) {
-          console.warn(`[Disconnect Guard] State safely moved by another process: ${err.message}`);
+          diagnostics.warn(`[Disconnect Guard] State safely moved by another process: ${err.name}`);
         }
       }
     }
@@ -44,10 +45,10 @@ exports.handler = async (event) => {
     // 3. Clean up the connection record
     await deactivateConnection(connectionId);
 
-    console.info(`Successfully processed disconnect for connectionId: ${connectionId}`);
+    diagnostics.info(`Successfully processed disconnect for connectionId: ${connectionId}`);
     return { statusCode: 200 };
   } catch (error) {
-    console.error('[Disconnect Error]', error);
+    diagnostics.error('[Disconnect Error]', error);
     // Standard practice for $disconnect: always return 200 to AWS
     return { statusCode: 200 };
   }

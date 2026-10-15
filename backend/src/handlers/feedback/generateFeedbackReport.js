@@ -18,6 +18,7 @@ exports.handler = async (event) => {
   const { sessionId, userId, moduleType, transcript, dimensionScores, metadata } = event;
 
   try {
+    if (!await require('../../lib/feedbackAttempt').currentAttempt(event)) return {success:true,stale:true};
     console.info(`Generating qualitative feedback for session ${sessionId}`);
 
     // 1. Build feedback prompt and invoke Bedrock
@@ -51,9 +52,12 @@ exports.handler = async (event) => {
 
     // 4. Prepare complete report payload
     const reportPayload = {
+      attemptId: event.attemptId,
       sessionId,
       userId,
       moduleType,
+      status: 'COMPLETE',
+      analysisStatus: 'OK',
       overallScore: Math.round(overallScore * 10) / 10, // 1 decimal place
       dimensionScores: dimensionScores || {},
       strengths: feedbackData.strengths || [],
@@ -72,7 +76,7 @@ exports.handler = async (event) => {
       Payload: Buffer.from(JSON.stringify(reportPayload))
     });
 
-    await lambdaClient.send(command);
+    await require('../../lib/deadline').sendBounded(lambdaClient,command);
     
     return { success: true, sessionId };
 
@@ -81,3 +85,5 @@ exports.handler = async (event) => {
     throw error;
   }
 };
+const stableHandler=exports.handler;
+exports.handler=(event,context)=>require('../../lib/deadline').withDeadline(context,()=>stableHandler(event),{maxMs:60000,userId:event.userId});

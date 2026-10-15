@@ -1,3 +1,4 @@
+const diagnostics=require('./logger').safeConsole;
 /**
  * Runtime configuration loader backed by AWS SSM Parameter Store (with caching).
  *
@@ -34,7 +35,7 @@ async function getSecret(parameterName) {
   }
 
   try {
-    const response = await client.send(new GetParameterCommand({
+    const response = await require('./deadline').sendBounded(client,new GetParameterCommand({
       Name: name,
       WithDecryption: true
     }));
@@ -50,7 +51,7 @@ async function getSecret(parameterName) {
     paramCache.set(name, { value, timestamp: now });
     return value;
   } catch (error) {
-    console.error(`Failed to retrieve parameter ${name}`, error);
+    diagnostics.error(`Failed to retrieve parameter ${name}`, error);
     // Let exceptions like ParameterNotFound bubble up, matching the previous
     // Secrets Manager behaviour.
     throw error;

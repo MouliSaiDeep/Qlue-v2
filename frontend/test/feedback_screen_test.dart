@@ -6,6 +6,31 @@ import 'package:frontend/screens/interview/feedback_report_screen.dart';
 import 'package:frontend/core/models/feedback_report_model.dart';
 import 'package:frontend/context/auth_provider.dart';
 import 'package:frontend/core/theme.dart';
+import 'package:frontend/core/network/dio_client.dart';
+import 'package:dio/dio.dart';
+import 'dart:typed_data';
+
+class NoFeedbackAdapter implements HttpClientAdapter {
+  int requests = 0;
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    requests++;
+    return ResponseBody.fromString(
+      '{"session":{"feedbackExpected":false},"feedback":null}',
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
 
 // The feedback screen self-fetches its report via Dio; these tests use the
 // screen's @visibleForTesting hooks (initialReport / initialError / autoFetch)
@@ -34,19 +59,48 @@ void main() {
 
   testWidgets('renders loading state', (WidgetTester tester) async {
     await tester.pumpWidget(
-      wrap(const FeedbackReportScreen(sessionId: 'test-session', autoFetch: false)),
+      wrap(
+        const FeedbackReportScreen(sessionId: 'test-session', autoFetch: false),
+      ),
     );
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.text('Analyzing your transcription...'), findsOneWidget);
   });
 
+  testWidgets(
+    'answerless termination stops feedback polling and shows retained-text explanation',
+    (tester) async {
+      final dio = DioClient().dio;
+      final interceptors = dio.interceptors.toList();
+      final previous = dio.httpClientAdapter;
+      final adapter = NoFeedbackAdapter();
+      dio.interceptors.clear();
+      dio.httpClientAdapter = adapter;
+      addTearDown(() {
+        dio.httpClientAdapter = previous;
+        dio.interceptors.addAll(interceptors);
+      });
+      await tester.pumpWidget(
+        wrap(const FeedbackReportScreen(sessionId: 'no-accepted-answer')),
+      );
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 9));
+      expect(adapter.requests, 1);
+      expect(find.textContaining('No answer was accepted'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('Go Back'), findsOneWidget);
+    },
+  );
+
   testWidgets('renders error state', (WidgetTester tester) async {
     await tester.pumpWidget(
-      wrap(const FeedbackReportScreen(
-        sessionId: 'test-session',
-        initialError: 'Failed to load',
-      )),
+      wrap(
+        const FeedbackReportScreen(
+          sessionId: 'test-session',
+          initialError: 'Failed to load',
+        ),
+      ),
     );
 
     expect(find.text('Failed to load'), findsOneWidget);
@@ -65,10 +119,9 @@ void main() {
     );
 
     await tester.pumpWidget(
-      wrap(FeedbackReportScreen(
-        sessionId: 'test-session',
-        initialReport: report,
-      )),
+      wrap(
+        FeedbackReportScreen(sessionId: 'test-session', initialReport: report),
+      ),
     );
     await tester.pump();
 

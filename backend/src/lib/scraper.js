@@ -1,11 +1,21 @@
+const diagnostics=require('./logger').safeConsole;
 /**
  * Scraper utility integrating scrape.do API for Qlue's website module.
  */
 const { getScraperApiKey } = require('./secrets');
 const { ERROR_CODES, QlueError } = require('./errors');
+const { safeFetch } = require('./ssrf');
 
 // Minimal viable length of text extracted, otherwise we fail parsing.
 const MIN_CONTENT_LENGTH = 200;
+
+// One total wall-clock budget for the ENTIRE tiered fetch (finding 10). Every
+// fallback tier shares this deadline instead of restarting its own full 30s
+// allowance, so a slow/anti-bot site cannot push a synchronous caller (JD
+// analysis, website init, the /scraper/fetch route) past API Gateway's ~29s
+// integration timeout — which would strand the client with an unexplained 504
+// while the Lambda keeps burning scrape.do credits. Overridable via env.
+const SCRAPE_TOTAL_DEADLINE_MS = Number(process.env.SCRAPE_TOTAL_DEADLINE_MS) || 25000;
 
 function isValidUrl(string) {
   try {
@@ -85,41 +95,55 @@ function linkedInGuestUrl(url) {
   return null;
 }
 
-// A desktop browser UA so plain fetches aren't trivially rejected by origins
-// that block obvious bots/no-UA requests.
-const BROWSER_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36';
-
 /**
  * fetch() with a hard timeout so a hung origin can't stall the Lambda.
+ * Only used for the trusted scrape.do proxy endpoint; user-controlled
+ * destinations go through safeFetch instead.
+ *
+ * R-07: fetch() resolves as soon as response HEADERS arrive — the body is still
+ * streaming at that point. The previous version cleared the abort timer the
+ * instant fetch() resolved, so the body read (response.text()) ran with NO
+ * timeout at all: a proxy that sent headers and then stalled the body could hang
+ * the Lambda well past the caller's budget (and past API Gateway's ~29s limit).
+ * The body is now consumed INSIDE the timeout window via `consume`, so the abort
+ * covers connect + headers + the full body read.
  */
-async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
+async function fetchWithTimeout(url, options = {}, timeoutMs = 12000, consume) {
+  const deadlineAt=require('./deadline').absolute(timeoutMs);
+  return require('./deadline').bounded(async signal=>{
+    const response=await fetch(url,{...options,signal});
+    return consume?consume(response,deadlineAt):response;
+  },{deadlineAt,label:'proxyDownload'});
 }
 
 /**
  * Single fetch attempt through scrape.do with optional JS rendering and
  * residential ("super") proxies.
  */
-async function scrapeDoFetch(apiKey, targetUrl, { render = false, superProxy = false } = {}) {
+async function scrapeDoFetch(apiKey, targetUrl, { render = false, superProxy = false, timeoutMs = 30000 } = {}) {
+  await require('./paidWork').beforePaidCall('scrape');
   const params = new URLSearchParams({ token: apiKey, url: targetUrl });
   if (render) params.set('render', 'true');
   if (superProxy) params.set('super', 'true');
 
-  const response = await fetchWithTimeout(`https://api.scrape.do?${params.toString()}`, {}, 30000);
-  if (!response.ok) {
-    throw new QlueError(
-      `Scraper failed to fetch target URL. Status: ${response.status}`,
-      ERROR_CODES.URL_UNREACHABLE, 400
-    );
-  }
-  return response.text();
+  // The ok-check and body read both run inside fetchWithTimeout's abort window
+  // (R-07), so a stalled body is torn down at timeoutMs instead of hanging.
+  return fetchWithTimeout(`https://api.scrape.do?${params.toString()}`, {}, timeoutMs, async (response,deadlineAt) => {
+    if (!response.ok) {
+      throw new QlueError(
+        `Scraper failed to fetch target URL. Status: ${response.status}`,
+        ERROR_CODES.URL_UNREACHABLE, 400
+      );
+    }
+    const chunks=[]; let bytes=0;
+    if (!response.body) throw new Error('Proxy response body is unavailable');
+    for await (const chunk of require('./deadline').streamBounded(response.body,{maxBytes:2*1024*1024,deadlineAt,label:'proxyBody'})) {
+      bytes+=chunk.length;
+      if(bytes>2*1024*1024) throw new QlueError('Proxy response exceeds byte limit',ERROR_CODES.ACCESS_FORBIDDEN,400);
+      chunks.push(Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks).toString('utf8');
+  });
 }
 
 /**
@@ -127,23 +151,15 @@ async function scrapeDoFetch(apiKey, targetUrl, { render = false, superProxy = f
  * and it works for the majority of public articles, docs and company career
  * pages. Used as the first tier when scrape.do isn't configured, and as the
  * last-ditch fallback when every proxied tier fails.
+ *
+ * SSRF-guarded: the destination is user-controlled, so this goes through
+ * safeFetch (see lib/ssrf.js), which blocks private/loopback/link-local/reserved
+ * hosts, pins the connection to a validated IP (no DNS-rebind window),
+ * re-validates every redirect hop, and streams the body under a byte ceiling.
  */
-async function directFetch(targetUrl) {
-  const response = await fetchWithTimeout(targetUrl, {
-    headers: {
-      'User-Agent': BROWSER_UA,
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9'
-    },
-    redirect: 'follow'
-  }, 12000);
-  if (!response.ok) {
-    throw new QlueError(
-      `Direct fetch failed. Status: ${response.status}`,
-      ERROR_CODES.URL_UNREACHABLE, 400
-    );
-  }
-  return response.text();
+async function directFetch(targetUrl, timeoutMs = 12000) {
+  const { body } = await safeFetch(targetUrl, { deadlineMs: timeoutMs });
+  return body;
 }
 
 /**
@@ -155,18 +171,24 @@ async function directFetch(targetUrl) {
  *   4. JS rendering + residential proxies — for aggressive anti-bot sites
  * Each tier costs more scrape.do credits, so we only escalate on failure.
  */
-async function fetchAndCleanContent(url) {
+async function fetchAndCleanContent(url, { deadlineMs = SCRAPE_TOTAL_DEADLINE_MS, now = Date.now } = {}) {
   if (!isValidUrl(url)) {
     throw new QlueError('Invalid URL provided', ERROR_CODES.INVALID_URL, 400);
   }
+
+  // One shared deadline for the whole escalation (finding 10). `remaining()`
+  // is what's left of the total budget; each tier is capped to it so no single
+  // attempt — nor the sum of all of them — can outlive the caller's deadline.
+  const start = now();
+  const remaining = () => Math.min(deadlineMs - (now() - start), require('./deadline').remaining());
 
   // The scrape.do key is optional now: without it we still attempt a direct
   // fetch, which handles most public pages. Key lookup failures are non-fatal.
   let apiKey = null;
   try {
-    apiKey = await getScraperApiKey();
+    apiKey = await require('./deadline').bounded(()=>getScraperApiKey(),{deadlineAt:require('./deadline').absolute(Math.min(2000,remaining())),label:'scraperSecret'});
   } catch (keyErr) {
-    console.warn('Scraper API key unavailable; falling back to direct fetch only:', keyErr.message);
+    diagnostics.warn('Scraper API key unavailable; falling back to direct fetch only:', keyErr.name);
   }
 
   // LinkedIn rewrite becomes the primary target when we can extract a job id.
@@ -190,10 +212,16 @@ async function fetchAndCleanContent(url) {
   let bestText = '';
 
   for (const tier of tiers) {
+    // Shared-deadline gate (finding 10): once the total budget is spent, stop
+    // escalating rather than kicking off another multi-second tier that would
+    // run past the gateway/client deadline. Cap this tier to the time left.
+    const budget = remaining();
+    if (budget <= 0) break;
+
     try {
       const htmlContent = tier.kind === 'direct'
-        ? await directFetch(primaryUrl)
-        : await scrapeDoFetch(apiKey, primaryUrl, tier);
+        ? await directFetch(primaryUrl, Math.min(budget, 12000))
+        : await scrapeDoFetch(apiKey, primaryUrl, { ...tier, timeoutMs: Math.min(budget, 30000) });
 
       const titleMatch = htmlContent.match(/<title>([^<]+)<\/title>/i);
       const title = titleMatch ? titleMatch[1].trim() : url;
@@ -213,6 +241,17 @@ async function fetchAndCleanContent(url) {
         bestText = cleanedText;
       }
     } catch (error) {
+      // R-01: a forbidden destination is TERMINAL — never escalate it to the
+      // scrape.do proxy. The direct tier runs through the SSRF guard (safeFetch);
+      // an ACCESS_FORBIDDEN here means this user-controlled URL was refused
+      // (private/loopback/metadata host, blocked port, a redirect into a private
+      // host, or a disallowed response type/size). scrape.do has NO SSRF guard,
+      // so handing it the same destination would launder exactly what we just
+      // blocked. Only genuine unreachability (timeouts, origin HTTP errors,
+      // anti-bot blocks → URL_UNREACHABLE) should fall through to the proxy.
+      if (['ACCESS_FORBIDDEN','SERVICE_PAUSED','ACCOUNT_DELETING','QUOTA_EXCEEDED'].includes(error.code)) {
+        throw error;
+      }
       lastError = error;
       // Try the next, stronger tier.
     }

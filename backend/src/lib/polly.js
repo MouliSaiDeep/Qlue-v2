@@ -1,6 +1,9 @@
+const diagnostics=require('./logger').safeConsole;
+const {beforePaidCall}=require('./paidWork');
+const {sendBounded,remaining,bounded,streamBounded}=require('./deadline');
 const { PollyClient, SynthesizeSpeechCommand } = require('@aws-sdk/client-polly');
 
-const pollyClient = new PollyClient({ region: process.env.AWS_REGION || 'us-east-1' });
+const pollyClient = new PollyClient({ maxAttempts: 1, region: process.env.AWS_REGION || 'us-east-1' });
 
 // COST-FIX: Engines each voice supports, listed CHEAPEST FIRST.
 // Polly pricing: standard $4/1M chars (5M/mo free), neural $16/1M (1M/mo free
@@ -59,7 +62,7 @@ function resolveVoiceAndEngine(voiceId, requestedEngine, options = {}) {
   }
 
   if (engine === 'generative' && !isGenerativeAllowed(options.allowGenerative)) {
-    console.log(`[Polly] Cost-saver: substituting ${voice}/generative -> ${COST_SAVER_VOICE}/neural (use Premium voice mode or POLLY_ALLOW_GENERATIVE=true to opt in)`);
+    diagnostics.log(`[Polly] Cost-saver: substituting ${voice}/generative -> ${COST_SAVER_VOICE}/neural (use Premium voice mode or POLLY_ALLOW_GENERATIVE=true to opt in)`);
     voice = COST_SAVER_VOICE;
     engine = 'neural';
   }
@@ -88,7 +91,10 @@ async function synthesizeSpeech(text, voiceId = 'Ruth', requestedEngine = null, 
     voiceId, requestedEngine, { allowGenerative: options.allowGenerative }
   );
 
-  console.log(`[Polly] Synthesizing: voice=${finalVoiceId}, engine=${finalEngine}, text="${text.substring(0, 50)}..."`);
+  // R-08: never log the text being synthesized — it is the interview
+  // question/answer content (and may carry the candidate's name). Log the
+  // resolved voice/engine and the character count only.
+  diagnostics.log(`[Polly] Synthesizing: voice=${finalVoiceId}, engine=${finalEngine}, chars=${text.length}`);
 
   try {
     const command = new SynthesizeSpeechCommand({
@@ -99,17 +105,19 @@ async function synthesizeSpeech(text, voiceId = 'Ruth', requestedEngine = null, 
       TextType: 'text'
     });
 
-    const response = await pollyClient.send(command);
+    await beforePaidCall('interview');
+    const response = await sendBounded(pollyClient,command);
     
     // Convert stream to base64
     const chunks = [];
-    for await (const chunk of response.AudioStream) {
+    for await (const chunk of streamBounded(response.AudioStream,{label:'pollyBody'})) {
+      if(remaining()<=0) throw new Error('TTS deadline exhausted');
       chunks.push(chunk);
     }
     const audioBuffer = Buffer.concat(chunks);
     const audioBase64 = audioBuffer.toString('base64');
 
-    console.log(`[Polly] Synthesized ${audioBase64.length} bytes`);
+    diagnostics.log(`[Polly] Synthesized ${audioBase64.length} bytes`);
 
     return {
       audioBase64,
@@ -118,7 +126,7 @@ async function synthesizeSpeech(text, voiceId = 'Ruth', requestedEngine = null, 
     };
 
   } catch (error) {
-    console.error('Polly synthesis error:', error);
+    diagnostics.error('Polly synthesis error:', error);
 
     // BUG FIX (infinite recursion): the old fallback retried 'neural' with
     // 'standard', but resolveVoiceAndEngine maps an unsupported engine back to
@@ -135,14 +143,14 @@ async function synthesizeSpeech(text, voiceId = 'Ruth', requestedEngine = null, 
       .find(e => !tried.includes(e));
 
     if (nextEngine) {
-      console.log(`[Polly] ${finalEngine} failed. Falling back to ${nextEngine} engine`);
+      diagnostics.log(`[Polly] ${finalEngine} failed. Falling back to ${nextEngine} engine`);
       return synthesizeSpeech(text, finalVoiceId, nextEngine, {
         allowGenerative: options.allowGenerative,
         _attemptedEngines: tried
       });
     }
 
-    console.error(`[Polly] All engines exhausted for voice ${finalVoiceId} (tried: ${tried.join(', ')})`);
+    diagnostics.error(`[Polly] All engines exhausted for voice ${finalVoiceId} (tried: ${tried.join(', ')})`);
     throw error;
   }
 }

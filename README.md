@@ -37,7 +37,7 @@ Qlue v2 solves this by providing a **voice-first AI interviewer** that reads the
 
 Qlue v2 is a full-stack, serverless, AI-native platform consisting of:
 
-1. **A Flutter mobile app** (iOS, Android, Web) that acts as the interview client — handling voice input (STT), audio playback (TTS), real-time session state via WebSocket, and visualisation of feedback reports.
+1. **A Flutter app with Android API 24+ interview capture** that acts as the interview client — handling voice input (STT), audio playback (TTS), real-time session state via WebSocket, and visualisation of feedback reports.
 
 2. **A Node.js serverless backend** (AWS SAM / Lambda) that orchestrates the interview lifecycle — session management, LLM query construction, scoring, transcript persistence, and push notifications.
 
@@ -53,7 +53,7 @@ The system supports **four distinct AI-driven interview modules**:
 | **WEBSITE** | Adaptive tutoring from any web URL — user shares a link and is quizzed on its content |
 | **JOB MATCH (JD)** | Analyze a job posting against a selected resume to produce a profile match score and tailored JD interview |
 
-Every spoken response is transcribed (via `speech_to_text`), sent to the backend, scored by Bedrock, and the AI's reply is synthesised by **Amazon Polly** (5 selectable voice personas) and played back to the candidate in real time via `just_audio`.
+Android interviews use the stable v1.0.8 release's `speech_to_text` 7.4.0 integration with the phone's system recognizer. A small local plugin extension exposes actual readiness, speech boundaries, native final results and capture ownership so recognition fragments stay in one hands-free answer. Unfinished hypotheses stay drafts and use bounded recovery. The recognizer may use the device's online speech service. English follows the device locale, with Indian English as the fallback. Local Silero/Zipformer files remain experimental and are not used by the default interview capture path. The AI's reply is synthesised by **Amazon Polly** and played via `just_audio`. Other platform interview capture is not currently supported.
 
 ---
 
@@ -61,7 +61,7 @@ Every spoken response is transcribed (via `speech_to_text`), sent to the backend
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                        Flutter Client (Mobile/Web)               │
+│                        Flutter Client (Android capture)               │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────────┐  │
 │  │ Auth Screen │  │ Resume Upload│  │  Interview Session UI  │  │
 │  │ (Firebase)  │  │ (S3 presign) │  │  STT → WS → TTS       │  │
@@ -139,13 +139,14 @@ Every spoken response is transcribed (via `speech_to_text`), sent to the backend
 | **Provider** | ^6.1.2 | State management (AuthProvider, ResumeProvider, DashboardProvider, InterviewProvider) |
 | **Dio** | ^5.4.0 | HTTP client for REST API calls |
 | **web_socket_channel** | ^3.0.3 | Real-time WebSocket communication with backend |
-| **speech_to_text** | ^7.3.0 | On-device speech recognition (STT) |
+| **Android SpeechRecognizer** | System service | Current default interview recognizer, intentionally restored to the stable release approach |
+| **sherpa_onnx** | 1.13.8 | Experimental local Zipformer/Silero path and recorded-model verification |
 | **just_audio** | ^0.9.36 | Audio playback of Polly-synthesised TTS |
 | **Firebase Auth** | ^6.4.0 | Email/password and Google Sign-In |
 | **Firebase Messaging** | ^16.2.0 | Push notifications for feedback completion |
 | **go_router** | ^17.2.1 | Declarative navigation |
 | **google_fonts** | ^8.0.2 | Typography |
-| **envied** | ^0.5.4 | Compile-time environment variable injection |
+| **Dart environment defines** | Dart 3.11 | Compile-time configuration via env.json |
 
 ### Backend
 | Technology | Version | Purpose |
@@ -278,8 +279,8 @@ The following features are **explicitly not included** in v2:
 
 ### Prerequisites
 
-- Flutter SDK ≥ 3.11.0
-- Node.js ≥ 18, AWS CLI, AWS SAM CLI
+- Flutter 3.41.2 / Dart 3.11.0
+- Node.js 24, AWS CLI, AWS SAM CLI; Linux Docker for Lambda arm64 packaging
 - Firebase project (Auth + FCM configured)
 - AWS account with Bedrock model access enabled for `nvidia.nemotron-super-3-120b`
 
@@ -293,9 +294,9 @@ npm install
 cp .env.example .env
 # Fill in: AWS_REGION, BEDROCK_MODEL_ID, FIREBASE credentials
 
-# Deploy with SAM
-sam build
-sam deploy --guided
+# Build only; production migration requires the owning-stack runbook below
+sam validate --lint
+sam build --use-container --no-cached
 ```
 
 ### Frontend Setup
@@ -306,15 +307,10 @@ cd frontend
 # Install dependencies
 flutter pub get
 
-# Set up envied env file
-cp .env.example .env
-# Fill in: API_BASE_URL, WS_BASE_URL, Firebase config
-
-# Generate env.g.dart
-dart run build_runner build --delete-conflicting-outputs
-
-# Run
-flutter run
+# Copy the compile-time configuration example; set the matching backend/Firebase
+cp env.example.json env.json
+# Keep env.json, google-services.json and signing secrets private
+flutter run --dart-define-from-file=env.json
 ```
 
 ### Running Tests
@@ -497,3 +493,19 @@ The current codebase is architected to support the following planned features wi
 ## License
 
 MIT © 2024 Qlue Team
+
+### Current interview platform and release gates
+
+Native microphone interview capture supports **Android API 24+**. iOS, web and desktop interview capture is not implemented. The default SttService intentionally uses the Android system recognizer, following the stable published release; the user confirmed retaining this restoration on 4 October. Native readiness and speech-boundary callbacks drive hands-free answer accumulation. The phone service may require network access. Actual pause/endpoint behavior and recognition accuracy need device acceptance. Foreground interview screen-awake, optional Replay, account ownership and bounded recovery have separate regressions. Local AudioRecord/Silero/Zipformer remains experimental: its recorded-model probes do not verify the default microphone path. Its 180-second retained-PCM cap does not apply to the system-recognizer path, which does not retain raw PCM; long transcripts are also subject to the backend text limit.
+
+Release checks verify the production system-recognizer path and the universal APK:
+
+```powershell
+# From repository root:
+node audit/verify-release-reachability.cjs
+python audit/verify-release-apk.py frontend/build/app/outputs/flutter-apk/Qlue.apk
+```
+
+The APK workflow runs frontend analysis, frontend tests, backend tests, and production dependency audits before building. Packaging checks verify the original font bytes, supported architectures, archive integrity, and exclusion of experimental offline recognition resources. Physical Android microphone and accent/noise acceptance remains a separate device check.
+
+Backend main pushes **verify only**. Manual workflow dispatch builds a paused migration review artifact. Version tags build a signed APK and publish it to GitHub Releases after verification passes. The release version and Android build number come from the tag (for example, `v1.0.9` becomes `1.0.9` / `10009`); `frontend/pubspec.yaml` records the matching local version. Follow [the controlled rollout and physical-device checklist](audit/backend-rollout-runbook.md) for future backend migrations. Release signing and environment inputs remain in local ignored files or GitHub Actions secrets.

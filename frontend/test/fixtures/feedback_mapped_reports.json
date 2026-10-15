@@ -1,0 +1,1259 @@
+{
+  "40": {
+    "sessionId": "presentation-s",
+    "attemptId": "current",
+    "userId": "synthetic",
+    "moduleType": "INTRO",
+    "expectedDimensions": [
+      "Clarity",
+      "Structure",
+      "Confidence"
+    ],
+    "assessmentMode": "TRANSCRIPT_ONLY",
+    "unavailableDimensions": {
+      "Confidence": "NO_AUDIO_EVIDENCE"
+    },
+    "assessmentLimitations": [
+      "Transcript-only assessment: pronunciation, accent, vocal tone and acoustic confidence are not assessed."
+    ],
+    "status": "COMPLETE",
+    "analysisStatus": "OK",
+    "feedbackStyle": "CONCISE_V1",
+    "qualitativeStatus": "AVAILABLE",
+    "findingEvidence": {
+      "strengths": [
+        {
+          "dimension": "Clarity",
+          "criterion": "DIRECT_CONTENT",
+          "topic": "study planner",
+          "text": "Presents a clear main point about “study planner”.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        },
+        {
+          "dimension": "Structure",
+          "criterion": "LOGICAL_SEQUENCE",
+          "topic": "study planner",
+          "text": "Connects background, experience and goals around “study planner”.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        }
+      ],
+      "improvements": []
+    },
+    "overallScore": 40,
+    "dimensionScores": {
+      "Clarity": 0,
+      "Structure": 80
+    },
+    "dimensionAnalysis": {
+      "Clarity": {
+        "description": "How clearly the received text states a relevant main point and explains its details.",
+        "practice": "Practice answering with one direct point, one supporting example and one takeaway.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Presents a clear main point about “study planner”."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Clarity",
+            "criterion": "DIRECT_CONTENT",
+            "topic": "study planner",
+            "text": "Presents a clear main point about “study planner”.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      },
+      "Structure": {
+        "description": "How the answer organizes background, supporting experience and a goal into a logical sequence.",
+        "practice": "Outline background → relevant project or achievement → goal before your next introduction.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Connects background, experience and goals around “study planner”."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Structure",
+            "criterion": "LOGICAL_SEQUENCE",
+            "topic": "study planner",
+            "text": "Connects background, experience and goals around “study planner”.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      },
+      "Confidence": {
+        "description": "Vocal confidence requires recorded audio; it cannot be measured from recognized words alone.",
+        "practice": "",
+        "reason": "NO_AUDIO_EVIDENCE",
+        "evidence": [],
+        "strengths": [],
+        "improvements": [],
+        "findingEvidence": []
+      }
+    },
+    "strengths": [
+      "Presents a clear main point about “study planner”.",
+      "Connects background, experience and goals around “study planner”."
+    ],
+    "weaknesses": [],
+    "recommendations": [],
+    "executiveSummary": "Your received answers discuss “study planner”. The review covers Clarity, Structure.",
+    "feedbackId": "presentation-s#current",
+    "reportVersion": "v1",
+    "notificationStatus": "PENDING",
+    "notificationAttempts": 0,
+    "generatedAt": 1791551481264,
+    "transcript": [
+      {
+        "sessionId": "presentation-s",
+        "speaker": "USER",
+        "text": "I built a study planner for classmates and tested the task list. I want to become a software developer.",
+        "turnIndex": 1,
+        "timestamp": "2026-10-09T00:00:00Z"
+      }
+    ]
+  },
+  "80": {
+    "sessionId": "presentation-s",
+    "attemptId": "current",
+    "userId": "synthetic",
+    "moduleType": "INTRO",
+    "expectedDimensions": [
+      "Clarity",
+      "Structure",
+      "Confidence"
+    ],
+    "assessmentMode": "TRANSCRIPT_ONLY",
+    "unavailableDimensions": {
+      "Structure": "INSUFFICIENT_TEXT",
+      "Confidence": "NO_AUDIO_EVIDENCE"
+    },
+    "assessmentLimitations": [
+      "Transcript-only assessment: pronunciation, accent, vocal tone and acoustic confidence are not assessed."
+    ],
+    "status": "COMPLETE",
+    "analysisStatus": "OK",
+    "feedbackStyle": "CONCISE_V1",
+    "qualitativeStatus": "AVAILABLE",
+    "findingEvidence": {
+      "strengths": [
+        {
+          "dimension": "Clarity",
+          "criterion": "DIRECT_CONTENT",
+          "topic": "study planner",
+          "text": "Presents a clear main point about “study planner”.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        }
+      ],
+      "improvements": []
+    },
+    "overallScore": 80,
+    "dimensionScores": {
+      "Clarity": 80
+    },
+    "dimensionAnalysis": {
+      "Clarity": {
+        "description": "How clearly the received text states a relevant main point and explains its details.",
+        "practice": "Practice answering with one direct point, one supporting example and one takeaway.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Presents a clear main point about “study planner”."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Clarity",
+            "criterion": "DIRECT_CONTENT",
+            "topic": "study planner",
+            "text": "Presents a clear main point about “study planner”.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      },
+      "Structure": {
+        "description": "How the answer organizes background, supporting experience and a goal into a logical sequence.",
+        "practice": "",
+        "reason": "INSUFFICIENT_TEXT",
+        "evidence": [],
+        "strengths": [],
+        "improvements": [],
+        "findingEvidence": []
+      },
+      "Confidence": {
+        "description": "Vocal confidence requires recorded audio; it cannot be measured from recognized words alone.",
+        "practice": "",
+        "reason": "NO_AUDIO_EVIDENCE",
+        "evidence": [],
+        "strengths": [],
+        "improvements": [],
+        "findingEvidence": []
+      }
+    },
+    "strengths": [
+      "Presents a clear main point about “study planner”."
+    ],
+    "weaknesses": [],
+    "recommendations": [],
+    "executiveSummary": "Your received answers discuss “study planner”. The review covers Clarity.",
+    "feedbackId": "presentation-s#current",
+    "reportVersion": "v1",
+    "notificationStatus": "PENDING",
+    "notificationAttempts": 0,
+    "generatedAt": 1791551481275,
+    "transcript": [
+      {
+        "sessionId": "presentation-s",
+        "speaker": "USER",
+        "text": "I built a study planner for classmates and tested the task list. I want to become a software developer.",
+        "turnIndex": 1,
+        "timestamp": "2026-10-09T00:00:00Z"
+      }
+    ]
+  },
+  "INTRO": {
+    "sessionId": "presentation-s",
+    "attemptId": "current",
+    "userId": "synthetic",
+    "moduleType": "INTRO",
+    "expectedDimensions": [
+      "Clarity",
+      "Structure",
+      "Confidence"
+    ],
+    "assessmentMode": "TRANSCRIPT_ONLY",
+    "unavailableDimensions": {
+      "Confidence": "NO_AUDIO_EVIDENCE"
+    },
+    "assessmentLimitations": [
+      "Transcript-only assessment: pronunciation, accent, vocal tone and acoustic confidence are not assessed."
+    ],
+    "status": "COMPLETE",
+    "analysisStatus": "OK",
+    "feedbackStyle": "CONCISE_V1",
+    "qualitativeStatus": "AVAILABLE",
+    "findingEvidence": {
+      "strengths": [
+        {
+          "dimension": "Clarity",
+          "criterion": "DIRECT_CONTENT",
+          "topic": "study planner",
+          "text": "Presents a clear main point about “study planner”.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        },
+        {
+          "dimension": "Structure",
+          "criterion": "LOGICAL_SEQUENCE",
+          "topic": "study planner",
+          "text": "Connects background, experience and goals around “study planner”.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        }
+      ],
+      "improvements": []
+    },
+    "overallScore": 70,
+    "dimensionScores": {
+      "Clarity": 80,
+      "Structure": 60
+    },
+    "dimensionAnalysis": {
+      "Clarity": {
+        "description": "How clearly the received text states a relevant main point and explains its details.",
+        "practice": "Practice answering with one direct point, one supporting example and one takeaway.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Presents a clear main point about “study planner”."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Clarity",
+            "criterion": "DIRECT_CONTENT",
+            "topic": "study planner",
+            "text": "Presents a clear main point about “study planner”.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      },
+      "Structure": {
+        "description": "How the answer organizes background, supporting experience and a goal into a logical sequence.",
+        "practice": "Outline background → relevant project or achievement → goal before your next introduction.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Connects background, experience and goals around “study planner”."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Structure",
+            "criterion": "LOGICAL_SEQUENCE",
+            "topic": "study planner",
+            "text": "Connects background, experience and goals around “study planner”.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      },
+      "Confidence": {
+        "description": "Vocal confidence requires recorded audio; it cannot be measured from recognized words alone.",
+        "practice": "",
+        "reason": "NO_AUDIO_EVIDENCE",
+        "evidence": [],
+        "strengths": [],
+        "improvements": [],
+        "findingEvidence": []
+      }
+    },
+    "strengths": [
+      "Presents a clear main point about “study planner”.",
+      "Connects background, experience and goals around “study planner”."
+    ],
+    "weaknesses": [],
+    "recommendations": [],
+    "executiveSummary": "Your received answers discuss “study planner”. The review covers Clarity, Structure.",
+    "feedbackId": "presentation-s#current",
+    "reportVersion": "v1",
+    "notificationStatus": "PENDING",
+    "notificationAttempts": 0,
+    "generatedAt": 1791551481195,
+    "transcript": [
+      {
+        "sessionId": "presentation-s",
+        "speaker": "USER",
+        "text": "I built a study planner for classmates and tested the task list. I want to become a software developer.",
+        "turnIndex": 1,
+        "timestamp": "2026-10-09T00:00:00Z"
+      }
+    ]
+  },
+  "HR": {
+    "sessionId": "presentation-s",
+    "attemptId": "current",
+    "userId": "synthetic",
+    "moduleType": "HR",
+    "expectedDimensions": [
+      "Problem Solving",
+      "Communication",
+      "Self Awareness"
+    ],
+    "assessmentMode": "TRANSCRIPT_ONLY",
+    "unavailableDimensions": {},
+    "assessmentLimitations": [
+      "Transcript-only assessment: pronunciation, accent, vocal tone and acoustic confidence are not assessed."
+    ],
+    "status": "COMPLETE",
+    "analysisStatus": "OK",
+    "feedbackStyle": "CONCISE_V1",
+    "qualitativeStatus": "AVAILABLE",
+    "findingEvidence": {
+      "strengths": [
+        {
+          "dimension": "Problem Solving",
+          "criterion": "PROBLEM_APPROACH",
+          "topic": "study planner",
+          "text": "Connects the problem of “study planner” to a solution approach.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        },
+        {
+          "dimension": "Communication",
+          "criterion": "DIRECT_CONTENT",
+          "topic": "study planner",
+          "text": "Presents a clear main point about “study planner”.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        },
+        {
+          "dimension": "Self Awareness",
+          "criterion": "REFLECTION",
+          "topic": "study planner",
+          "text": "Identifies a lesson learned from “study planner”.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        }
+      ],
+      "improvements": []
+    },
+    "overallScore": 70,
+    "dimensionScores": {
+      "Problem Solving": 80,
+      "Communication": 60,
+      "Self Awareness": 70
+    },
+    "dimensionAnalysis": {
+      "Problem Solving": {
+        "description": "How the answer explains the problem, approach, alternatives and checks on the result.",
+        "practice": "Practice a problem → alternatives → decision → verification example.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Connects the problem of “study planner” to a solution approach."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Problem Solving",
+            "criterion": "PROBLEM_APPROACH",
+            "topic": "study planner",
+            "text": "Connects the problem of “study planner” to a solution approach.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      },
+      "Communication": {
+        "description": "How clearly the text conveys a relevant point and supports it for the intended audience.",
+        "practice": "Explain one project to a non-specialist using a main point, necessary context and a result.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Presents a clear main point about “study planner”."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Communication",
+            "criterion": "DIRECT_CONTENT",
+            "topic": "study planner",
+            "text": "Presents a clear main point about “study planner”.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      },
+      "Self Awareness": {
+        "description": "Whether the answer reflects on your contribution, limitations and lessons learned.",
+        "practice": "Prepare an experience, your responsibility, a lesson learned and what you would change next time.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Identifies a lesson learned from “study planner”."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Self Awareness",
+            "criterion": "REFLECTION",
+            "topic": "study planner",
+            "text": "Identifies a lesson learned from “study planner”.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "strengths": [
+      "Connects the problem of “study planner” to a solution approach.",
+      "Presents a clear main point about “study planner”.",
+      "Identifies a lesson learned from “study planner”."
+    ],
+    "weaknesses": [],
+    "recommendations": [],
+    "executiveSummary": "Your received answers discuss “study planner”. The review covers Problem Solving, Communication, Self Awareness.",
+    "feedbackId": "presentation-s#current",
+    "reportVersion": "v1",
+    "notificationStatus": "PENDING",
+    "notificationAttempts": 0,
+    "generatedAt": 1791551481217,
+    "transcript": [
+      {
+        "sessionId": "presentation-s",
+        "speaker": "USER",
+        "text": "I built a study planner for classmates and tested the task list. I want to become a software developer.",
+        "turnIndex": 1,
+        "timestamp": "2026-10-09T00:00:00Z"
+      }
+    ]
+  },
+  "RESUME": {
+    "sessionId": "presentation-s",
+    "attemptId": "current",
+    "userId": "synthetic",
+    "moduleType": "RESUME",
+    "expectedDimensions": [
+      "Technical Accuracy",
+      "Clarity",
+      "Use of Examples"
+    ],
+    "assessmentMode": "TRANSCRIPT_ONLY",
+    "unavailableDimensions": {},
+    "assessmentLimitations": [
+      "Transcript-only assessment: pronunciation, accent, vocal tone and acoustic confidence are not assessed."
+    ],
+    "status": "COMPLETE",
+    "analysisStatus": "OK",
+    "feedbackStyle": "CONCISE_V1",
+    "qualitativeStatus": "AVAILABLE",
+    "findingEvidence": {
+      "strengths": [
+        {
+          "dimension": "Technical Accuracy",
+          "criterion": "TECHNICAL_REASONING",
+          "topic": "study planner",
+          "text": "Explains the mechanism behind “study planner” with supporting reasoning.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        },
+        {
+          "dimension": "Clarity",
+          "criterion": "DIRECT_CONTENT",
+          "topic": "study planner",
+          "text": "Presents a clear main point about “study planner”.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        },
+        {
+          "dimension": "Use of Examples",
+          "criterion": "CONCRETE_EXAMPLE",
+          "topic": "study planner",
+          "text": "Describes a specific action or project involving “study planner”.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        }
+      ],
+      "improvements": []
+    },
+    "overallScore": 70,
+    "dimensionScores": {
+      "Technical Accuracy": 80,
+      "Clarity": 60,
+      "Use of Examples": 70
+    },
+    "dimensionAnalysis": {
+      "Technical Accuracy": {
+        "description": "Whether the explanation gives a technically sound mechanism, reasoning and appropriate limitations.",
+        "practice": "Choose one concept; explain how it works, its assumptions and a test case that checks your explanation.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Explains the mechanism behind “study planner” with supporting reasoning."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Technical Accuracy",
+            "criterion": "TECHNICAL_REASONING",
+            "topic": "study planner",
+            "text": "Explains the mechanism behind “study planner” with supporting reasoning.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      },
+      "Clarity": {
+        "description": "How clearly the received text states a relevant main point and explains its details.",
+        "practice": "Practice answering with one direct point, one supporting example and one takeaway.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Presents a clear main point about “study planner”."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Clarity",
+            "criterion": "DIRECT_CONTENT",
+            "topic": "study planner",
+            "text": "Presents a clear main point about “study planner”.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      },
+      "Use of Examples": {
+        "description": "Whether a specific example demonstrates your own action and an observable result.",
+        "practice": "Prepare one example as situation → your action → result; use real measures where you have them.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Describes a specific action or project involving “study planner”."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Use of Examples",
+            "criterion": "CONCRETE_EXAMPLE",
+            "topic": "study planner",
+            "text": "Describes a specific action or project involving “study planner”.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "strengths": [
+      "Explains the mechanism behind “study planner” with supporting reasoning.",
+      "Presents a clear main point about “study planner”.",
+      "Describes a specific action or project involving “study planner”."
+    ],
+    "weaknesses": [],
+    "recommendations": [],
+    "executiveSummary": "Your received answers discuss “study planner”. The review covers Technical Accuracy, Clarity, Use of Examples.",
+    "feedbackId": "presentation-s#current",
+    "reportVersion": "v1",
+    "notificationStatus": "PENDING",
+    "notificationAttempts": 0,
+    "generatedAt": 1791551481229,
+    "transcript": [
+      {
+        "sessionId": "presentation-s",
+        "speaker": "USER",
+        "text": "I built a study planner for classmates and tested the task list. I want to become a software developer.",
+        "turnIndex": 1,
+        "timestamp": "2026-10-09T00:00:00Z"
+      }
+    ]
+  },
+  "JD": {
+    "sessionId": "presentation-s",
+    "attemptId": "current",
+    "userId": "synthetic",
+    "moduleType": "JD",
+    "expectedDimensions": [
+      "Role Alignment",
+      "Technical Accuracy",
+      "Use of Examples"
+    ],
+    "assessmentMode": "TRANSCRIPT_ONLY",
+    "unavailableDimensions": {},
+    "assessmentLimitations": [
+      "Transcript-only assessment: pronunciation, accent, vocal tone and acoustic confidence are not assessed."
+    ],
+    "status": "COMPLETE",
+    "analysisStatus": "OK",
+    "feedbackStyle": "CONCISE_V1",
+    "qualitativeStatus": "AVAILABLE",
+    "findingEvidence": {
+      "strengths": [
+        {
+          "dimension": "Role Alignment",
+          "criterion": "ROLE_LINK",
+          "topic": "study planner",
+          "text": "Connects experience with the role requirement “study planner”.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        },
+        {
+          "dimension": "Technical Accuracy",
+          "criterion": "TECHNICAL_REASONING",
+          "topic": "study planner",
+          "text": "Explains the mechanism behind “study planner” with supporting reasoning.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        },
+        {
+          "dimension": "Use of Examples",
+          "criterion": "CONCRETE_EXAMPLE",
+          "topic": "study planner",
+          "text": "Describes a specific action or project involving “study planner”.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        }
+      ],
+      "improvements": []
+    },
+    "overallScore": 70,
+    "dimensionScores": {
+      "Role Alignment": 80,
+      "Technical Accuracy": 60,
+      "Use of Examples": 70
+    },
+    "dimensionAnalysis": {
+      "Role Alignment": {
+        "description": "How explicitly your experience and skills connect to the requirements of the target role.",
+        "practice": "Pick one role requirement and connect it to a project, your contribution and its result.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Connects experience with the role requirement “study planner”."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Role Alignment",
+            "criterion": "ROLE_LINK",
+            "topic": "study planner",
+            "text": "Connects experience with the role requirement “study planner”.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      },
+      "Technical Accuracy": {
+        "description": "Whether the explanation gives a technically sound mechanism, reasoning and appropriate limitations.",
+        "practice": "Choose one concept; explain how it works, its assumptions and a test case that checks your explanation.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Explains the mechanism behind “study planner” with supporting reasoning."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Technical Accuracy",
+            "criterion": "TECHNICAL_REASONING",
+            "topic": "study planner",
+            "text": "Explains the mechanism behind “study planner” with supporting reasoning.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      },
+      "Use of Examples": {
+        "description": "Whether a specific example demonstrates your own action and an observable result.",
+        "practice": "Prepare one example as situation → your action → result; use real measures where you have them.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Describes a specific action or project involving “study planner”."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Use of Examples",
+            "criterion": "CONCRETE_EXAMPLE",
+            "topic": "study planner",
+            "text": "Describes a specific action or project involving “study planner”.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "strengths": [
+      "Connects experience with the role requirement “study planner”.",
+      "Explains the mechanism behind “study planner” with supporting reasoning.",
+      "Describes a specific action or project involving “study planner”."
+    ],
+    "weaknesses": [],
+    "recommendations": [],
+    "executiveSummary": "Your received answers discuss “study planner”. The review covers Role Alignment, Technical Accuracy, Use of Examples.",
+    "feedbackId": "presentation-s#current",
+    "reportVersion": "v1",
+    "notificationStatus": "PENDING",
+    "notificationAttempts": 0,
+    "generatedAt": 1791551481242,
+    "transcript": [
+      {
+        "sessionId": "presentation-s",
+        "speaker": "USER",
+        "text": "I built a study planner for classmates and tested the task list. I want to become a software developer.",
+        "turnIndex": 1,
+        "timestamp": "2026-10-09T00:00:00Z"
+      }
+    ]
+  },
+  "WEBSITE": {
+    "sessionId": "presentation-s",
+    "attemptId": "current",
+    "userId": "synthetic",
+    "moduleType": "WEBSITE",
+    "expectedDimensions": [
+      "Comprehension",
+      "Critical Thinking",
+      "Concept Retention"
+    ],
+    "assessmentMode": "TRANSCRIPT_ONLY",
+    "unavailableDimensions": {},
+    "assessmentLimitations": [
+      "Transcript-only assessment: pronunciation, accent, vocal tone and acoustic confidence are not assessed."
+    ],
+    "status": "COMPLETE",
+    "analysisStatus": "OK",
+    "feedbackStyle": "CONCISE_V1",
+    "qualitativeStatus": "AVAILABLE",
+    "findingEvidence": {
+      "strengths": [
+        {
+          "dimension": "Comprehension",
+          "criterion": "CONCEPT_EXPLANATION",
+          "topic": "study planner",
+          "text": "Explains the meaning or mechanism of “study planner”.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        },
+        {
+          "dimension": "Critical Thinking",
+          "criterion": "REASONED_TRADEOFF",
+          "topic": "study planner",
+          "text": "Supports a conclusion about “study planner” with a trade-off or limitation.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        },
+        {
+          "dimension": "Concept Retention",
+          "criterion": "CONCEPT_APPLICATION",
+          "topic": "study planner",
+          "text": "Connects “study planner” to an application.",
+          "evidence": [
+            {
+              "userIndex": 0,
+              "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+            }
+          ]
+        }
+      ],
+      "improvements": []
+    },
+    "overallScore": 70,
+    "dimensionScores": {
+      "Comprehension": 80,
+      "Critical Thinking": 60,
+      "Concept Retention": 70
+    },
+    "dimensionAnalysis": {
+      "Comprehension": {
+        "description": "Whether the answer explains a concept accurately and connects it to its meaning or use.",
+        "practice": "Explain one concept in your own words and demonstrate it with a concrete application.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Explains the meaning or mechanism of “study planner”."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Comprehension",
+            "criterion": "CONCEPT_EXPLANATION",
+            "topic": "study planner",
+            "text": "Explains the meaning or mechanism of “study planner”.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      },
+      "Critical Thinking": {
+        "description": "Whether the answer supports a conclusion with reasoning, alternatives and limitations.",
+        "practice": "Choose a claim; list its assumptions, compare an alternative and describe evidence that would test it.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Supports a conclusion about “study planner” with a trade-off or limitation."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Critical Thinking",
+            "criterion": "REASONED_TRADEOFF",
+            "topic": "study planner",
+            "text": "Supports a conclusion about “study planner” with a trade-off or limitation.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      },
+      "Concept Retention": {
+        "description": "Whether the answer recalls the key concept and applies it in a relevant context.",
+        "practice": "Restate the concept from memory, apply it to a new example, then check against your source.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [
+          "Connects “study planner” to an application."
+        ],
+        "improvements": [],
+        "findingEvidence": [
+          {
+            "dimension": "Concept Retention",
+            "criterion": "CONCEPT_APPLICATION",
+            "topic": "study planner",
+            "text": "Connects “study planner” to an application.",
+            "evidence": [
+              {
+                "userIndex": 0,
+                "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "strengths": [
+      "Explains the meaning or mechanism of “study planner”.",
+      "Supports a conclusion about “study planner” with a trade-off or limitation.",
+      "Connects “study planner” to an application."
+    ],
+    "weaknesses": [],
+    "recommendations": [],
+    "executiveSummary": "Your received answers discuss “study planner”. The review covers Comprehension, Critical Thinking, Concept Retention.",
+    "feedbackId": "presentation-s#current",
+    "reportVersion": "v1",
+    "notificationStatus": "PENDING",
+    "notificationAttempts": 0,
+    "generatedAt": 1791551481253,
+    "transcript": [
+      {
+        "sessionId": "presentation-s",
+        "speaker": "USER",
+        "text": "I built a study planner for classmates and tested the task list. I want to become a software developer.",
+        "turnIndex": 1,
+        "timestamp": "2026-10-09T00:00:00Z"
+      }
+    ]
+  },
+  "null": {
+    "sessionId": "presentation-s",
+    "attemptId": "current",
+    "userId": "synthetic",
+    "moduleType": "INTRO",
+    "expectedDimensions": [
+      "Clarity",
+      "Structure",
+      "Confidence"
+    ],
+    "assessmentMode": "TRANSCRIPT_ONLY",
+    "unavailableDimensions": {
+      "Clarity": "INSUFFICIENT_TEXT",
+      "Structure": "INSUFFICIENT_TEXT",
+      "Confidence": "NO_AUDIO_EVIDENCE"
+    },
+    "assessmentLimitations": [
+      "Transcript-only assessment: pronunciation, accent, vocal tone and acoustic confidence are not assessed."
+    ],
+    "status": "FAILED",
+    "analysisStatus": "UNAVAILABLE",
+    "overallScore": null,
+    "dimensionScores": null,
+    "dimensionAnalysis": {
+      "Clarity": {
+        "description": "How clearly the received text states a relevant main point and explains its details.",
+        "practice": "",
+        "reason": "INSUFFICIENT_TEXT",
+        "evidence": [],
+        "strengths": [],
+        "improvements": [],
+        "findingEvidence": []
+      },
+      "Structure": {
+        "description": "How the answer organizes background, supporting experience and a goal into a logical sequence.",
+        "practice": "",
+        "reason": "INSUFFICIENT_TEXT",
+        "evidence": [],
+        "strengths": [],
+        "improvements": [],
+        "findingEvidence": []
+      },
+      "Confidence": {
+        "description": "Vocal confidence requires recorded audio; it cannot be measured from recognized words alone.",
+        "practice": "",
+        "reason": "NO_AUDIO_EVIDENCE",
+        "evidence": [],
+        "strengths": [],
+        "improvements": [],
+        "findingEvidence": []
+      }
+    },
+    "strengths": [],
+    "weaknesses": [],
+    "recommendations": [],
+    "executiveSummary": "We could not analyze this session automatically. Please try again.",
+    "feedbackId": "presentation-s#current",
+    "reportVersion": "v1",
+    "notificationStatus": "SKIPPED",
+    "notificationAttempts": 0,
+    "generatedAt": 1791551481286,
+    "transcript": [
+      {
+        "sessionId": "presentation-s",
+        "speaker": "USER",
+        "text": "I built a study planner for classmates and tested the task list. I want to become a software developer.",
+        "turnIndex": 1,
+        "timestamp": "2026-10-09T00:00:00Z"
+      }
+    ]
+  },
+  "partial": {
+    "sessionId": "presentation-s",
+    "attemptId": "current",
+    "userId": "synthetic",
+    "moduleType": "INTRO",
+    "expectedDimensions": [
+      "Clarity",
+      "Structure",
+      "Confidence"
+    ],
+    "assessmentMode": "TRANSCRIPT_ONLY",
+    "unavailableDimensions": {
+      "Confidence": "NO_AUDIO_EVIDENCE"
+    },
+    "assessmentLimitations": [
+      "Transcript-only assessment: pronunciation, accent, vocal tone and acoustic confidence are not assessed."
+    ],
+    "status": "COMPLETE",
+    "analysisStatus": "OK",
+    "feedbackStyle": "CONCISE_V1",
+    "qualitativeStatus": "UNAVAILABLE",
+    "findingEvidence": {
+      "strengths": [],
+      "improvements": []
+    },
+    "overallScore": 40,
+    "dimensionScores": {
+      "Clarity": 0,
+      "Structure": 80
+    },
+    "dimensionAnalysis": {
+      "Clarity": {
+        "description": "How clearly the received text states a relevant main point and explains its details.",
+        "practice": "Practice answering with one direct point, one supporting example and one takeaway.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [],
+        "improvements": [],
+        "findingEvidence": []
+      },
+      "Structure": {
+        "description": "How the answer organizes background, supporting experience and a goal into a logical sequence.",
+        "practice": "Outline background → relevant project or achievement → goal before your next introduction.",
+        "evidence": [
+          {
+            "userIndex": 0,
+            "quote": "I built a study planner for classmates and tested the task list. I want to become a software developer."
+          }
+        ],
+        "strengths": [],
+        "improvements": [],
+        "findingEvidence": []
+      },
+      "Confidence": {
+        "description": "Vocal confidence requires recorded audio; it cannot be measured from recognized words alone.",
+        "practice": "",
+        "reason": "NO_AUDIO_EVIDENCE",
+        "evidence": [],
+        "strengths": [],
+        "improvements": [],
+        "findingEvidence": []
+      }
+    },
+    "strengths": [],
+    "weaknesses": [],
+    "recommendations": [],
+    "executiveSummary": "Your content scores are available. Detailed feedback could not be validated; please review the transcript.",
+    "feedbackId": "presentation-s#current",
+    "reportVersion": "v1",
+    "notificationStatus": "PENDING",
+    "notificationAttempts": 0,
+    "generatedAt": 1791551481299,
+    "transcript": [
+      {
+        "sessionId": "presentation-s",
+        "speaker": "USER",
+        "text": "I built a study planner for classmates and tested the task list. I want to become a software developer.",
+        "turnIndex": 1,
+        "timestamp": "2026-10-09T00:00:00Z"
+      }
+    ]
+  }
+}

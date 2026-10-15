@@ -1,9 +1,8 @@
+const diagnostics=require('./logger').safeConsole;
 /**
  * Wrapper for Firebase Admin Initialization and user auth utilities.
  */
-const sdk = require('firebase-admin');
-const path = require('path');
-const fs = require('fs');
+const sdk = require('firebase-admin/app');
 const { getFirebaseServiceAccount } = require('./secrets');
 const { ERROR_CODES, QlueError } = require('./errors');
 
@@ -13,40 +12,29 @@ let isInitialized = false;
  * Lazily initialize the Firebase Admin app
  */
 async function initializeFirebase() {
-  if (isInitialized && sdk.apps.length > 0) {
+  if (isInitialized && sdk.getApps().length > 0) {
     return;
   }
 
   try {
-    let serviceAccount;
-    
-    // 1. Load from the new service-account-local.json file (Absolute path for Windows reliability)
-    const localKeyPath = path.resolve(process.cwd(), 'service-account-local.json');
-    
-    if (fs.existsSync(localKeyPath)) {
-      console.log(`>>> INITIALIZING FIREBASE FROM FILE: ${localKeyPath}`);
-      const content = fs.readFileSync(localKeyPath, 'utf8');
-      serviceAccount = JSON.parse(content);
-    } else {
-      console.log('>>> LOCAL FILE NOT FOUND. FALLING BACK TO ENV/SECRETS.');
-      const serviceAccountJson = await getFirebaseServiceAccount();
-      serviceAccount = typeof serviceAccountJson === 'string' 
-        ? JSON.parse(serviceAccountJson) 
-        : serviceAccountJson;
-    }
+    // Use the configured secret in every environment. An incidental local key
+    // file must never override the deployed identity or enter a release package.
+    const serviceAccountJson = await getFirebaseServiceAccount();
+    const serviceAccount = typeof serviceAccountJson === 'string'
+      ? JSON.parse(serviceAccountJson) : serviceAccountJson;
 
     // Standard credential loading (no more cleaning needed as we have a clean JSON now)
-    if (sdk.apps.length === 0) {
+    if (sdk.getApps().length === 0) {
       sdk.initializeApp({
-        credential: sdk.credential.cert(serviceAccount),
+        credential: sdk.cert(serviceAccount),
         projectId: serviceAccount.project_id
       });
-      console.log('>>> FIREBASE ADMIN INITIALIZED SUCCESSFULLY! <<<');
+      diagnostics.log('Firebase Admin initialized');
     }
     
     isInitialized = true;
   } catch (error) {
-    console.error('!!! FIREBASE INITIALIZATION FAILED !!!', error);
+    diagnostics.error('!!! FIREBASE INITIALIZATION FAILED !!!', error);
     throw new QlueError('Firebase init failed', ERROR_CODES.INTERNAL_ERROR, 500, error.message);
   }
 }
@@ -56,7 +44,7 @@ async function initializeFirebase() {
  */
 async function getAuth() {
   await initializeFirebase();
-  return sdk.auth();
+  return require('firebase-admin/auth').getAuth();
 }
 
 /**
@@ -64,20 +52,34 @@ async function getAuth() {
  */
 async function getMessaging() {
   await initializeFirebase();
-  return sdk.messaging();
+  return require('firebase-admin/messaging').getMessaging();
 }
 
 /**
- * Verify ID token sent from Flutter client
+ * Verify an ID token sent from the Flutter client.
+ *
+ * @param {string} token          the Firebase ID token
+ * @param {boolean} [checkRevoked] when true, Firebase additionally checks that
+ *   the token has not been revoked (sign-out-everywhere, password reset,
+ *   account deletion) and that the user is not disabled. The REST authorizer
+ *   passes true; the WebSocket $connect path MUST also pass true so a revoked
+ *   session cannot open a socket that then lives for the full ttl (finding 16).
  */
-async function verifyIdToken(token) {
+async function verifyIdToken(token, checkRevoked = false) {
   const auth = await getAuth();
   try {
-    const decodedToken = await auth.verifyIdToken(token);
+    const decodedToken = await auth.verifyIdToken(token, checkRevoked);
     return decodedToken;
   } catch (error) {
-    if (error.code === 'auth/id-token-expired') {
+    // A revoked token means the credential is no longer valid but the client
+    // can recover by refreshing (it will then fail to get a new token if the
+    // account is truly gone); surface it like an expiry so the client re-auths.
+    if (error.code === 'auth/id-token-expired' || error.code === 'auth/id-token-revoked') {
       throw new QlueError('Token expired', ERROR_CODES.TOKEN_EXPIRED, 401);
+    }
+    // A disabled/deleted account is terminal — the client must sign out.
+    if (error.code === 'auth/user-disabled') {
+      throw new QlueError('Account disabled', ERROR_CODES.TOKEN_INVALID, 401, error.code);
     }
     throw new QlueError('Invalid token', ERROR_CODES.TOKEN_INVALID, 401, error.message);
   }
@@ -135,14 +137,15 @@ async function sendNotification(fcmToken, notification, data = {}) {
     const message = {
       notification,
       data,
+      android:{collapseKey:data.sessionId,notification:{tag:data.feedbackId||data.sessionId}},
       token: fcmToken
     };
 
-    const response = await messaging.send(message);
-    console.info('Successfully sent FCM message:', response);
+    const response = await require('./deadline').bounded(()=>messaging.send(message),{label:'fcm'});
+    diagnostics.info('Successfully sent FCM message:', response);
     return { success: true, messageId: response };
   } catch (error) {
-    console.error('Error sending FCM message:', error);
+    diagnostics.error('Error sending FCM message:', error);
     return { 
       success: false, 
       error: error.message, 

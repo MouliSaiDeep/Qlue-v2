@@ -1,75 +1,20 @@
-/**
- * Lambda handler for storing feedback reports and triggering user notifications.
- */
 const { createFeedbackReport } = require('../../models/feedback');
-const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
-const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
-
-const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'us-east-1' });
-const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' }));
-const NOTIFY_LAMBDA = process.env.SEND_NOTIFICATION_LAMBDA;
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions';
-
-exports.handler = async (event) => {
-  const { userId, sessionId, overallScore, moduleType } = event;
-
-  try {
-    console.info(`Storing feedback report for user ${userId}, session ${sessionId}`);
-
-    // 1. Store the feedback report in DynamoDB
-    const result = await createFeedbackReport(event);
-    
-    if (!result.success) {
-      throw new Error(`Failed to store feedback in DynamoDB: ${result.error?.message}`);
-    }
-
-    const { feedbackId } = result;
-    console.info(`Feedback report stored with ID: ${feedbackId}`);
-
-    // 2. Update user stats in Users table
-    // [DEFERRED] Skip update for now as user.js/models/user.js is a placeholder.
-    // In production, this would be a TransactWrite to increment sessions and update avgScore.
-    console.info(`[DEFERRED] Updating user stats for userId: ${userId}`);
-
-    // Update the Session with accumulatedScores so Dashboard and History APIs see it
-    if (event.dimensionScores) {
-      console.info(`Updating session ${sessionId} with accumulatedScores...`);
-      const updateCmd = new UpdateCommand({
-        TableName: SESSIONS_TABLE,
-        Key: { sessionId },
-        UpdateExpression: "SET accumulatedScores = :as",
-        ExpressionAttributeValues: {
-          ":as": event.dimensionScores
-        }
-      });
-      await docClient.send(updateCmd);
-      console.info(`Session ${sessionId} updated successfully.`);
-    }
-
-    // 3. Trigger notification asynchronously
-    const notificationPayload = {
-      userId,
-      sessionId,
-      feedbackId,
-      overallScore,
-      moduleType
-    };
-
-    console.info(`Triggering completion notification for user ${userId}`);
-    
-    const command = new InvokeCommand({
-      FunctionName: NOTIFY_LAMBDA,
-      InvocationType: 'Event',
-      Payload: Buffer.from(JSON.stringify(notificationPayload))
-    });
-
-    await lambdaClient.send(command);
-
-    return { success: true, feedbackId };
-
-  } catch (error) {
-    console.error(`Feedback storage failed for session ${sessionId}:`, error);
-    throw error;
+const attempt = require('../../lib/feedbackAttempt');
+exports.handler = async event => {
+  if (!await attempt.currentAttempt(event)) return {success:true,stale:true};
+  const result = await createFeedbackReport(event);
+  if (!result.success) throw result.error || new Error('Feedback persistence failed');
+  await attempt.promote(event, result.data);
+  // Persist the report and close admission BEFORE deleting files. Purge failures
+  // retain a durable cleanup marker; they must not hide a completed report.
+  if(process.env.ANSWER_AUDIO_BUCKET) {
+    try {const s=await require('../../lib/answerAudio').read(event.sessionId);if(s?.answerAudio)await require('../../lib/answerAudio').cleanup(s);}
+    catch(_) {require('../../lib/logger').safeConsole.warn('Answer audio cleanup deferred');}
   }
+  // Notification state is stored on the report by the same create. A duplicate
+  // report retains PENDING delivery and is retried by the scheduled dispatcher.
+  return {success:true,feedbackId:result.feedbackId};
 };
+
+const store=exports.handler;
+exports.handler=(event,context)=>require('../../lib/deadline').withDeadline(context,()=>store(event),{maxMs:25000,userId:event.userId});

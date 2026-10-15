@@ -29,7 +29,7 @@ exports.handler = async (event, context) => {
     // Check if this is the internal "worker" invocation
     if (event.isAsyncWorker) {
         console.info(`Async worker triggered for resumeId=${event.resumeId}`);
-        await processAsync(event.resumeId, event.userId, event.s3Key);
+        await processAsync(event.resumeId, event.userId, event.s3Key, event.parseAttemptId);
         return; // No need to return anything for async invoke
     }
 
@@ -51,7 +51,7 @@ exports.handler = async (event, context) => {
         const s3Key = resumeRecord.s3Key;
 
         // 2. Update status to PARSING
-        await updateResumeParsingResult(resumeId, 'PARSING');
+        await updateResumeParsingResult(resumeId, 'PARSING', null, null, userId, resumeRecord.parseAttemptId);
 
         // 3. Trigger SELF asynchronously
         const workerPayload = {
@@ -60,6 +60,7 @@ exports.handler = async (event, context) => {
             userId: userId,
             s3Key: s3Key
         };
+        if (resumeRecord.parseAttemptId) workerPayload.parseAttemptId = resumeRecord.parseAttemptId;
 
         const invokeCommand = new InvokeCommand({
             FunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME,
@@ -85,7 +86,7 @@ exports.handler = async (event, context) => {
 /**
  * Runs Textract + Bedrock in the background.
  */
-async function processAsync(resumeId, userId, s3Key) {
+async function processAsync(resumeId, userId, s3Key, parseAttemptId) {
     try {
         // Reduced initial wait - S3 is strongly consistent now
         await sleep(500);
@@ -146,7 +147,7 @@ async function processAsync(resumeId, userId, s3Key) {
         const parsedData = await invokeBedrockParser(fullText);
 
         // Update final result in DynamoDB
-        await updateResumeParsingResult(resumeId, 'PARSED', parsedData);
+        await updateResumeParsingResult(resumeId, 'PARSED', parsedData, null, userId, parseAttemptId);
 
         // PROFILE AUTO-FILL: populate the user's profession and skills from
         // the parsed resume when they haven't set them manually, so the
@@ -189,7 +190,7 @@ async function processAsync(resumeId, userId, s3Key) {
 
     } catch (error) {
         console.error(`processAsync error for resumeId=${resumeId}:`, error.message);
-        await updateResumeParsingResult(resumeId, 'FAILED', null, error.message);
+        await updateResumeParsingResult(resumeId, 'FAILED', null, error.message, userId, parseAttemptId);
     }
 }
 
