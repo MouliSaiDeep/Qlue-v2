@@ -1,3 +1,4 @@
+jest.mock('../../src/lib/emailOtp',()=>({configured:jest.fn().mockResolvedValue({})}));
 const { handler } = require('../../src/handlers/auth/registerUser');
 
 // Mock external modules virtually to avoid dependency issues in test environment

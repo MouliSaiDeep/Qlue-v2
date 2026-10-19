@@ -92,6 +92,6 @@ const {generateAtomicTurn} = require(path.join(root,'handlers/interview/asyncWor
   }
   const exit=await submit('Please end the interview','exit');assert.equal(exit.reason,'USER_EXIT');
   const report={confirmed:true,externalCalls:0,observations,terminationReason:null};
-  fs.writeFileSync(path.join(__dirname,'task-intro-correct-result.json'),JSON.stringify(report,null,2)+'\n');
+  fs.writeFileSync(path.join(process.env.QLUE_TEST_EVIDENCE_DIR||__dirname,'task-intro-correct-result.json'),JSON.stringify(report,null,2)+'\n');
   console.log(JSON.stringify(report,null,2));
 })().catch(error=>{console.error(error);process.exitCode=1;});

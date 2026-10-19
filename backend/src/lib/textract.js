@@ -7,7 +7,9 @@ const { NodeHttpHandler } = require("@smithy/node-http-handler");
 
 const textract = new TextractClient({
     region: process.env.AWS_REGION || 'us-east-1',
-    maxAttempts: 3,
+    // Paid starts are retried by durable application jobs, so every attempt
+    // passes through the stop switch and global provider budget.
+    maxAttempts: 1,
     requestHandler: new NodeHttpHandler({
         connectionTimeout: 5000,
         requestTimeout: 30000
@@ -15,6 +17,14 @@ const textract = new TextractClient({
 });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function guardedSend(command) {
+    const operation = command.constructor.name;
+    if (operation === 'StartDocumentAnalysisCommand' || operation === 'StartDocumentTextDetectionCommand') {
+        await require('./paidWork').beforePaidCall(operation === 'StartDocumentAnalysisCommand' ? 'resumeParse' : 'jdAnalysis');
+    }
+    return require('./deadline').sendBounded(textract, command);
+}
 
 /**
  * Extract plain text from a PDF (or image) stored in S3 using Textract's
@@ -33,19 +43,29 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  */
 async function extractTextFromPdf(bucket, key, opts = {}) {
     const maxAttempts = opts.maxAttempts || 18;
+    await require('./paidWork').assertRuntimeEnabled(require('./deadline').current()?.action || 'jdAnalysis');
+    const pdf = require('./pdf');
+    const validated = await pdf.assertValidS3Pdf(require('./s3'), bucket, key, {
+        versionId: opts.versionId,
+        maxBytes: opts.maxBytes || pdf.MAX_JD_PDF_BYTES,
+        maxPages: opts.maxPages || pdf.MAX_JD_PDF_PAGES
+    });
 
-    const start = await textract.send(new StartDocumentTextDetectionCommand({
-        DocumentLocation: { S3Object: { Bucket: bucket, Name: key } }
+    const start = await guardedSend(new StartDocumentTextDetectionCommand({
+        DocumentLocation: { S3Object: { Bucket: bucket, Name: key, Version: validated.versionId } },
+        ...(opts.clientRequestToken ? { ClientRequestToken: opts.clientRequestToken } : {})
     }));
     const jobId = start.JobId;
 
     let status = 'IN_PROGRESS';
+    let completed;
     let attempts = 0;
     while (status === 'IN_PROGRESS' && attempts < maxAttempts) {
         await sleep(1500);
         attempts++;
-        const res = await textract.send(new GetDocumentTextDetectionCommand({ JobId: jobId }));
+        const res = await guardedSend(new GetDocumentTextDetectionCommand({ JobId: jobId }));
         status = res.JobStatus;
+        if (status === 'SUCCEEDED') completed = res;
     }
 
     if (status !== 'SUCCEEDED') {
@@ -53,13 +73,14 @@ async function extractTextFromPdf(bucket, key, opts = {}) {
     }
 
     // Page through all result blocks and collect LINE text.
-    let nextToken = null;
+    let nextToken;
     let text = '';
     do {
-        const page = await textract.send(new GetDocumentTextDetectionCommand({
+        const page = completed || await guardedSend(new GetDocumentTextDetectionCommand({
             JobId: jobId,
             NextToken: nextToken
         }));
+        completed = undefined;
         text += (page.Blocks || [])
             .filter((b) => b.BlockType === 'LINE')
             .map((b) => b.Text)
@@ -72,3 +93,4 @@ async function extractTextFromPdf(bucket, key, opts = {}) {
 
 module.exports = textract;
 module.exports.extractTextFromPdf = extractTextFromPdf;
+module.exports.guardedSend = guardedSend;

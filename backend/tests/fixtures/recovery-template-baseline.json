@@ -1,0 +1,599 @@
+{
+  "globals": {
+    "Variables": {
+      "NODE_OPTIONS": "--experimental-require-module",
+      "USERS_TABLE": {
+        "Ref": "UsersTable"
+      },
+      "RESUMES_TABLE": {
+        "Ref": "ResumesTable"
+      },
+      "SESSIONS_TABLE": {
+        "Ref": "SessionsTable"
+      },
+      "TRANSCRIPTS_TABLE": {
+        "Ref": "TranscriptsTable"
+      },
+      "FEEDBACK_TABLE": {
+        "Ref": "FeedbackTable"
+      },
+      "CONCEPT_STATES_TABLE": {
+        "Ref": "ConceptStatesTable"
+      },
+      "WS_CONNECTIONS_TABLE": {
+        "Ref": "WSConnectionsTable"
+      },
+      "NOTIFICATIONS_TABLE": {
+        "Ref": "NotificationsTable"
+      },
+      "USAGE_TABLE": {
+        "Ref": "UsageTable"
+      },
+      "SUPPORT_TABLE": {
+        "Ref": "SupportTable"
+      },
+      "DELETION_JOBS_TABLE": {
+        "Ref": "DeletionJobsTable"
+      },
+      "ANALYSIS_JOBS_TABLE": {
+        "Ref": "AnalysisJobsTable"
+      },
+      "PAID_OPS_SWITCH_PARAMETER": {
+        "Ref": "PaidOpsSwitch"
+      },
+      "PAID_ATTEMPT_LIMIT": {
+        "Ref": "PaidAttemptDailyLimit"
+      },
+      "QLUE_PAID_OPS_DISABLED": "",
+      "SUPPORT_EMAIL": "developersqlue@gmail.com",
+      "RESUMES_BUCKET": {
+        "Ref": "ResumesBucket"
+      },
+      "SCRAPED_CONTENT_BUCKET": {
+        "Ref": "ScrapedContentBucket"
+      },
+      "AUDIO_BUCKET": {
+        "Ref": "AudioBucket"
+      },
+      "ANSWER_AUDIO_BUCKET": {
+        "Fn::Sub": "${AWS::StackName}-answers-${AWS::AccountId}-${AWS::Region}"
+      },
+      "FEEDBACK_TOPIC_ARN": {
+        "Ref": "FeedbackTriggerTopic"
+      },
+      "WEBSOCKET_ENDPOINT": {
+        "Fn::Sub": "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+      },
+      "BEDROCK_MODEL_ID": "nvidia.nemotron-super-3-120b",
+      "ALLOWED_VOICES": "Tiffany,Ruth,Joanna,Matthew,Stephen",
+      "POLLY_DEFAULT_ENGINE": "generative",
+      "POLLY_ALLOW_GENERATIVE": "true"
+    }
+  },
+  "functions": {
+    "AnalysisWorkerFunction": {
+      "environment": {
+        "Variables": {
+          "ANALYSIS_WORKER_LAMBDA": {
+            "Fn::Sub": "${AWS::StackName}-analysis-worker"
+          }
+        }
+      },
+      "policies": [
+        {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:ConditionCheckItem"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "DeletionJobsTable",
+                  "Arn"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "AnalysisJobsTable"
+            }
+          }
+        },
+        {
+          "DynamoDBReadPolicy": {
+            "TableName": {
+              "Ref": "ResumesTable"
+            }
+          }
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "UsersTable"
+            }
+          }
+        },
+        {
+          "S3ReadPolicy": {
+            "BucketName": {
+              "Ref": "ScrapedContentBucket"
+            }
+          }
+        },
+        {
+          "LambdaInvokePolicy": {
+            "FunctionName": {
+              "Fn::Sub": "${AWS::StackName}-analysis-worker"
+            }
+          }
+        },
+        {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "bedrock:InvokeModel",
+                "textract:StartDocumentTextDetection",
+                "textract:GetDocumentTextDetection"
+              ],
+              "Resource": "*"
+            }
+          ]
+        },
+        {
+          "SSMParameterReadPolicy": {
+            "ParameterName": "qlue/*"
+          }
+        }
+      ]
+    },
+    "DeletionWorkerFunction": {
+      "policies": [
+        {
+          "S3CrudPolicy": {
+            "BucketName": {
+              "Ref": "AnswerAudioBucket"
+            }
+          }
+        },
+        {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:ConditionCheckItem"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "DeletionJobsTable",
+                  "Arn"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "DeletionJobsTable"
+            }
+          }
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "UsersTable"
+            }
+          }
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "ResumesTable"
+            }
+          }
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "SessionsTable"
+            }
+          }
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "TranscriptsTable"
+            }
+          }
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "FeedbackTable"
+            }
+          }
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "ConceptStatesTable"
+            }
+          }
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "NotificationsTable"
+            }
+          }
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "UsageTable"
+            }
+          }
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "SupportTable"
+            }
+          }
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "WSConnectionsTable"
+            }
+          }
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "DeletionJobsTable"
+            }
+          }
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "AnalysisJobsTable"
+            }
+          }
+        },
+        {
+          "S3CrudPolicy": {
+            "BucketName": {
+              "Ref": "ResumesBucket"
+            }
+          }
+        },
+        {
+          "S3CrudPolicy": {
+            "BucketName": {
+              "Ref": "ScrapedContentBucket"
+            }
+          }
+        },
+        {
+          "S3CrudPolicy": {
+            "BucketName": {
+              "Ref": "AudioBucket"
+            }
+          }
+        },
+        {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:ListBucketVersions"
+              ],
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "AnswerAudioBucket",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::GetAtt": [
+                    "ResumesBucket",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::GetAtt": [
+                    "ScrapedContentBucket",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::GetAtt": [
+                    "AudioBucket",
+                    "Arn"
+                  ]
+                }
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:DeleteObjectVersion"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "${AnswerAudioBucket.Arn}/*"
+                },
+                {
+                  "Fn::Sub": "${ResumesBucket.Arn}/*"
+                },
+                {
+                  "Fn::Sub": "${ScrapedContentBucket.Arn}/*"
+                },
+                {
+                  "Fn::Sub": "${AudioBucket.Arn}/*"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "SSMParameterReadPolicy": {
+            "ParameterName": "qlue/*"
+          }
+        }
+      ]
+    },
+    "DispatchFeedbackJobsFunction": {
+      "environment": {
+        "Variables": {
+          "FEEDBACK_TOPIC_ARN": {
+            "Ref": "FeedbackTriggerTopic"
+          }
+        }
+      },
+      "policies": [
+        {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:ConditionCheckItem"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "DeletionJobsTable",
+                  "Arn"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:ConditionCheckItem"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "SessionsTable",
+                  "Arn"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "SessionsTable"
+            }
+          }
+        },
+        {
+          "SNSPublishMessagePolicy": {
+            "TopicName": {
+              "Fn::GetAtt": [
+                "FeedbackTriggerTopic",
+                "TopicName"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "RecoverFeedbackFunction": {
+      "policies": [
+        {
+          "S3CrudPolicy": {
+            "BucketName": {
+              "Ref": "AnswerAudioBucket"
+            }
+          }
+        },
+        {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:ConditionCheckItem"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "DeletionJobsTable",
+                  "Arn"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:ConditionCheckItem"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "SessionsTable",
+                  "Arn"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "SessionsTable"
+            }
+          }
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "FeedbackTable"
+            }
+          }
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "UsersTable"
+            }
+          }
+        },
+        {
+          "SSMParameterReadPolicy": {
+            "ParameterName": "qlue/*"
+          }
+        }
+      ]
+    },
+    "RecoverResumesFunction": {
+      "environment": {
+        "Variables": {
+          "RESUME_WORKER_LAMBDA": {
+            "Ref": "ProcessResumeUploadFunction"
+          }
+        }
+      },
+      "policies": [
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "ResumesTable"
+            }
+          }
+        },
+        {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:ConditionCheckItem"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "DeletionJobsTable",
+                  "Arn"
+                ]
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "lambda:InvokeFunction"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "ProcessResumeUploadFunction",
+                  "Arn"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "RecoverTurnsFunction": {
+      "environment": {
+        "Variables": {
+          "ASYNC_QUEUE_URL": {
+            "Ref": "AsyncInterviewQueue"
+          }
+        }
+      },
+      "policies": [
+        {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:ConditionCheckItem"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "DeletionJobsTable",
+                  "Arn"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:ConditionCheckItem"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "SessionsTable",
+                  "Arn"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "DynamoDBCrudPolicy": {
+            "TableName": {
+              "Ref": "SessionsTable"
+            }
+          }
+        },
+        {
+          "SQSSendMessagePolicy": {
+            "QueueName": {
+              "Fn::GetAtt": [
+                "AsyncInterviewQueue",
+                "QueueName"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

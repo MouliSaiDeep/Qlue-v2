@@ -9,6 +9,7 @@ import '../../components/glass_card.dart';
 import '../../components/glass_controls.dart';
 import '../../components/spectral_background.dart';
 import '../../components/spectral_input.dart';
+import 'password_reset_dialog.dart';
 
 class ExactLoginScreen extends StatefulWidget {
   const ExactLoginScreen({super.key});
@@ -37,21 +38,22 @@ class _ExactLoginScreenState extends State<ExactLoginScreen> {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       await authProvider.login(_email.trim(), _password);
-      
+
       if (mounted) {
-        if (authProvider.currentUser != null && !authProvider.currentUser!.emailVerified) {
-           setState(() {
-             _error = "EMAIL_NOT_VERIFIED";
-             _loading = false;
-           });
-           return;
+        if (authProvider.error != null) {
+          setState(() => _error = authProvider.error!);
+        } else if (authProvider.requiresEmailVerification) {
+          context.go('/verify-email');
+        } else if (authProvider.isAuthenticated) {
+          context.go('/dashboard');
         }
-        context.go('/dashboard');
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString().contains('user-not-found') || e.toString().contains('wrong-password')
+          _error =
+              e.toString().contains('user-not-found') ||
+                  e.toString().contains('wrong-password')
               ? "Incorrect email or password."
               : "An error occurred. Please try again.";
           _loading = false;
@@ -59,7 +61,7 @@ class _ExactLoginScreenState extends State<ExactLoginScreen> {
       }
     } finally {
       // Ensure loading is false if we didn't navigate
-      if (mounted && _error.isNotEmpty) {
+      if (mounted) {
         setState(() => _loading = false);
       }
     }
@@ -72,8 +74,18 @@ class _ExactLoginScreenState extends State<ExactLoginScreen> {
       _googleLoading = true;
     });
     try {
-      await Provider.of<AuthProvider>(context, listen: false).signInWithGoogle();
-      if (mounted) context.go('/dashboard');
+      await Provider.of<AuthProvider>(
+        context,
+        listen: false,
+      ).signInWithGoogle();
+      if (mounted) {
+        final auth = context.read<AuthProvider>();
+        if (auth.error != null) {
+          setState(() => _error = auth.error!);
+          return;
+        }
+        if (auth.isAuthenticated) context.go('/dashboard');
+      }
     } catch (e) {
       if (mounted) setState(() => _error = "Google Sign-In failed.");
     } finally {
@@ -83,6 +95,7 @@ class _ExactLoginScreenState extends State<ExactLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final deletionNotice = context.watch<AuthProvider>().accountDeletionNotice;
     final t = AppThemeColors.of(context);
 
     return SpectralBackground(
@@ -101,7 +114,10 @@ class _ExactLoginScreenState extends State<ExactLoginScreen> {
                     children: [
                       ShaderMask(
                         shaderCallback: (bounds) => LinearGradient(
-                          colors: [Colors.white, Colors.white.withValues(alpha: 0.7)],
+                          colors: [
+                            Colors.white,
+                            Colors.white.withValues(alpha: 0.7),
+                          ],
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                         ).createShader(bounds),
@@ -189,16 +205,24 @@ class _ExactLoginScreenState extends State<ExactLoginScreen> {
                             vertical: 8,
                           ),
                           decoration: BoxDecoration(
-                            color: _error == "EMAIL_NOT_VERIFIED" ? Colors.orange.withValues(alpha: 0.1) : t.error.withValues(alpha: 0.1),
+                            color: _error == "EMAIL_NOT_VERIFIED"
+                                ? Colors.orange.withValues(alpha: 0.1)
+                                : t.error.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: _error == "EMAIL_NOT_VERIFIED" ? Colors.orange.withValues(alpha: 0.2) : t.error.withValues(alpha: 0.2)),
+                            border: Border.all(
+                              color: _error == "EMAIL_NOT_VERIFIED"
+                                  ? Colors.orange.withValues(alpha: 0.2)
+                                  : t.error.withValues(alpha: 0.2),
+                            ),
                           ),
                           child: Text(
-                            _error == "EMAIL_NOT_VERIFIED" 
-                              ? "Please verify your email address before logging in. Check your inbox for the link!"
-                              : _error,
+                            _error == "EMAIL_NOT_VERIFIED"
+                                ? "Please verify your email address using the code sent to your inbox."
+                                : _error,
                             style: TextStyle(
-                              color: _error == "EMAIL_NOT_VERIFIED" ? Colors.orange : t.error,
+                              color: _error == "EMAIL_NOT_VERIFIED"
+                                  ? Colors.orange
+                                  : t.error,
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                             ),
@@ -206,6 +230,16 @@ class _ExactLoginScreenState extends State<ExactLoginScreen> {
                           ),
                         ),
 
+                      if (deletionNotice != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Text(
+                            deletionNotice,
+                            key: const Key('account-deletion-notice'),
+                            style: TextStyle(color: t.textSecondary),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
                       SpectralInput(
                         label: "EMAIL ADDRESS",
                         hint: "name@example.com",
@@ -234,7 +268,12 @@ class _ExactLoginScreenState extends State<ExactLoginScreen> {
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
-                          onPressed: () {},
+                          onPressed: _loading || _googleLoading
+                              ? null
+                              : () => showPasswordResetDialog(
+                                  context,
+                                  initialEmail: _email.trim(),
+                                ),
                           style: TextButton.styleFrom(
                             padding: EdgeInsets.zero,
                             minimumSize: const Size(0, 30),

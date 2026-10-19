@@ -31,7 +31,9 @@ const RETRYABLE_ERRORS = new Set([
   'ProvisionedThroughputExceededException',
   'ThrottlingException',
   'RequestLimitExceeded',
-  'InternalServerError'
+  'InternalServerError',
+  'TransactionConflictException',
+  'TransactionInProgressException'
 ]);
 
 /**
@@ -51,10 +53,16 @@ async function withRetry(operation, maxRetries = 3, baseDelayMs = 200) {
       return await operation();
     } catch (error) {
       attempt++;
-      if (!RETRYABLE_ERRORS.has(error.name) || attempt >= maxRetries) {
+      // Cancelled transactions are safe to retry only when every failing item
+      // reports a transient conflict/throttle. Business conditions remain final.
+      const reasons = error.CancellationReasons;
+      const transientCancellation = error.name === 'TransactionCanceledException' && Array.isArray(reasons) &&
+        reasons.some(reason => ['TransactionConflict', 'ProvisionedThroughputExceeded', 'ThrottlingError'].includes(reason.Code)) &&
+        reasons.every(reason => ['None', 'TransactionConflict', 'ProvisionedThroughputExceeded', 'ThrottlingError'].includes(reason.Code));
+      if ((!RETRYABLE_ERRORS.has(error.name) && !transientCancellation) || attempt >= maxRetries) {
         throw error;
       }
-      const delay = baseDelayMs * Math.pow(2, attempt);
+      const delay = baseDelayMs * Math.pow(2, attempt) + Math.floor(Math.random() * baseDelayMs);
       diagnostics.debug(`DynamoDB transient error (${error.name}). Retrying in ${delay}ms...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }

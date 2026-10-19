@@ -15,11 +15,12 @@ import '../../components/input_field.dart';
 import '../../core/notifications.dart';
 import '../../core/update_service.dart';
 import '../profile/help_support_screen.dart';
+import '../auth/password_reset_dialog.dart';
+import '../auth/delete_account_dialog.dart';
 import '../../components/glass_card.dart';
 import '../../components/glass_controls.dart';
 import '../../components/avatar.dart';
 import '../../components/spectral_background.dart';
-
 
 class SettingRow extends StatelessWidget {
   final IconData icon;
@@ -59,9 +60,7 @@ class SettingRow extends StatelessWidget {
                   color: iconBg,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Center(
-                  child: Icon(icon, size: 15, color: iconColor),
-                ),
+                child: Center(child: Icon(icon, size: 15, color: iconColor)),
               ),
               const SizedBox(width: 12),
               Text(
@@ -74,9 +73,15 @@ class SettingRow extends StatelessWidget {
               ),
               const Spacer(),
               if (right != null)
-                Expanded(child: Align(alignment: Alignment.centerRight, child: right!))
+                Expanded(
+                  child: Align(alignment: Alignment.centerRight, child: right!),
+                )
               else if (onPress != null && !destructive)
-                Icon(FeatherIcons.chevronRight, size: 16, color: t.textTertiary),
+                Icon(
+                  FeatherIcons.chevronRight,
+                  size: 16,
+                  color: t.textTertiary,
+                ),
             ],
           ),
         ),
@@ -191,13 +196,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text("Profile Identity", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: t.text)),
+            Text(
+              "Profile Identity",
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: t.text,
+              ),
+            ),
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _identityOption(FeatherIcons.image, "Upload Photo", t.primary, _pickImage),
-                _identityOption(FeatherIcons.smile, "Avatar Library", t.accentGreen, _showAvatarLibrary),
+                _identityOption(
+                  FeatherIcons.image,
+                  "Upload Photo",
+                  t.primary,
+                  _pickImage,
+                ),
+                _identityOption(
+                  FeatherIcons.smile,
+                  "Avatar Library",
+                  t.accentGreen,
+                  _showAvatarLibrary,
+                ),
               ],
             ),
             const SizedBox(height: 24),
@@ -207,7 +229,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _identityOption(IconData icon, String label, Color color, VoidCallback onTap) {
+  Widget _identityOption(
+    IconData icon,
+    String label,
+    Color color,
+    VoidCallback onTap,
+  ) {
     final t = AppThemeColors.of(context);
     return GestureDetector(
       onTap: () {
@@ -217,12 +244,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         children: [
           Container(
-            width: 64, height: 64,
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
             child: Icon(icon, color: color, size: 28),
           ),
           const SizedBox(height: 12),
-          Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: t.textSecondary)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: t.textSecondary,
+            ),
+          ),
         ],
       ),
     );
@@ -251,13 +289,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text("Avatar Library", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: t.text)),
+            Text(
+              "Avatar Library",
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: t.text,
+              ),
+            ),
             const SizedBox(height: 20),
             GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3, crossAxisSpacing: 16, mainAxisSpacing: 16,
+                crossAxisCount: 3,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
               ),
               itemCount: avatars.length,
               itemBuilder: (ctx, idx) => GestureDetector(
@@ -269,7 +316,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: auth.profileImageUrl == avatars[idx] ? t.primary : t.border, width: 2),
+                    border: Border.all(
+                      color: auth.profileImageUrl == avatars[idx]
+                          ? t.primary
+                          : t.border,
+                      width: 2,
+                    ),
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(14),
@@ -288,7 +340,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _pickImage() async {
     try {
       final auth = Provider.of<AuthProvider>(context, listen: false);
-      
+
       FilePickerResult? result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'],
@@ -298,18 +350,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.single;
-        
+
         if (kIsWeb && file.bytes != null) {
           if (mounted) {
-            Notify.info(context, "Cloud profile sync is being prioritized. Using local preview.");
+            Notify.info(
+              context,
+              "Cloud profile sync is being prioritized. Using local preview.",
+            );
           }
           auth.updateUserProfile(
-            imageUrl: "https://ui-avatars.com/api/?name=${auth.displayName}&background=random",
+            imageUrl:
+                "https://ui-avatars.com/api/?name=${auth.displayName}&background=random",
           );
         } else if (file.path != null) {
-          await auth.updateUserProfile(
-            imageUrl: file.path,
-          );
+          await auth.updateUserProfile(imageUrl: file.path);
           if (mounted) Notify.success(context, "Profile picture updated!");
         }
       }
@@ -346,7 +400,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (ctx) => Consumer<AppearanceProvider>(
         builder: (ctx, appearance, _) => Container(
           padding: EdgeInsets.only(
-            left: 24, right: 24, top: 20,
+            left: 24,
+            right: 24,
+            top: 20,
             bottom: MediaQuery.of(ctx).padding.bottom + 24,
           ),
           decoration: BoxDecoration(
@@ -360,7 +416,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               Center(
                 child: Container(
-                  width: 40, height: 4,
+                  width: 40,
+                  height: 4,
                   decoration: BoxDecoration(
                     color: t.textTertiary.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(2),
@@ -368,30 +425,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               const SizedBox(height: 18),
-              Text("Appearance",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: t.text)),
+              Text(
+                "Appearance",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: t.text,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text("Make Qlue yours — changes apply instantly everywhere.",
-                  style: TextStyle(fontSize: 12, color: t.textTertiary)),
+              Text(
+                "Make Qlue yours — changes apply instantly everywhere.",
+                style: TextStyle(fontSize: 12, color: t.textTertiary),
+              ),
               const SizedBox(height: 20),
-              Text("GLASS STYLE",
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold,
-                      letterSpacing: 1, color: t.textTertiary)),
+              Text(
+                "GLASS STYLE",
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                  color: t.textTertiary,
+                ),
+              ),
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(child: _styleChoice(t, "Liquid Glass", "liquid", appearance)),
+                  Expanded(
+                    child: _styleChoice(
+                      t,
+                      "Liquid Glass",
+                      "liquid",
+                      appearance,
+                    ),
+                  ),
                   const SizedBox(width: 10),
-                  Expanded(child: _styleChoice(t, "Classic", "classic", appearance)),
+                  Expanded(
+                    child: _styleChoice(t, "Classic", "classic", appearance),
+                  ),
                 ],
               ),
               const SizedBox(height: 20),
-              Text("GLASS INTENSITY",
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold,
-                      letterSpacing: 1, color: t.textTertiary)),
+              Text(
+                "GLASS INTENSITY",
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                  color: t.textTertiary,
+                ),
+              ),
               AppSlider(
                 value: appearance.glassIntensity,
-                min: 0.6, max: 1.4,
+                min: 0.6,
+                max: 1.4,
                 activeColor: t.primary,
                 inactiveColor: t.metallicBorder.withValues(alpha: 0.3),
                 onChanged: (v) => appearance.setGlassIntensity(v),
@@ -399,8 +486,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text("Subtle", style: TextStyle(fontSize: 11, color: t.textTertiary)),
-                  Text("Heavy", style: TextStyle(fontSize: 11, color: t.textTertiary)),
+                  Text(
+                    "Subtle",
+                    style: TextStyle(fontSize: 11, color: t.textTertiary),
+                  ),
+                  Text(
+                    "Heavy",
+                    style: TextStyle(fontSize: 11, color: t.textTertiary),
+                  ),
                 ],
               ),
               const SizedBox(height: 14),
@@ -410,10 +503,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("Reduce motion",
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: t.text)),
-                      Text("Calms ambient animations, saves battery",
-                          style: TextStyle(fontSize: 11, color: t.textTertiary)),
+                      Text(
+                        "Reduce motion",
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: t.text,
+                        ),
+                      ),
+                      Text(
+                        "Calms ambient animations, saves battery",
+                        style: TextStyle(fontSize: 11, color: t.textTertiary),
+                      ),
                     ],
                   ),
                   AppSwitch(
@@ -430,24 +531,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _styleChoice(AppThemeColors t, String label, String value, AppearanceProvider appearance) {
+  Widget _styleChoice(
+    AppThemeColors t,
+    String label,
+    String value,
+    AppearanceProvider appearance,
+  ) {
     final selected = appearance.glassStyle == value;
     return GestureDetector(
       onTap: () => appearance.setGlassStyle(value),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
-          color: selected ? t.primary.withValues(alpha: 0.18) : t.bg.withValues(alpha: 0.4),
+          color: selected
+              ? t.primary.withValues(alpha: 0.18)
+              : t.bg.withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-              color: selected ? t.primary : t.metallicBorder.withValues(alpha: 0.3)),
+            color: selected
+                ? t.primary
+                : t.metallicBorder.withValues(alpha: 0.3),
+          ),
         ),
         child: Center(
-          child: Text(label,
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: selected ? t.primary : t.textSecondary)),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: selected ? t.primary : t.textSecondary,
+            ),
+          ),
         ),
       ),
     );
@@ -465,15 +579,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
           backgroundColor: t.bgSecondary,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          title: Text("Change Password",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: t.text)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: Text(
+            "Change Password",
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: t.text,
+            ),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               _passwordField(t, currentCtrl, "Current password"),
               const SizedBox(height: 12),
-              _passwordField(t, newCtrl, "New password (min 8, letters + numbers)"),
+              _passwordField(t, newCtrl, "New password"),
+              const SizedBox(height: 8),
+              Text(
+                AuthProvider.passwordRequirements,
+                style: TextStyle(color: t.textSecondary, fontSize: 12),
+              ),
               const SizedBox(height: 12),
               _passwordField(t, confirmCtrl, "Confirm new password"),
             ],
@@ -489,11 +616,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   : () async {
                       final current = currentCtrl.text;
                       final fresh = newCtrl.text;
-                      if (fresh.length < 8 ||
-                          !RegExp(r'[A-Za-z]').hasMatch(fresh) ||
-                          !RegExp(r'[0-9]').hasMatch(fresh)) {
-                        Notify.error(context,
-                            "New password must be 8+ characters with letters and numbers.");
+                      if (!AuthProvider.isStrongPassword(fresh)) {
+                        Notify.error(
+                          context,
+                          AuthProvider.passwordRequirements,
+                        );
                         return;
                       }
                       if (fresh != confirmCtrl.text) {
@@ -501,7 +628,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         return;
                       }
                       if (fresh == current) {
-                        Notify.error(context, "New password must differ from the current one.");
+                        Notify.error(
+                          context,
+                          "New password must differ from the current one.",
+                        );
                         return;
                       }
                       setDialogState(() => busy = true);
@@ -512,17 +642,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       setDialogState(() => busy = false);
                       if (err == null) {
                         Navigator.of(ctx).pop();
-                        Notify.success(context, "Password updated successfully.");
+                        Notify.success(
+                          context,
+                          "Password updated successfully.",
+                        );
                       } else {
                         Notify.error(context, err);
                       }
                     },
               child: busy
                   ? SizedBox(
-                      width: 16, height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: t.primary))
-                  : Text("Update",
-                      style: TextStyle(color: t.primary, fontWeight: FontWeight.bold)),
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: t.primary,
+                      ),
+                    )
+                  : Text(
+                      "Update",
+                      style: TextStyle(
+                        color: t.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
           ],
         ),
@@ -530,7 +673,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _passwordField(AppThemeColors t, TextEditingController ctrl, String hint) {
+  Widget _passwordField(
+    AppThemeColors t,
+    TextEditingController ctrl,
+    String hint,
+  ) {
     return TextField(
       controller: ctrl,
       obscureText: true,
@@ -546,7 +693,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
       ),
     );
   }
@@ -556,11 +706,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Each voice belongs to a mode. Premium = generative (most natural, uses
     // more credits); Cost Saver = neural (free-tier friendly).
     final voices = [
-      {'name': 'Tiffany', 'desc': 'Most Natural, Lifelike', 'gender': 'Female', 'mode': 'premium'},
-      {'name': 'Ruth', 'desc': 'Warm & Professional', 'gender': 'Female', 'mode': 'cost_saver'},
-      {'name': 'Joanna', 'desc': 'Calm & Articulate', 'gender': 'Female', 'mode': 'cost_saver'},
-      {'name': 'Matthew', 'desc': 'Clear & Authoritative', 'gender': 'Male', 'mode': 'cost_saver'},
-      {'name': 'Stephen', 'desc': 'Friendly & Natural', 'gender': 'Male', 'mode': 'cost_saver'},
+      {
+        'name': 'Tiffany',
+        'desc': 'Most Natural, Lifelike',
+        'gender': 'Female',
+        'mode': 'premium',
+      },
+      {
+        'name': 'Ruth',
+        'desc': 'Warm & Professional',
+        'gender': 'Female',
+        'mode': 'cost_saver',
+      },
+      {
+        'name': 'Joanna',
+        'desc': 'Calm & Articulate',
+        'gender': 'Female',
+        'mode': 'cost_saver',
+      },
+      {
+        'name': 'Matthew',
+        'desc': 'Clear & Authoritative',
+        'gender': 'Male',
+        'mode': 'cost_saver',
+      },
+      {
+        'name': 'Stephen',
+        'desc': 'Friendly & Natural',
+        'gender': 'Male',
+        'mode': 'cost_saver',
+      },
     ];
 
     showModalBottomSheet(
@@ -572,25 +747,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
         builder: (context, setModalState) => Consumer<AuthProvider>(
           builder: (context, auth, _) {
             final mode = auth.voiceMode;
-            final visibleVoices = voices.where((v) => v['mode'] == mode).toList();
+            final visibleVoices = voices
+                .where((v) => v['mode'] == mode)
+                .toList();
 
             Future<void> applyMode(String newMode) async {
               if (newMode == auth.voiceMode) return;
               // Switching mode also snaps the selected voice to a valid one for
               // that mode, so voiceId and voiceMode never disagree.
               final defaultVoice = newMode == 'premium' ? 'Tiffany' : 'Ruth';
-              final stillValid = voices.any((v) => v['name'] == auth.voiceId && v['mode'] == newMode);
+              final stillValid = voices.any(
+                (v) => v['name'] == auth.voiceId && v['mode'] == newMode,
+              );
               try {
                 await auth.updateUserProfile(
                   voiceMode: newMode,
                   voiceId: stillValid ? auth.voiceId : defaultVoice,
                 );
                 if (context.mounted) {
-                  Notify.success(context,
-                      newMode == 'premium' ? "Premium voices enabled" : "Cost Saver voices enabled");
+                  Notify.success(
+                    context,
+                    newMode == 'premium'
+                        ? "Premium voices enabled"
+                        : "Cost Saver voices enabled",
+                  );
                 }
               } catch (e) {
-                if (context.mounted) Notify.error(context, "Failed to update voice mode");
+                if (context.mounted) {
+                  Notify.error(context, "Failed to update voice mode");
+                }
               }
               if (mounted) setModalState(() {});
             }
@@ -602,9 +787,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Voice Model', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: t.text)),
+                  Text(
+                    'Voice Model',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: t.text,
+                    ),
+                  ),
                   const SizedBox(height: 4),
-                  Text('Choose a voice mode, then pick a persona.', style: TextStyle(fontSize: 11, color: t.textTertiary)),
+                  Text(
+                    'Choose a voice mode, then pick a persona.',
+                    style: TextStyle(fontSize: 11, color: t.textTertiary),
+                  ),
                   const SizedBox(height: 16),
 
                   // ---- MODE TOGGLE ----
@@ -649,7 +844,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             child: GlassCard(
                               borderRadius: 16,
                               padding: const EdgeInsets.all(16),
-                              tintColor: isSelected ? t.primary.withValues(alpha: 0.1) : null,
+                              tintColor: isSelected
+                                  ? t.primary.withValues(alpha: 0.1)
+                                  : null,
                               hasMetallicBorder: isSelected,
                               onTap: () async {
                                 try {
@@ -659,11 +856,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     voiceMode: v['mode'],
                                   );
                                   if (context.mounted) {
-                                    Notify.success(context, "Voice updated to $selectedVoice");
+                                    Notify.success(
+                                      context,
+                                      "Voice updated to $selectedVoice",
+                                    );
                                   }
                                 } catch (e) {
                                   if (context.mounted) {
-                                    Notify.error(context, "Failed to update voice model");
+                                    Notify.error(
+                                      context,
+                                      "Failed to update voice model",
+                                    );
                                   }
                                 }
                                 if (mounted) setModalState(() {});
@@ -671,24 +874,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               child: Row(
                                 children: [
                                   Container(
-                                    width: 40, height: 40,
+                                    width: 40,
+                                    height: 40,
                                     decoration: BoxDecoration(
-                                      color: isSelected ? t.primary : t.bgSecondary,
+                                      color: isSelected
+                                          ? t.primary
+                                          : t.bgSecondary,
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Icon(
-                                      isSelected ? FeatherIcons.check : FeatherIcons.user,
+                                      isSelected
+                                          ? FeatherIcons.check
+                                          : FeatherIcons.user,
                                       size: 18,
-                                      color: isSelected ? Colors.white : t.textSecondary,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : t.textSecondary,
                                     ),
                                   ),
                                   const SizedBox(width: 16),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Text(v['name']!, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: t.text)),
-                                        Text(v['desc']!, style: TextStyle(fontSize: 12, color: t.textTertiary)),
+                                        Text(
+                                          v['name']!,
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: t.text,
+                                          ),
+                                        ),
+                                        Text(
+                                          v['desc']!,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: t.textTertiary,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -729,7 +953,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
         decoration: BoxDecoration(
-          color: active ? t.primary.withValues(alpha: 0.16) : t.bg.withValues(alpha: 0.4),
+          color: active
+              ? t.primary.withValues(alpha: 0.16)
+              : t.bg.withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: active ? t.primary : t.metallicBorder.withValues(alpha: 0.3),
@@ -741,17 +967,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             Row(
               children: [
-                Icon(icon, size: 15, color: active ? t.primary : t.textSecondary),
+                Icon(
+                  icon,
+                  size: 15,
+                  color: active ? t.primary : t.textSecondary,
+                ),
                 const SizedBox(width: 6),
-                Text(title,
-                    style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.bold,
-                        color: active ? t.primary : t.text)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.bold,
+                    color: active ? t.primary : t.text,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 3),
-            Text(subtitle, style: TextStyle(fontSize: 10.5, color: t.textTertiary)),
+            Text(
+              subtitle,
+              style: TextStyle(fontSize: 10.5, color: t.textTertiary),
+            ),
           ],
         ),
       ),
@@ -774,15 +1010,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("Sign Out", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: t.text)),
+              Text(
+                "Sign Out",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: t.text,
+                ),
+              ),
               const SizedBox(height: 12),
-              Text("Are you sure you want to sign out?", style: TextStyle(color: t.textSecondary)),
+              Text(
+                "Are you sure you want to sign out?",
+                style: TextStyle(color: t.textSecondary),
+              ),
               const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
-                    child: Text("Cancel", style: TextStyle(color: t.textSecondary)),
+                    child: Text(
+                      "Cancel",
+                      style: TextStyle(color: t.textSecondary),
+                    ),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                   const SizedBox(width: 8),
@@ -791,7 +1040,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: const Text("Sign Out"),
                     onPressed: () {
                       context.pop();
-                      Provider.of<AuthProvider>(context, listen: false).logout();
+                      Provider.of<AuthProvider>(
+                        context,
+                        listen: false,
+                      ).logout();
                       context.go('/login');
                     },
                   ),
@@ -803,6 +1055,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+
   void _showSkillManagementSheet() {
     final t = AppThemeColors.of(context);
     final auth = Provider.of<AuthProvider>(context, listen: false);
@@ -817,7 +1070,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       isScrollControlled: true,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          ),
           child: GlassCard(
             borderRadius: 32,
             padding: const EdgeInsets.all(24),
@@ -828,12 +1083,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Manage Skills', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: t.text)),
-                    Text('${localSkills.length} Total', style: TextStyle(fontSize: 12, color: t.primary, fontWeight: FontWeight.bold)),
+                    Text(
+                      'Manage Skills',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: t.text,
+                      ),
+                    ),
+                    Text(
+                      '${localSkills.length} Total',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: t.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 20),
-                
+
                 // Add Skill Input
                 InputField(
                   icon: FeatherIcons.plusCircle,
@@ -847,7 +1116,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   label: 'Add to Profile',
                   borderRadius: 12,
                   onTap: () {
-                    if (newSkill.trim().isNotEmpty && !localSkills.contains(newSkill.trim())) {
+                    if (newSkill.trim().isNotEmpty &&
+                        !localSkills.contains(newSkill.trim())) {
                       setModalState(() {
                         localSkills.add(newSkill.trim());
                         newSkill = "";
@@ -855,14 +1125,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     }
                   },
                 ),
-                
+
                 const SizedBox(height: 24),
-                Text('CURRENT SKILLS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: t.textTertiary, letterSpacing: 1)),
+                Text(
+                  'CURRENT SKILLS',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: t.textTertiary,
+                    letterSpacing: 1,
+                  ),
+                ),
                 const SizedBox(height: 12),
-                
+
                 // Skills List
                 ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.3),
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.3,
+                  ),
                   child: SingleChildScrollView(
                     child: localSkills.isEmpty
                         ? Center(
@@ -871,35 +1151,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               child: Text(
                                 "No skills added yet. Add your first skill above!",
                                 textAlign: TextAlign.center,
-                                style: TextStyle(color: t.textTertiary, fontSize: 13),
+                                style: TextStyle(
+                                  color: t.textTertiary,
+                                  fontSize: 13,
+                                ),
                               ),
                             ),
                           )
                         : Wrap(
                             spacing: 8,
                             runSpacing: 8,
-                            children: localSkills.map((s) => Container(
-                              padding: const EdgeInsets.only(left: 12, right: 4, top: 6, bottom: 6),
-                              decoration: BoxDecoration(
-                                color: t.bgSecondary,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: t.metallicBorder.withValues(alpha: 0.1)),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(s, style: TextStyle(fontSize: 13, color: t.textSecondary)),
-                                  const SizedBox(width: 4),
-                                  GestureDetector(
-                                    onTap: () => setModalState(() => localSkills.remove(s)),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(4.0),
-                                      child: Icon(FeatherIcons.x, size: 14, color: t.error.withValues(alpha: 0.7)),
+                            children: localSkills
+                                .map(
+                                  (s) => Container(
+                                    padding: const EdgeInsets.only(
+                                      left: 12,
+                                      right: 4,
+                                      top: 6,
+                                      bottom: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: t.bgSecondary,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: t.metallicBorder.withValues(
+                                          alpha: 0.1,
+                                        ),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          s,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: t.textSecondary,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        GestureDetector(
+                                          onTap: () => setModalState(
+                                            () => localSkills.remove(s),
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(4.0),
+                                            child: Icon(
+                                              FeatherIcons.x,
+                                              size: 14,
+                                              color: t.error.withValues(
+                                                alpha: 0.7,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                ],
-                              ),
-                            )).toList(),
+                                )
+                                .toList(),
                           ),
                   ),
                 ),
@@ -923,11 +1233,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-
-  void _showEditDetailSheet(String title, String currentVal, Function(String) onSave) {
+  void _showEditDetailSheet(
+    String title,
+    String currentVal,
+    Function(String) onSave,
+  ) {
     final t = AppThemeColors.of(context);
     _detailController.text = currentVal;
-    
+
     showModalBottomSheet(
       context: context,
       useRootNavigator: true,
@@ -942,7 +1255,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Edit $title', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: t.text)),
+              Text(
+                'Edit $title',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: t.text,
+                ),
+              ),
               const SizedBox(height: 20),
               InputField(
                 icon: FeatherIcons.edit2,
@@ -979,73 +1299,117 @@ class _ProfileScreenState extends State<ProfileScreen> {
           return Dialog(
             backgroundColor: Colors.transparent,
             elevation: 0,
-            insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 24,
+            ),
             child: GlassCard(
               borderRadius: 24,
               padding: const EdgeInsets.all(24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                Container(
-                  width: 64, height: 64, margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(color: const Color(0xFFFCD34D).withValues(alpha: 0.15), shape: BoxShape.circle),
-                  child: const Center(child: Icon(FeatherIcons.star, size: 32, color: Color(0xFFF59E0B))),
-                ),
-                Text("Rate your experience", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: t.text, letterSpacing: -0.5)),
-                const SizedBox(height: 8),
-                Text("How are you liking Qlue so far?", textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: t.textSecondary, height: 1.5)),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(5, (index) {
-                    return GestureDetector(
-                      onTap: () => setDialogState(() => rating = index + 1),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                        child: Icon(
-                          index < rating ? Icons.star_rounded : Icons.star_border_rounded,
-                          size: 40,
-                          color: index < rating ? const Color(0xFFF59E0B) : t.border,
-                        ),
+                  Container(
+                    width: 64,
+                    height: 64,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFCD34D).withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        FeatherIcons.star,
+                        size: 32,
+                        color: Color(0xFFF59E0B),
                       ),
-                    );
-                  }),
-                ),
-                const SizedBox(height: 24),
-                TextField(
-                  onChanged: (v) {},
-                  maxLines: 3,
-                  style: TextStyle(fontSize: 14, color: t.text),
-                  decoration: InputDecoration(
-                    hintText: "Tell us what you think (optional)",
-                    hintStyle: TextStyle(fontSize: 14, color: t.textTertiary),
-                    filled: true,
-                    fillColor: t.bgSecondary,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                    contentPadding: const EdgeInsets.all(16),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                AppButton(
-                  label: 'Submit',
-                  color: const Color(0xFF2563EB),
-                  borderRadius: 14,
-                  onTap: rating > 0 ? () {
-                    Navigator.pop(ctx);
-                    Notify.success(context, 'Thank you for your feedback!');
-                  } : null,
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    style: TextButton.styleFrom(foregroundColor: t.textSecondary),
-                    child: const Text('Not right now'),
+                  Text(
+                    "Rate your experience",
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: t.text,
+                      letterSpacing: -0.5,
+                    ),
                   ),
-                ),
-              ],
-            ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "How are you liking Qlue so far?",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: t.textSecondary,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (index) {
+                      return GestureDetector(
+                        onTap: () => setDialogState(() => rating = index + 1),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                          child: Icon(
+                            index < rating
+                                ? Icons.star_rounded
+                                : Icons.star_border_rounded,
+                            size: 40,
+                            color: index < rating
+                                ? const Color(0xFFF59E0B)
+                                : t.border,
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 24),
+                  TextField(
+                    onChanged: (v) {},
+                    maxLines: 3,
+                    style: TextStyle(fontSize: 14, color: t.text),
+                    decoration: InputDecoration(
+                      hintText: "Tell us what you think (optional)",
+                      hintStyle: TextStyle(fontSize: 14, color: t.textTertiary),
+                      filled: true,
+                      fillColor: t.bgSecondary,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.all(16),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  AppButton(
+                    label: 'Submit',
+                    color: const Color(0xFF2563EB),
+                    borderRadius: 14,
+                    onTap: rating > 0
+                        ? () {
+                            Navigator.pop(ctx);
+                            Notify.success(
+                              context,
+                              'Thank you for your feedback!',
+                            );
+                          }
+                        : null,
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      style: TextButton.styleFrom(
+                        foregroundColor: t.textSecondary,
+                      ),
+                      child: const Text('Not right now'),
+                    ),
+                  ),
+                ],
+              ),
             ),
           );
         },
@@ -1072,6 +1436,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) setState(() => _checkingUpdate = false);
     }
   }
+
   void _showUpdateAvailableDialog(UpdateInfo update) {
     final t = AppThemeColors.of(context);
     final sizeMb = update.sizeBytes > 0
@@ -1091,18 +1456,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 64, height: 64, margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(color: const Color(0xFF2563EB).withValues(alpha: 0.15), shape: BoxShape.circle),
-                child: const Center(child: Icon(FeatherIcons.download, size: 30, color: Color(0xFF2563EB))),
+                width: 64,
+                height: 64,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2563EB).withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Icon(
+                    FeatherIcons.download,
+                    size: 30,
+                    color: Color(0xFF2563EB),
+                  ),
+                ),
               ),
-              Text("Update available", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: t.text, letterSpacing: -0.5)),
+              Text(
+                "Update available",
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: t.text,
+                  letterSpacing: -0.5,
+                ),
+              ),
               const SizedBox(height: 8),
               Text(
                 sizeMb == null
                     ? "Version ${update.version} is ready to install."
                     : "Version ${update.version} ($sizeMb MB) is ready to install.",
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: t.textSecondary, height: 1.5),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: t.textSecondary,
+                  height: 1.5,
+                ),
               ),
               if (update.releaseNotes.isNotEmpty) ...[
                 const SizedBox(height: 16),
@@ -1110,9 +1498,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   width: double.infinity,
                   constraints: const BoxConstraints(maxHeight: 160),
                   padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(color: t.bgSecondary, borderRadius: BorderRadius.circular(12)),
+                  decoration: BoxDecoration(
+                    color: t.bgSecondary,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   child: SingleChildScrollView(
-                    child: Text(update.releaseNotes, style: TextStyle(fontSize: 13, color: t.textSecondary, height: 1.5)),
+                    child: Text(
+                      update.releaseNotes,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: t.textSecondary,
+                        height: 1.5,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -1141,6 +1539,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+
   Future<void> _downloadAndInstall(UpdateInfo update) async {
     final progress = ValueNotifier<double>(0);
     showDialog(
@@ -1152,14 +1551,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return Dialog(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
           child: GlassCard(
             borderRadius: 24,
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text("Downloading update", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: t.text)),
+                Text(
+                  "Downloading update",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: t.text,
+                  ),
+                ),
                 const SizedBox(height: 20),
                 ValueListenableBuilder<double>(
                   valueListenable: progress,
@@ -1171,12 +1580,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           value: value > 0 ? value : null,
                           minHeight: 8,
                           backgroundColor: t.bgSecondary,
-                          valueColor: const AlwaysStoppedAnimation(Color(0xFF2563EB)),
+                          valueColor: const AlwaysStoppedAnimation(
+                            Color(0xFF2563EB),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Text(value > 0 ? "${(value * 100).round()}%" : "Starting…",
-                          style: TextStyle(fontSize: 13, color: t.textSecondary)),
+                      Text(
+                        value > 0 ? "${(value * 100).round()}%" : "Starting…",
+                        style: TextStyle(fontSize: 13, color: t.textSecondary),
+                      ),
                     ],
                   ),
                 ),
@@ -1202,7 +1615,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Notify.info(context, 'Opening installer…');
           break;
         case InstallOutcome.permissionDenied:
-          Notify.error(context, 'Allow "Install unknown apps" for Qlue, then tap the update again.');
+          Notify.error(
+            context,
+            'Allow "Install unknown apps" for Qlue, then tap the update again.',
+          );
           break;
         case InstallOutcome.failed:
           Notify.error(context, "Couldn't open the installer.");
@@ -1211,13 +1627,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (_) {
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop(); // close progress
-      Notify.error(context, 'Download failed. Check your connection and try again.');
+      Notify.error(
+        context,
+        'Download failed. Check your connection and try again.',
+      );
     } finally {
       progress.dispose();
     }
   }
 
-  Widget _buildHeaderButton(IconData icon, AppThemeColors t, VoidCallback onTap) {
+  Widget _buildHeaderButton(
+    IconData icon,
+    AppThemeColors t,
+    VoidCallback onTap,
+  ) {
     return GestureDetector(
       onTap: onTap,
       child: SizedBox(
@@ -1236,9 +1659,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildColumnStat(String val, String label, AppThemeColors t) {
     return Column(
       children: [
-        Text(val, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: t.text, letterSpacing: -0.5)),
+        Text(
+          val,
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+            color: t.text,
+            letterSpacing: -0.5,
+          ),
+        ),
         const SizedBox(height: 2),
-        Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: t.textSecondary)),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: t.textSecondary,
+          ),
+        ),
       ],
     );
   }
@@ -1274,14 +1712,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               // HEADER ROW (Profile Title + Actions)
               Padding(
-                padding: EdgeInsets.only(top: topPadding + 10, left: 24, right: 24, bottom: 20),
+                padding: EdgeInsets.only(
+                  top: topPadding + 10,
+                  left: 24,
+                  right: 24,
+                  bottom: 20,
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildHeaderButton(FeatherIcons.chevronLeft, t, () => context.pop()),
-                    Text("Profile", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: t.text, letterSpacing: -0.5)),
-                      const SizedBox(width: 44), // Spacer to keep title centered
-                    ],
+                    _buildHeaderButton(
+                      FeatherIcons.chevronLeft,
+                      t,
+                      () => context.pop(),
+                    ),
+                    Text(
+                      "Profile",
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        color: t.text,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(width: 44), // Spacer to keep title centered
+                  ],
                 ),
               ),
 
@@ -1295,13 +1750,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onTap: _showAvatarPicker,
                       child: Stack(
                         children: [
-                          Avatar(imageUrl: auth.profileImageUrl, name: auth.displayName, size: 88, borderRadius: 20),
+                          Avatar(
+                            imageUrl: auth.profileImageUrl,
+                            name: auth.displayName,
+                            size: 88,
+                            borderRadius: 20,
+                          ),
                           Positioned(
-                            bottom: 4, right: 4,
+                            bottom: 4,
+                            right: 4,
                             child: Container(
                               padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(color: t.primary, shape: BoxShape.circle, border: Border.all(color: Colors.black, width: 2)),
-                              child: const Icon(FeatherIcons.camera, size: 12, color: Colors.white),
+                              decoration: BoxDecoration(
+                                color: t.primary,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.black,
+                                  width: 2,
+                                ),
+                              ),
+                              child: const Icon(
+                                FeatherIcons.camera,
+                                size: 12,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                         ],
@@ -1313,29 +1785,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           GestureDetector(
-                            onTap: () => _showEditDetailSheet("Name", auth.displayName, (v) {
-                              auth.updateUserProfile(name: v);
-                            }),
+                            onTap: () => _showEditDetailSheet(
+                              "Name",
+                              auth.displayName,
+                              (v) {
+                                auth.updateUserProfile(name: v);
+                              },
+                            ),
                             child: Row(
                               children: [
-                                Text(auth.displayName, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: t.text, letterSpacing: -0.5)),
+                                Text(
+                                  auth.displayName,
+                                  style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w900,
+                                    color: t.text,
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
                                 const SizedBox(width: 8),
-                                Icon(FeatherIcons.edit3, size: 14, color: t.primary.withValues(alpha: 0.5)),
+                                Icon(
+                                  FeatherIcons.edit3,
+                                  size: 14,
+                                  color: t.primary.withValues(alpha: 0.5),
+                                ),
                               ],
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            auth.profession.isNotEmpty ? auth.profession : "Tap to add profession",
+                            auth.profession.isNotEmpty
+                                ? auth.profession
+                                : "Tap to add profession",
                             style: TextStyle(
                               fontSize: 14,
-                              color: auth.profession.isNotEmpty ? t.primary : t.textTertiary,
+                              color: auth.profession.isNotEmpty
+                                  ? t.primary
+                                  : t.textTertiary,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.2,
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Text("Interview Ready", style: TextStyle(fontSize: 13, color: t.textSecondary, fontWeight: FontWeight.w500)),
+                          Text(
+                            "Interview Ready",
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: t.textSecondary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -1361,7 +1860,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _buildDivider(t),
                       _buildColumnStat(resumesCount.toString(), "Resumes", t),
                       _buildDivider(t),
-                      _buildColumnStat(avgScore > 0 ? "$avgScore%" : "—", "Avg Score", t),
+                      _buildColumnStat(
+                        avgScore > 0 ? "$avgScore%" : "—",
+                        "Avg Score",
+                        t,
+                      ),
                     ],
                   ),
                 ),
@@ -1382,8 +1885,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         iconColor: t.primary,
                         iconBg: t.primary.withValues(alpha: 0.1),
                         right: Text(
-                          auth.profession.isNotEmpty ? auth.profession : "Not set",
-                          style: TextStyle(fontSize: 13, color: t.textSecondary),
+                          auth.profession.isNotEmpty
+                              ? auth.profession
+                              : "Not set",
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: t.textSecondary,
+                          ),
                         ),
                         onPress: () => _showEditDetailSheet(
                           "Profession",
@@ -1400,9 +1908,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           auth.skills.isEmpty
                               ? "Add skills"
                               : auth.skills.length > 2
-                                  ? "${auth.skills.take(2).join(', ')}..."
-                                  : auth.skills.join(', '),
-                          style: TextStyle(fontSize: 13, color: t.textSecondary),
+                              ? "${auth.skills.take(2).join(', ')}..."
+                              : auth.skills.join(', '),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: t.textSecondary,
+                          ),
                         ),
                         onPress: _showSkillManagementSheet,
                       ),
@@ -1424,8 +1935,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         iconColor: t.primary,
                         iconBg: t.primary.withValues(alpha: 0.1),
                         right: Text(
-                            "${auth.voiceId} · ${auth.isPremiumVoice ? 'Premium' : 'Cost Saver'}",
-                            style: TextStyle(fontSize: 13, color: t.textSecondary)),
+                          "${auth.voiceId} · ${auth.isPremiumVoice ? 'Premium' : 'Cost Saver'}",
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: t.textSecondary,
+                          ),
+                        ),
                         onPress: _showVoiceSelectionSheet,
                       ),
                     ],
@@ -1435,7 +1950,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // ACCOUNT Section
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: ProfileSection(
                   title: "Account",
                   child: Column(
@@ -1449,9 +1967,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           auth.email.isNotEmpty ? auth.email : "—",
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 13, color: t.textSecondary),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: t.textSecondary,
+                          ),
                         ),
-                        onPress: () => Notify.info(context, 'Email cannot be changed directly.'),
+                        onPress: () => Notify.info(
+                          context,
+                          'Email cannot be changed directly.',
+                        ),
                       ),
                       const ProfileDiv(),
                       SettingRow(
@@ -1468,6 +1992,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         iconColor: t.warning,
                         iconBg: t.warning.withValues(alpha: 0.15),
                         onPress: _showChangePasswordDialog,
+                      ),
+                      const ProfileDiv(),
+                      SettingRow(
+                        key: const Key('profile-reset-password'),
+                        icon: FeatherIcons.mail,
+                        label: 'Reset Password',
+                        iconColor: t.warning,
+                        iconBg: t.warning.withValues(alpha: 0.15),
+                        onPress: () => showPasswordResetDialog(
+                          context,
+                          currentAccountOnly: true,
+                        ),
                       ),
                     ],
                   ),
@@ -1486,7 +2022,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         label: "Help & Support",
                         iconColor: t.moduleResume,
                         iconBg: t.moduleResume.withValues(alpha: 0.15),
-                        onPress: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HelpSupportScreen())),
+                        onPress: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const HelpSupportScreen(),
+                          ),
+                        ),
                       ),
                       const ProfileDiv(),
                       SettingRow(
@@ -1502,19 +2042,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           icon: FeatherIcons.download,
                           label: "Check for updates",
                           iconColor: const Color(0xFF2563EB),
-                          iconBg: const Color(0xFF2563EB).withValues(alpha: 0.15),
+                          iconBg: const Color(
+                            0xFF2563EB,
+                          ).withValues(alpha: 0.15),
                           onPress: _checkForUpdates,
                         ),
                         const ProfileDiv(),
                       ],
                       SettingRow(
                         icon: FeatherIcons.info,
-                        label: _appVersion.isEmpty ? "Version" : "Version $_appVersion",
+                        label: _appVersion.isEmpty
+                            ? "Version"
+                            : "Version $_appVersion",
                         iconColor: t.textTertiary,
                         iconBg: t.bgSecondary.withValues(alpha: 0.1),
-                        right: Text("Latest", style: TextStyle(fontSize: 13, color: t.textTertiary)),
+                        right: Text(
+                          "Latest",
+                          style: TextStyle(fontSize: 13, color: t.textTertiary),
+                        ),
                       ),
                     ],
+                  ),
+                ),
+              ),
+
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: ProfileSection(
+                  title: 'Account',
+                  child: SettingRow(
+                    key: const Key('profile-delete-account'),
+                    icon: FeatherIcons.trash2,
+                    label: 'Delete Account',
+                    destructive: true,
+                    iconColor: t.error,
+                    iconBg: t.error.withValues(alpha: 0.15),
+                    onPress: () => showDeleteAccountDialog(context),
                   ),
                 ),
               ),
@@ -1539,7 +2102,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           children: [
                             Icon(FeatherIcons.logOut, size: 18, color: t.error),
                             const SizedBox(width: 12),
-                            Text("Sign Out", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: t.error, letterSpacing: 0.5)),
+                            Text(
+                              "Sign Out",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: t.error,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
                           ],
                         ),
                       ),

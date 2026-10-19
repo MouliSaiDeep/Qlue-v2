@@ -26,7 +26,7 @@ function pausedTemplate(template, baseline) {
   result.Resources.PaidOpsSwitch.Properties.Value = 'all';
   for (const [id, resource] of Object.entries(result.Resources)) {
     for (const [event, definition] of Object.entries(resource.Properties?.Events ?? {})) {
-      if (definition.Type !== 'Schedule' && definition.Type !== 'ScheduleV2') continue;
+      if (!['Schedule', 'ScheduleV2', 'DynamoDB', 'SQS'].includes(definition.Type)) continue;
       if (definition.Type === 'ScheduleV2') definition.Properties.State = 'DISABLED';
       else definition.Properties.Enabled = false;
       paused.push(`${id}.${event}`);
@@ -35,7 +35,7 @@ function pausedTemplate(template, baseline) {
       resource.Properties.State = 'DISABLED'; paused.push(id);
     }
   }
-  if (!paused.length) throw new Error('No schedules found: inspect migration template');
+  if (!paused.length) throw new Error('No background event sources found: inspect migration template');
   const pinnedLogs=pinAdoptedLogs(result,baseline);
   return {template:result, paused, pinnedLogs};
 }

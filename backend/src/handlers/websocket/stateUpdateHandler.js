@@ -15,5 +15,8 @@ async function pushStateUpdate(connectionId, sessionId, previousState, currentSt
 }
 
 module.exports = {
-  pushStateUpdate
+  pushStateUpdate,
+  // The retained SAM resource still names .handler; the protocol deliberately
+  // stopped sending separate state frames, so legacy invocations are no-ops.
+  handler: async () => ({ success: true, skipped: true })
 };

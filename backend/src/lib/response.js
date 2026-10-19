@@ -58,6 +58,14 @@ const internalError = (message, errorCode) => {
   return errorResponse(500, message, errorCode || 'INTERNAL_ERROR');
 };
 
+const tooManyRequests = (message, errorCode) => {
+  return errorResponse(429, message, errorCode || 'QUOTA_EXCEEDED');
+};
+
+const serviceUnavailable = (message, errorCode) => {
+  return errorResponse(503, message, errorCode || 'SERVICE_UNAVAILABLE');
+};
+
 module.exports = {
   success,
   created,
@@ -66,5 +74,7 @@ module.exports = {
   forbidden,
   notFound,
   conflict,
-  internalError
+  internalError,
+  tooManyRequests,
+  serviceUnavailable
 };

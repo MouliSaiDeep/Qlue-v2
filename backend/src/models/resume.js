@@ -94,7 +94,10 @@ async function updateResumeParsingResult(resumeId, status, parsedData = null, fa
     let condition='attribute_exists(resumeId)';
     if(attemptId) {condition+=' AND parseAttemptId = :attempt';values[':attempt']=attemptId;}
     else condition+=' AND attribute_not_exists(parseAttemptId)';
-    if(source?.leaseOwner) {condition+=' AND parseLeaseOwner = :leaseOwner';values[':leaseOwner']=source.leaseOwner;}
+    if(source?.leaseOwner) {
+      condition+=' AND parseLeaseOwner = :leaseOwner AND #st = :parsing';
+      values[':leaseOwner']=source.leaseOwner;values[':parsing']='PARSING';
+    }
     const res = await update(RESUMES_TABLE, { resumeId }, updateExp, values, names, {
         condition, userId
     });
@@ -138,13 +141,32 @@ async function claimResumeParse(resumeId, version, userId, workerJob) {
       ,':attempt':attemptId
       ,':zero':0
       ,...(workerJob?{':job':{...workerJob,parseAttemptId:attemptId}}:{})
+      ,...(workerJob?{':key':workerJob.s3Key,':uid':userId}:{})
     },
     { '#st': 'status' },
-    { condition: 'attribute_exists(resumeId) AND (attribute_not_exists(parseVersion) OR parseVersion <> :ver OR #st = :failed)',userId }
+    { condition: 'attribute_exists(resumeId) AND #st <> :parsing AND (attribute_not_exists(parseVersion) OR parseVersion <> :ver OR #st = :failed)' +
+      (workerJob ? ' AND s3Key = :key AND userId = :uid' : ''),userId }
   );
   if (res.success) return { claimed: true, record: res.data, attemptId };
   if (res.error?.name === 'ConditionalCheckFailedException') return { claimed: false };
   throw res.error || new Error('Failed to claim resume for parsing');
+}
+
+// Lambda async delivery is at least once. Only one invocation may perform paid
+// work for this attempt; an expired lease can be reclaimed after a crash.
+async function claimResumeExecution(resumeId, userId, s3Key, attemptId) {
+  const owner = require('node:crypto').randomUUID();
+  const res = await update(RESUMES_TABLE, { resumeId },
+    'SET parseLeaseOwner = :owner, parseLeaseExpiresAt = :expiry',
+    { ':owner': owner, ':expiry': Date.now() + 130000, ':now': Date.now(),
+      ':uid': userId, ':key': s3Key, ':parsing': 'PARSING', ...(attemptId ? { ':attempt': attemptId } : {}) },
+    { '#st': 'status' },
+    { condition: 'attribute_exists(resumeId) AND userId = :uid AND s3Key = :key AND #st = :parsing AND ' +
+      (attemptId ? 'parseAttemptId = :attempt' : 'attribute_not_exists(parseAttemptId)') +
+      ' AND (attribute_not_exists(parseLeaseExpiresAt) OR parseLeaseExpiresAt <= :now)', userId });
+  if (res.success) return { claimed: true, owner, record: res.data };
+  if (res.error?.name === 'ConditionalCheckFailedException') return { claimed: false };
+  throw res.error || new Error('Failed to claim resume execution');
 }
 
 /**
@@ -161,5 +183,6 @@ module.exports = {
     getResumesByUserId,
     updateResumeParsingResult,
     claimResumeParse,
+    claimResumeExecution,
     deleteResumeRecord
 };

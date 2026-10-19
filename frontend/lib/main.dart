@@ -124,8 +124,6 @@ class _StartupErrorApp extends StatelessWidget {
   }
 }
 
-String? _interviewOwner;
-
 class QlueApp extends StatelessWidget {
   const QlueApp({super.key});
 
@@ -134,23 +132,25 @@ class QlueApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProxyProvider<AuthProvider, InterviewProvider>(
-          create: (_) => InterviewProvider(),
-          update: (_, auth, interview) {
-            final uid = auth.currentUser?.uid;
-            if (uid != _interviewOwner) {
-              _interviewOwner = uid;
-              interview!.resetForUser(uid);
-            }
-            return interview!;
-          },
-        ),
-        ChangeNotifierProvider(create: (_) => ResumeProvider()),
-        ChangeNotifierProvider(create: (_) => DashboardProvider()),
         ChangeNotifierProvider(create: (_) => AppearanceProvider()),
         ChangeNotifierProvider(create: (_) => ThemeNotifier()),
       ],
-      child: const RouterWrapper(),
+      child: Consumer<AuthProvider>(
+        builder: (_, auth, _) => MultiProvider(
+          // Discard account-owned data, timers, routes and sockets on deletion,
+          // sign-out or account switching. Appearance preferences remain shared.
+          key: ValueKey(auth.currentUser?.uid),
+          providers: [
+            ChangeNotifierProvider(
+              create: (_) =>
+                  InterviewProvider()..resetForUser(auth.currentUser?.uid),
+            ),
+            ChangeNotifierProvider(create: (_) => ResumeProvider()),
+            ChangeNotifierProvider(create: (_) => DashboardProvider()),
+          ],
+          child: const RouterWrapper(),
+        ),
+      ),
     );
   }
 }
@@ -170,6 +170,12 @@ class _RouterWrapperState extends State<RouterWrapper> {
     super.initState();
     // Build the router once and let GoRouter handle updates via refreshListenable
     _router = buildAppRouter(context.read<AuthProvider>());
+  }
+
+  @override
+  void dispose() {
+    _router.dispose();
+    super.dispose();
   }
 
   @override

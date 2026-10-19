@@ -1,6 +1,8 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, QueryCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const { invokeModel } = require('../../lib/bedrock');
+const deletion = require('../../lib/deletionJob');
+const { fencedSend } = require('../../lib/dynamodb');
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -26,6 +28,8 @@ exports.handler = async (event) => {
         }
 
         for (const userId of uniqueUserIds) {
+            // Delayed feedback records must not recreate a deleted profile.
+            if (await deletion.getDeletion(userId)) continue;
             console.log(`Aggregating insights for user: ${userId}`);
             
             // 1. Fetch last 5 feedbacks
@@ -96,12 +100,17 @@ Do not use markdown blocks. Output MUST be a raw JSON object matching this schem
             const updateCmd = new UpdateCommand({
                 TableName: USERS_TABLE,
                 Key: { userId: userId },
+                ConditionExpression: 'attribute_exists(userId)',
                 UpdateExpression: "SET globalInsights = :gi",
                 ExpressionAttributeValues: {
                     ":gi": parsedInsights
                 }
             });
-            await docClient.send(updateCmd);
+            try { await fencedSend(updateCmd, userId); }
+            catch (error) {
+                if (error.name === 'ConditionalCheckFailedException') continue;
+                throw error;
+            }
             console.log(`Successfully updated globalInsights for user: ${userId}`);
         }
 

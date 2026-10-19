@@ -1,5 +1,8 @@
 const {spawnSync}=require('node:child_process');
 const path=require('node:path');
+// Functional SDK compatibility, not a production latency benchmark. QEMU on
+// a cross-architecture developer host needs a larger subprocess allowance.
+const processTimeoutMs=Number(process.env.QLUE_TEST_PROCESS_TIMEOUT_MS||20000);
 test('the real pinned Firebase SDK initializes auth/messaging and signs a controlled token without network',()=>{
  const root=path.resolve(__dirname,'../../..');
  const template=require('../../../../audit/read-cfn.cjs')(require('node:fs').readFileSync(path.join(root,'template.yaml'),'utf8'));
@@ -19,8 +22,8 @@ test('the real pinned Firebase SDK initializes auth/messaging and signs a contro
    console.log('REAL_FIREBASE_SDK_PASS');
   })().catch(e=>{console.error(e.name,e.message);process.exitCode=1});
  `;
- const result=spawnSync(process.execPath,[template.Globals.Function.Environment.Variables.NODE_OPTIONS,'-e',script],{cwd:require('node:os').tmpdir(),encoding:'utf8',timeout:20000});
+ const result=spawnSync(process.execPath,[template.Globals.Function.Environment.Variables.NODE_OPTIONS,'-e',script],{cwd:require('node:os').tmpdir(),encoding:'utf8',timeout:processTimeoutMs});
  expect(result.error).toBeUndefined();
  expect({status:result.status,error:result.stderr}).toEqual({status:0,error:''});
  expect(result.stdout).toContain('REAL_FIREBASE_SDK_PASS');
-},25000);
+},processTimeoutMs+5000);

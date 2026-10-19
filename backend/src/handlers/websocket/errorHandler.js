@@ -31,5 +31,12 @@ async function pushError(connectionId, errorCode, message, recoverable, suggeste
 }
 
 module.exports = {
-  pushError
+  pushError,
+  handler: async (event = {}) => {
+    if (typeof event.connectionId !== 'string' || !event.connectionId) {
+      throw new Error('An error notification connectionId is required');
+    }
+    return { success: await pushError(event.connectionId, event.errorCode, event.message,
+      event.recoverable, event.suggestedAction) };
+  }
 };

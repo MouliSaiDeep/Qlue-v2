@@ -62,4 +62,20 @@ describe('dynamodb lib', () => {
         expect(result.success).toBe(true);
         expect(docClient.send).toHaveBeenCalledTimes(2);
     }, 10000); // Increase timeout for retries
+
+    it('retries a cancelled atomic transaction caused only by transient contention', async () => {
+        docClient.send.mockRejectedValueOnce(Object.assign(new Error('conflict'), {
+            name:'TransactionCanceledException', CancellationReasons:[{Code:'None'},{Code:'TransactionConflict'}]
+        })).mockResolvedValueOnce({});
+        expect((await transactWrite([{Put:{TableName:'t',Item:{id:'one'}}}])).success).toBe(true);
+        expect(docClient.send).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not retry failed business conditions mixed with transaction conflicts', async () => {
+        docClient.send.mockRejectedValue(Object.assign(new Error('condition failed'), {
+            name:'TransactionCanceledException', CancellationReasons:[{Code:'ConditionalCheckFailed'},{Code:'TransactionConflict'}]
+        }));
+        expect((await transactWrite([{Put:{TableName:'t',Item:{id:'one'}}}])).success).toBe(false);
+        expect(docClient.send).toHaveBeenCalledTimes(1);
+    });
 });

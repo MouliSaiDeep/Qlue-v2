@@ -4,7 +4,7 @@ const drift=[],omittedOptional=[],layers=[];
 const app=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../backend/layers/dependencies/package.json')));
 const backend=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../backend/package.json')));
 for(const [name,version]of Object.entries(app.dependencies||{}))if(backend.dependencies?.[name]!==version)drift.push({name,error:'ROOT_LAYER_MANIFEST_DRIFT'});
-for(const layer of contract().layers) {
+for(const layer of contract(process.argv[2]?path.resolve(process.argv[2]):undefined).layers) {
  const manifestPath=path.join(layer.source,'package.json');
  if(!fs.existsSync(manifestPath)){layers.push({name:layer.name,kind:'source',checked:0});continue;}
  const manifest=JSON.parse(fs.readFileSync(manifestPath));

@@ -509,3 +509,13 @@ python audit/verify-release-apk.py frontend/build/app/outputs/flutter-apk/Qlue.a
 The APK workflow runs frontend analysis, frontend tests, backend tests, and production dependency audits before building. Packaging checks verify the original font bytes, supported architectures, archive integrity, and exclusion of experimental offline recognition resources. Physical Android microphone and accent/noise acceptance remains a separate device check.
 
 Backend main pushes **verify only**. Manual workflow dispatch builds a paused migration review artifact. Version tags build a signed APK and publish it to GitHub Releases after verification passes. The release version and Android build number come from the tag (for example, `v1.0.9` becomes `1.0.9` / `10009`); `frontend/pubspec.yaml` records the matching local version. Follow [the controlled rollout and physical-device checklist](audit/backend-rollout-runbook.md) for future backend migrations. Release signing and environment inputs remain in local ignored files or GitHub Actions secrets.
+
+The six background recovery workers use DynamoDB streams and per-job delayed SQS messages in place of recurring schedules. See [event-driven recovery and migration](docs/event-driven-recovery.md) for the actual sources, retry behavior, and the one-time reconciliation of work created before streams were enabled.
+
+Cost controls use one shared recovery delay queue, atomic resume admission/execution claims, and validated version-pinned text-only OCR. See [cost optimization and verification](docs/cost-optimization-2026-10-18.md).
+
+Email/password signup uses six-digit verification codes through AWS Cognito's built-in sender, while Firebase remains the session provider. See [email OTP security and rollout](docs/email-otp-verification.md) for limits and deployment requirements.
+
+Password recovery is available from Login and Profile through Firebase's hosted reset flow. See [password-reset behavior and verification](docs/password-reset.md) for account binding, abuse controls, the provider password policy and live test results.
+
+Account deletion is available from Profile and the email verification screen. It removes the Firebase Auth identity and queues complete, checkpointed cleanup of owned AWS data. See [account deletion and verification](docs/account-deletion.md) for reauthentication, upload expiry, retries and same-email signup behavior.

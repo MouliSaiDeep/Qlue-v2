@@ -3,9 +3,15 @@ Transform: AWS::Serverless-2016-10-31
 Description: Qlue AI-powered voice interview simulation mobile app.
 
 Parameters:
+  EmailOtpDailyLimit:
+    Type: Number
+    Default: 40
+    MinValue: 1
+    MaxValue: 50
+    Description: Global verification-email attempt cap; resets at 09:00 UTC.
   PaidAttemptDailyLimit:
     Type: Number
-    Default: 5000
+    Default: 50
     MinValue: 0
     Description: Maximum global provider attempts per UTC day; includes failures and retries.
   # Finding 13 (operational readiness): where operational alerts are delivered.
@@ -83,11 +89,56 @@ Resources:
       Type: String
       Value: 'none'
       Description: Runtime stop switch; all or comma-separated action names; Lambdas cache for 15 seconds.
+  EmailOtpPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: !Sub '${AWS::StackName}-email-verification'
+      UserPoolTier: LITE
+      AutoVerifiedAttributes: [email]
+      UsernameConfiguration: { CaseSensitive: false }
+      MfaConfiguration: 'OFF'
+      EmailConfiguration: { EmailSendingAccount: COGNITO_DEFAULT }
+      AccountRecoverySetting:
+        RecoveryMechanisms: [{ Name: admin_only, Priority: 1 }]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 32
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailSubject: 'Your Qlue verification code'
+        EmailMessage: 'Your Qlue verification code is {####}. Enter it in the app within 5 minutes. Do not share this code.'
+  EmailOtpClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref EmailOtpPool
+      ClientName: qlue-server-email-verification
+      GenerateSecret: true
+      PreventUserExistenceErrors: ENABLED
+      ExplicitAuthFlows: [ALLOW_REFRESH_TOKEN_AUTH]
+      EnableTokenRevocation: true
+  EmailOtpTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification: { SSEEnabled: true }
+      AttributeDefinitions: [{ AttributeName: id, AttributeType: S }]
+      KeySchema: [{ AttributeName: id, KeyType: HASH }]
+      TimeToLiveSpecification: { AttributeName: ttl, Enabled: true }
   DeletionJobsTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
       BillingMode: PAY_PER_REQUEST
       DeletionProtectionEnabled: true
       SSESpecification: { SSEEnabled: true }
@@ -99,6 +150,8 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
       BillingMode: PAY_PER_REQUEST
       SSESpecification: { SSEEnabled: true }
       AttributeDefinitions: [{ AttributeName: jobId, AttributeType: S }]
@@ -135,6 +188,8 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
       TableName: qlue-resumes
       BillingMode: PAY_PER_REQUEST
       DeletionProtectionEnabled: true
@@ -168,6 +223,8 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
       TableName: qlue-sessions
       BillingMode: PAY_PER_REQUEST
       DeletionProtectionEnabled: true
@@ -287,7 +344,7 @@ Resources:
         - AttributeName: generatedAt
           AttributeType: N
       StreamSpecification:
-        StreamViewType: NEW_IMAGE
+        StreamViewType: NEW_AND_OLD_IMAGES
       KeySchema:
         - AttributeName: feedbackId
           KeyType: HASH
@@ -864,6 +921,12 @@ Resources:
       CodeUri: src/
       MemorySize: 256
       Timeout: 15
+      Environment:
+        Variables:
+          EMAIL_OTP_TABLE: !Ref EmailOtpTable
+          EMAIL_OTP_POOL_ID: !Ref EmailOtpPool
+          EMAIL_OTP_CLIENT_ID: !Ref EmailOtpClient
+          EMAIL_OTP_DAILY_LIMIT: !Ref EmailOtpDailyLimit
       Events:
         Api:
           Type: Api
@@ -879,11 +942,99 @@ Resources:
       Policies:
         - Statement:
             - Effect: Allow
+              Action: ['cognito-idp:DescribeUserPoolClient']
+              Resource: !GetAtt EmailOtpPool.Arn
+        - Statement:
+            - Effect: Allow
               Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
               Resource: !GetAtt DeletionJobsTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
+
+  SendEmailOtpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/auth/emailOtp.send
+      CodeUri: src/
+      MemorySize: 256
+      Timeout: 25
+      Environment:
+        Variables:
+          EMAIL_OTP_TABLE: !Ref EmailOtpTable
+          EMAIL_OTP_POOL_ID: !Ref EmailOtpPool
+          EMAIL_OTP_CLIENT_ID: !Ref EmailOtpClient
+          EMAIL_OTP_DAILY_LIMIT: !Ref EmailOtpDailyLimit
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /auth/send-otp
+            Method: post
+            RestApiId: !Ref RestApi
+            # Valid unverified Firebase tokens are checked inside these endpoints.
+            Auth: { Authorizer: NONE }
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref EmailOtpTable }
+        - DynamoDBReadPolicy: { TableName: !Ref DeletionJobsTable }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - SSMParameterReadPolicy: { ParameterName: qlue/* }
+        - Statement:
+            - Effect: Allow
+              Action: ['cognito-idp:DescribeUserPoolClient', 'cognito-idp:AdminDeleteUser']
+              Resource: !GetAtt EmailOtpPool.Arn
+  SendEmailOtpFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${SendEmailOtpFunction}'
+      RetentionInDays: 30
+
+  VerifyEmailOtpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/auth/emailOtp.verify
+      CodeUri: src/
+      MemorySize: 256
+      Timeout: 25
+      Environment:
+        Variables:
+          EMAIL_OTP_TABLE: !Ref EmailOtpTable
+          EMAIL_OTP_POOL_ID: !Ref EmailOtpPool
+          EMAIL_OTP_CLIENT_ID: !Ref EmailOtpClient
+          EMAIL_OTP_DAILY_LIMIT: !Ref EmailOtpDailyLimit
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /auth/verify-otp
+            Method: post
+            RestApiId: !Ref RestApi
+            # Valid unverified Firebase tokens are checked inside these endpoints.
+            Auth: { Authorizer: NONE }
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref EmailOtpTable }
+        - DynamoDBReadPolicy: { TableName: !Ref DeletionJobsTable }
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:ConditionCheckItem']
+              Resource: !GetAtt DeletionJobsTable.Arn
+        - SSMParameterReadPolicy: { ParameterName: qlue/* }
+        - Statement:
+            - Effect: Allow
+              Action: ['cognito-idp:DescribeUserPoolClient', 'cognito-idp:AdminDeleteUser']
+              Resource: !GetAtt EmailOtpPool.Arn
+  VerifyEmailOtpFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${VerifyEmailOtpFunction}'
+      RetentionInDays: 30
 
   LoginUserFunction:
     Type: AWS::Serverless::Function
@@ -994,8 +1145,11 @@ Resources:
       Handler: handlers/auth/deleteAccount.handler
       CodeUri: src/
       MemorySize: 512
-      # Full account teardown paginates every table and purges S3; give it room
-      # to finish in one invocation rather than relying on client retries.
+      Environment:
+        Variables:
+          RECOVERY_QUEUE_URL: !Ref RecoveryDelayQueue
+      # Accept a durable cleanup job and promptly remove Firebase access.
+      # The deletion worker handles paginated storage cleanup after the drain.
       Timeout: 60
       Events:
         Api:
@@ -1004,7 +1158,11 @@ Resources:
             Path: /auth/account
             Method: delete
             RestApiId: !Ref RestApi
+            # The handler checks a fresh Firebase proof, including for retries
+            # after identity removal and for unverified users deleting themselves.
+            Auth: { Authorizer: NONE }
       Policies:
+        - SQSSendMessagePolicy: { QueueName: !GetAtt RecoveryDelayQueue.QueueName }
         - S3CrudPolicy: { BucketName: !Ref AnswerAudioBucket }
         - Statement:
             - Effect: Allow
@@ -1206,6 +1364,10 @@ Resources:
       Policies:
         - Statement:
             - Effect: Allow
+              Action: ['s3:GetObjectVersion']
+              Resource: !Sub '${ResumesBucket.Arn}/*'
+        - Statement:
+            - Effect: Allow
               Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
               Resource: !GetAtt DeletionJobsTable.Arn
         - Statement:
@@ -1236,6 +1398,8 @@ Resources:
                 - textract:DetectDocumentText
                 - textract:StartDocumentAnalysis
                 - textract:GetDocumentAnalysis
+                - textract:StartDocumentTextDetection
+                - textract:GetDocumentTextDetection
               Resource: '*'
         - Statement:
             - Effect: Allow
@@ -1633,6 +1797,90 @@ Resources:
     Properties:
       MessageRetentionPeriod: 1209600
 
+  # Delayed checks are emitted only for durable, unfinished jobs. The primary
+  # interview queue retains its single existing worker.
+  AnalysisWorkerDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      MessageRetentionPeriod: 1209600
+
+  DeletionWorkerDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      MessageRetentionPeriod: 1209600
+
+  ResumeRecoveryDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      MessageRetentionPeriod: 1209600
+
+  TurnRecoveryDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      MessageRetentionPeriod: 1209600
+
+  RecoveryDispatchDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      MessageRetentionPeriod: 1209600
+
+  RecoveryDelayQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      ReceiveMessageWaitTimeSeconds: 20
+      VisibilityTimeout: 180
+      MessageRetentionPeriod: 1209600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt RecoveryDispatchDLQ.Arn
+        maxReceiveCount: 5
+
+  RecoveryDispatcherFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/recovery/dispatchRecovery.handler
+      CodeUri: src/
+      MemorySize: 256
+      Timeout: 30
+      Environment:
+        Variables:
+          RECOVERY_QUEUE_URL: !Ref RecoveryDelayQueue
+          ANALYSIS_TARGET: !Ref AnalysisWorkerFunction
+          DELETION_TARGET: !Ref DeletionWorkerFunction
+          DISPATCH_TARGET: !Ref DispatchFeedbackJobsFunction
+          FEEDBACK_TARGET: !Ref RecoverFeedbackFunction
+          RESUME_TARGET: !Ref RecoverResumesFunction
+          TURN_TARGET: !Ref RecoverTurnsFunction
+      Events:
+        QueueTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt RecoveryDelayQueue.Arn
+            BatchSize: 10
+            FunctionResponseTypes: [ReportBatchItemFailures]
+      Policies:
+        - SQSPollerPolicy: { QueueName: !GetAtt RecoveryDelayQueue.QueueName }
+        - SQSSendMessagePolicy: { QueueName: !GetAtt RecoveryDelayQueue.QueueName }
+        - LambdaInvokePolicy: { FunctionName: !Ref AnalysisWorkerFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref DeletionWorkerFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref DispatchFeedbackJobsFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref RecoverFeedbackFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref RecoverResumesFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref RecoverTurnsFunction }
+
+  RecoveryDispatcherFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${RecoveryDispatcherFunction}'
+      RetentionInDays: 30
+
   AsyncInterviewQueue:
     Type: AWS::SQS::Queue
     Metadata:
@@ -1808,20 +2056,55 @@ Resources:
   DispatchFeedbackJobsFunction:
     Type: AWS::Serverless::Function
     Properties:
+      EventInvokeConfig:
+        MaximumEventAgeInSeconds: 3600
+        MaximumRetryAttempts: 2
+        DestinationConfig:
+          OnFailure:
+            Type: SQS
+            Destination: !GetAtt FeedbackDLQ.Arn
       Handler: handlers/feedback/dispatchFeedbackJobs.handler
       CodeUri: src/
       MemorySize: 256
       Timeout: 60
       Environment:
         Variables:
+          RECOVERY_QUEUE_URL: !Ref RecoveryDelayQueue
+          FEEDBACK_RECOVERY_QUEUE_URL: !Ref RecoveryDelayQueue
+          TURN_RECOVERY_QUEUE_URL: !Ref RecoveryDelayQueue
           FEEDBACK_TOPIC_ARN: !Ref FeedbackTriggerTopic
       Events:
-        Schedule:
-          Type: Schedule
+        StreamTrigger:
+          Type: DynamoDB
           Properties:
-            Schedule: rate(2 minutes)
-            Description: Re-dispatch stuck PENDING feedback jobs (R-05 outbox backstop)
+            Stream: !GetAtt SessionsTable.StreamArn
+            StartingPosition: TRIM_HORIZON
+            BatchSize: 10
+            FunctionResponseTypes: [ReportBatchItemFailures]
+            FilterCriteria:
+              Filters:
+                - Pattern: '{"eventName":["INSERT","MODIFY"],"dynamodb":{"NewImage":{"feedbackDispatchPending":{"S":["PENDING"]}}}}'
+                - Pattern: '{"eventName":["INSERT","MODIFY"],"dynamodb":{"NewImage":{"feedbackStatus":{"S":["PENDING"]}}}}'
+                - Pattern: '{"eventName":["INSERT","MODIFY"],"dynamodb":{"NewImage":{"currentState":{"S":["INITIALIZING","PROCESSING_RESPONSE","LOADING_CONTEXT"]}}}}'
+                - Pattern: '{"eventName":["INSERT","MODIFY"],"dynamodb":{"NewImage":{"answerAudioCleanupPending":{"BOOL":[true]}}}}'
+                - Pattern: '{"eventName":["INSERT","MODIFY"],"dynamodb":{"NewImage":{"answerAudioLastExpiry":{"N":[{"exists":true}]}}}}'
+            BisectBatchOnFunctionError: true
+            MaximumRetryAttempts: 3
+            MaximumRecordAgeInSeconds: 3600
+            DestinationConfig:
+              OnFailure:
+                Type: SQS
+                Destination: !GetAtt FeedbackDLQ.Arn
       Policies:
+        - SQSSendMessagePolicy: { QueueName: !GetAtt RecoveryDelayQueue.QueueName }
+        - SQSSendMessagePolicy: { QueueName: !GetAtt FeedbackDLQ.QueueName }
+        - Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetRecords, dynamodb:GetShardIterator, dynamodb:DescribeStream]
+              Resource: !GetAtt SessionsTable.StreamArn
+            - Effect: Allow
+              Action: [dynamodb:ListStreams]
+              Resource: '*'
         - Statement:
             - Effect: Allow
               Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
@@ -2317,6 +2600,10 @@ Resources:
       Policies:
         - Statement:
             - Effect: Allow
+              Action: ['s3:GetObjectVersion']
+              Resource: !Sub '${ScrapedContentBucket.Arn}/*'
+        - Statement:
+            - Effect: Allow
               Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
               Resource: !GetAtt DeletionJobsTable.Arn
         - Statement:
@@ -2638,11 +2925,37 @@ Resources:
   DeletionWorkerFunction:
     Type: AWS::Serverless::Function
     Properties:
+      EventInvokeConfig:
+        MaximumEventAgeInSeconds: 3600
+        MaximumRetryAttempts: 2
+        DestinationConfig:
+          OnFailure:
+            Type: SQS
+            Destination: !GetAtt DeletionWorkerDLQ.Arn
+      Environment:
+        Variables:
+          EMAIL_OTP_TABLE: !Ref EmailOtpTable
+          EMAIL_OTP_POOL_ID: !Ref EmailOtpPool
+          RECOVERY_QUEUE_URL: !Ref RecoveryDelayQueue
       Handler: handlers/auth/deletionWorker.handler
       CodeUri: src/
       MemorySize: 512
       Timeout: 120
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['cognito-idp:AdminDeleteUser']
+              Resource: !GetAtt EmailOtpPool.Arn
+        - DynamoDBCrudPolicy: { TableName: !Ref EmailOtpTable }
+        - SQSSendMessagePolicy: { QueueName: !GetAtt RecoveryDelayQueue.QueueName }
+        - SQSSendMessagePolicy: { QueueName: !GetAtt DeletionWorkerDLQ.QueueName }
+        - Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetRecords, dynamodb:GetShardIterator, dynamodb:DescribeStream]
+              Resource: !GetAtt DeletionJobsTable.StreamArn
+            - Effect: Allow
+              Action: [dynamodb:ListStreams]
+              Resource: '*'
         - S3CrudPolicy: { BucketName: !Ref AnswerAudioBucket }
         - Statement:
             - Effect: Allow
@@ -2673,20 +2986,45 @@ Resources:
               Resource: [!Sub '${AnswerAudioBucket.Arn}/*', !Sub '${ResumesBucket.Arn}/*', !Sub '${ScrapedContentBucket.Arn}/*', !Sub '${AudioBucket.Arn}/*']
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
       Events:
-        Sweep:
-          Type: Schedule
-          Properties: { Schedule: rate(1 minute), Enabled: true }
+        StreamTrigger:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt DeletionJobsTable.StreamArn
+            StartingPosition: TRIM_HORIZON
+            BatchSize: 10
+            FunctionResponseTypes: [ReportBatchItemFailures]
+            FilterCriteria:
+              Filters:
+                - Pattern: '{"eventName":["INSERT"]}'
+                - Pattern: '{"eventName":["MODIFY"],"dynamodb":{"NewImage":{"status":{"S":["PENDING"]}}}}'
+            BisectBatchOnFunctionError: true
+            MaximumRetryAttempts: 3
+            MaximumRecordAgeInSeconds: 3600
+            DestinationConfig:
+              OnFailure:
+                Type: SQS
+                Destination: !GetAtt DeletionWorkerDLQ.Arn
   RecoverTurnsFunction:
     Type: AWS::Serverless::Function
     Properties:
+      EventInvokeConfig:
+        MaximumEventAgeInSeconds: 3600
+        MaximumRetryAttempts: 2
+        DestinationConfig:
+          OnFailure:
+            Type: SQS
+            Destination: !GetAtt TurnRecoveryDLQ.Arn
       Environment:
         Variables:
+          RECOVERY_QUEUE_URL: !Ref RecoveryDelayQueue
           ASYNC_QUEUE_URL: !Ref AsyncInterviewQueue
       Handler: handlers/interview/recoverTurns.handler
       CodeUri: src/
       MemorySize: 512
       Timeout: 60
       Policies:
+        - SQSSendMessagePolicy: { QueueName: !GetAtt RecoveryDelayQueue.QueueName }
+        - SQSSendMessagePolicy: { QueueName: !GetAtt TurnRecoveryDLQ.QueueName }
         - Statement:
             - Effect: Allow
               Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
@@ -2697,18 +3035,33 @@ Resources:
               Resource: !GetAtt SessionsTable.Arn
         - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
         - SQSSendMessagePolicy: { QueueName: !GetAtt AsyncInterviewQueue.QueueName }
-      Events:
-        Sweep:
-          Type: Schedule
-          Properties: { Schedule: rate(1 minute), Enabled: true }
   RecoverFeedbackFunction:
     Type: AWS::Serverless::Function
     Properties:
+      EventInvokeConfig:
+        MaximumEventAgeInSeconds: 3600
+        MaximumRetryAttempts: 2
+        DestinationConfig:
+          OnFailure:
+            Type: SQS
+            Destination: !GetAtt FeedbackDLQ.Arn
+      Environment:
+        Variables:
+          RECOVERY_QUEUE_URL: !Ref RecoveryDelayQueue
       Handler: handlers/feedback/recoverFeedback.handler
       CodeUri: src/
       MemorySize: 512
       Timeout: 60
       Policies:
+        - SQSSendMessagePolicy: { QueueName: !GetAtt RecoveryDelayQueue.QueueName }
+        - SQSSendMessagePolicy: { QueueName: !GetAtt FeedbackDLQ.QueueName }
+        - Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetRecords, dynamodb:GetShardIterator, dynamodb:DescribeStream]
+              Resource: !GetAtt FeedbackTable.StreamArn
+            - Effect: Allow
+              Action: [dynamodb:ListStreams]
+              Resource: '*'
         - S3CrudPolicy: { BucketName: !Ref AnswerAudioBucket }
         - Statement:
             - Effect: Allow
@@ -2723,21 +3076,56 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
       Events:
-        Sweep:
-          Type: Schedule
-          Properties: { Schedule: rate(1 minute), Enabled: true }
+        StreamTrigger:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt FeedbackTable.StreamArn
+            StartingPosition: TRIM_HORIZON
+            BatchSize: 10
+            FunctionResponseTypes: [ReportBatchItemFailures]
+            FilterCriteria:
+              Filters:
+                - Pattern: '{"eventName":["INSERT","MODIFY"],"dynamodb":{"NewImage":{"notificationStatus":{"S":["PENDING","SENDING"]}}}}'
+            BisectBatchOnFunctionError: true
+            MaximumRetryAttempts: 3
+            MaximumRecordAgeInSeconds: 3600
+            DestinationConfig:
+              OnFailure:
+                Type: SQS
+                Destination: !GetAtt FeedbackDLQ.Arn
   AnalysisWorkerFunction:
     Type: AWS::Serverless::Function
     Properties:
+      EventInvokeConfig:
+        MaximumEventAgeInSeconds: 3600
+        MaximumRetryAttempts: 2
+        DestinationConfig:
+          OnFailure:
+            Type: SQS
+            Destination: !GetAtt AnalysisWorkerDLQ.Arn
       FunctionName: !Sub '${AWS::StackName}-analysis-worker'
       Handler: handlers/jd/analysisWorker.handler
       CodeUri: src/
       Environment:
         Variables:
+          RECOVERY_QUEUE_URL: !Ref RecoveryDelayQueue
           ANALYSIS_WORKER_LAMBDA: !Sub '${AWS::StackName}-analysis-worker'
       MemorySize: 512
       Timeout: 120
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['s3:GetObjectVersion']
+              Resource: !Sub '${ScrapedContentBucket.Arn}/*'
+        - SQSSendMessagePolicy: { QueueName: !GetAtt RecoveryDelayQueue.QueueName }
+        - SQSSendMessagePolicy: { QueueName: !GetAtt AnalysisWorkerDLQ.QueueName }
+        - Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetRecords, dynamodb:GetShardIterator, dynamodb:DescribeStream]
+              Resource: !GetAtt AnalysisJobsTable.StreamArn
+            - Effect: Allow
+              Action: [dynamodb:ListStreams]
+              Resource: '*'
         - Statement:
             - Effect: Allow
               Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
@@ -2750,9 +3138,24 @@ Resources:
         - Statement: [{ Effect: Allow, Action: ['bedrock:InvokeModel', 'textract:StartDocumentTextDetection', 'textract:GetDocumentTextDetection'], Resource: '*' }]
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
       Events:
-        Sweep:
-          Type: Schedule
-          Properties: { Schedule: rate(1 minute), Enabled: true }
+        StreamTrigger:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt AnalysisJobsTable.StreamArn
+            StartingPosition: TRIM_HORIZON
+            BatchSize: 10
+            FunctionResponseTypes: [ReportBatchItemFailures]
+            FilterCriteria:
+              Filters:
+                - Pattern: '{"eventName":["INSERT"]}'
+                - Pattern: '{"eventName":["MODIFY"],"dynamodb":{"NewImage":{"status":{"S":["PENDING","RUNNING","FAILED"]}}}}'
+            BisectBatchOnFunctionError: true
+            MaximumRetryAttempts: 3
+            MaximumRecordAgeInSeconds: 3600
+            DestinationConfig:
+              OnFailure:
+                Type: SQS
+                Destination: !GetAtt AnalysisWorkerDLQ.Arn
   GetAnalysisJobFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -3155,17 +3558,49 @@ Resources:
   RecoverResumesFunction:
     Type: AWS::Serverless::Function
     Properties:
+      EventInvokeConfig:
+        MaximumEventAgeInSeconds: 3600
+        MaximumRetryAttempts: 2
+        DestinationConfig:
+          OnFailure:
+            Type: SQS
+            Destination: !GetAtt ResumeRecoveryDLQ.Arn
       Handler: handlers/resume/recoverResumes.handler
       CodeUri: src/
       Timeout: 60
       Environment:
         Variables:
+          RECOVERY_QUEUE_URL: !Ref RecoveryDelayQueue
           RESUME_WORKER_LAMBDA: !Ref ProcessResumeUploadFunction
       Events:
-        Sweep:
-          Type: Schedule
-          Properties: { Schedule: 'rate(2 minutes)' }
+        StreamTrigger:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt ResumesTable.StreamArn
+            StartingPosition: TRIM_HORIZON
+            BatchSize: 10
+            FunctionResponseTypes: [ReportBatchItemFailures]
+            FilterCriteria:
+              Filters:
+                - Pattern: '{"eventName":["INSERT"]}'
+                - Pattern: '{"eventName":["MODIFY"],"dynamodb":{"NewImage":{"status":{"S":["PARSING","FAILED"]}}}}'
+            BisectBatchOnFunctionError: true
+            MaximumRetryAttempts: 3
+            MaximumRecordAgeInSeconds: 3600
+            DestinationConfig:
+              OnFailure:
+                Type: SQS
+                Destination: !GetAtt ResumeRecoveryDLQ.Arn
       Policies:
+        - SQSSendMessagePolicy: { QueueName: !GetAtt RecoveryDelayQueue.QueueName }
+        - SQSSendMessagePolicy: { QueueName: !GetAtt ResumeRecoveryDLQ.QueueName }
+        - Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetRecords, dynamodb:GetShardIterator, dynamodb:DescribeStream]
+              Resource: !GetAtt ResumesTable.StreamArn
+            - Effect: Allow
+              Action: [dynamodb:ListStreams]
+              Resource: '*'
         - DynamoDBCrudPolicy: { TableName: !Ref ResumesTable }
         - Statement:
             - Effect: Allow

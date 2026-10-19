@@ -161,7 +161,7 @@ async function assertValidS3Pdf(s3, bucket, key, { maxBytes, maxPages, versionId
   // whatever the HEAD resolved) so validation and the caller's OCR see identical
   // bytes even if the key is overwritten mid-pipeline.
   const pinnedVersion = versionId || meta.versionId || null;
-  if (!pinnedVersion) throw new QlueError('Versioned upload storage is required for safe PDF processing.', ERROR_CODES.INVALID_FILE_TYPE, 400);
+  if (!pinnedVersion || pinnedVersion === 'null') throw new QlueError('Versioned upload storage is required for safe PDF processing.', ERROR_CODES.INVALID_FILE_TYPE, 400);
   const buffer = await s3.getObject(bucket, key, pinnedVersion, { maxBytes });
   if (!buffer) {
     throw new QlueError('The uploaded file could not be read.', ERROR_CODES.INVALID_FILE_TYPE, 400);

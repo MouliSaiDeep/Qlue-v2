@@ -8,10 +8,13 @@ import 'package:mocktail/mocktail.dart';
 class MockAuthProvider extends Mock implements local.AuthProvider {}
 
 void main() {
-  testWidgets('App smoke test - shows splash screen', (WidgetTester tester) async {
+  testWidgets('App smoke test - shows splash screen', (
+    WidgetTester tester,
+  ) async {
     final mockAuth = MockAuthProvider();
-    
+
     when(() => mockAuth.isInitializing).thenReturn(true);
+    when(() => mockAuth.requiresEmailVerification).thenReturn(false);
     when(() => mockAuth.isAuthenticated).thenReturn(false);
     when(() => mockAuth.addListener(any())).thenReturn(null);
     when(() => mockAuth.removeListener(any())).thenReturn(null);
@@ -20,9 +23,7 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider<local.AuthProvider>.value(
         value: mockAuth,
-        child: MaterialApp.router(
-          routerConfig: buildAppRouter(mockAuth),
-        ),
+        child: MaterialApp.router(routerConfig: buildAppRouter(mockAuth)),
       ),
     );
 

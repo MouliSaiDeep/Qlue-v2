@@ -1,29 +1,12 @@
 const diagnostics=require('../../lib/logger').safeConsole;
 /**
- * R-05 backstop: scheduled dispatcher for the feedback outbox.
- *
- * The PRIMARY recovery path is a racing duplicate terminate (the app fires both
- * a WebSocket `terminate_session` and a REST terminate on end), which re-dispatches
- * a still-PENDING job. This Lambda is the BACKSTOP for the case where every
- * terminate path died before the publish was acknowledged (e.g. the process was
- * killed right after the atomic GENERATING_FEEDBACK claim): nothing else will
- * ever retry such a job, so a scheduled sweep must.
- *
- * It QUERIES the sparse `FeedbackDispatchIndex` (never scans) for jobs whose
- * marker has sat past a grace period — the grace window keeps the dispatcher
- * from racing the primary path for a freshly-claimed job. For each candidate it
- * re-reads the session with a CONSISTENT read (the index is eventually
- * consistent) and, only if the job is still GENERATING_FEEDBACK + PENDING,
- * publishes it:
- *   - success                      -> finalize TERMINATED (removes the marker)
- *   - failure, attempts <  MAX      -> keep PENDING, bump attempts (advances the
- *                                      index sort key so it isn't re-picked at once)
- *   - failure, attempts >= MAX      -> park FAILED + remove the marker (ops-visible,
- *                                      leaves the index so the sweep stays cheap)
- * Downstream feedback stages are idempotent, so a duplicate publish is harmless.
+ * Stream-driven feedback outbox dispatcher and session watchdog router.
+ * SessionsTable contains the durable PENDING outbox; report inserts happen only
+ * after generation has completed. Stream records arm delayed, per-session SQS
+ * checks. Every check re-reads current state and respects attempt ownership.
  */
 const { updateSessionState, getSession, INTERVIEW_STATES } = require('../../models/session');
-const ddb = require('../../lib/dynamodb');
+const work = require('../../lib/eventWork');
 const {
   FEEDBACK_JOB,
   DISPATCH_MARKER,
@@ -33,13 +16,9 @@ const {
   clampError
 } = require('../../lib/feedbackDispatch');
 
-const SESSIONS_TABLE = process.env.SESSIONS_TABLE || 'qlue-sessions';
-const DISPATCH_INDEX = 'FeedbackDispatchIndex';
-// Only sweep jobs older than this, so the dispatcher never races the primary
+// Wait for this grace window so recovery does not race the primary
 // (duplicate-terminate) path for a job that was claimed moments ago.
 const DISPATCH_GRACE_MS = parseInt(process.env.FEEDBACK_DISPATCH_GRACE_MS || '60000', 10);
-// Bound the work per invocation; the schedule picks up the remainder next tick.
-const MAX_PER_RUN = parseInt(process.env.FEEDBACK_DISPATCH_MAX_PER_RUN || '100', 10);
 
 // Finalize a published job to TERMINATED (drops the sparse marker via terminal
 // cleanup in updateSessionState). Conditional on GENERATING_FEEDBACK so a job
@@ -88,7 +67,7 @@ async function dispatchOne(candidate, summary) {
   // Re-read with a consistent read: the GSI is eventually consistent, so the
   // primary path may already have finalized/advanced this job.
   const session = await getSession(sessionId);
-  if (!session || session.currentState !== INTERVIEW_STATES.GENERATING_FEEDBACK) {
+  if (!session || session.feedbackAttemptId !== candidate.feedbackAttemptId || session.currentState !== INTERVIEW_STATES.GENERATING_FEEDBACK) {
     summary.skipped++; // already finalized/advanced elsewhere
     return;
   }
@@ -103,8 +82,7 @@ async function dispatchOne(candidate, summary) {
   try {
     const result = await publishFeedbackJob(payload);
     if (result.published === false && result.reason === 'NO_TOPIC') {
-      // No topic wired (shouldn't happen in the scheduled env) — nothing to
-      // retry against; finalize so the job doesn't spin forever.
+      // Keep the durable outbox pending when publication is unavailable.
       throw new Error('Feedback topic is unavailable');
     }
     await finalize(sessionId,session.feedbackAttemptId);
@@ -122,38 +100,44 @@ async function dispatchOne(candidate, summary) {
   }
 }
 
-exports.handler = async () => {
-  const cutoff = Date.now() - DISPATCH_GRACE_MS;
+async function processJob({sessionId,attemptId}) {
+  if(!sessionId)throw new Error('Feedback sessionId is required');
+  const session=await getSession(sessionId);
+  if(!session||session.feedbackAttemptId!==attemptId||session.feedbackJob?.status!==FEEDBACK_JOB.PENDING||
+    session.currentState!==INTERVIEW_STATES.GENERATING_FEEDBACK)return;
+  const dueAt=work.timestamp(session.feedbackJobUpdatedAt)+DISPATCH_GRACE_MS+1;
+  if(dueAt>Date.now())return work.enqueue({sessionId,attemptId},dueAt);
   const summary = { scanned: 0, dispatched: 0, deferred: 0, failed: 0, skipped: 0 };
-
-  let exclusiveStartKey;
-  do {
-    const page = await ddb.query(
-      SESSIONS_TABLE,
-      'feedbackDispatchPending = :p AND feedbackJobUpdatedAt < :cutoff',
-      {
-        index: DISPATCH_INDEX,
-        values: { ':p': DISPATCH_MARKER, ':cutoff': cutoff },
-        scanIndexForward: true, // oldest-pending first
-        exclusiveStartKey
-      }
-    );
-
-    if (!page.success) {
-      // A failed index read is transient — throw so the schedule retries. We have
-      // not acknowledged any job, so nothing is lost.
-      throw new Error(`FeedbackDispatchIndex query failed: ${page.error?.message || 'unknown error'}`);
-    }
-
-    for (const candidate of page.data || []) {
-      if (summary.scanned >= MAX_PER_RUN) break;
-      summary.scanned++;
-      await dispatchOne(candidate, summary);
-    }
-
-    exclusiveStartKey = page.lastEvaluatedKey;
-  } while (exclusiveStartKey && summary.scanned < MAX_PER_RUN);
-
-  diagnostics.info('[DispatchFeedback] sweep complete', summary);
+  await dispatchOne(session,summary);
   return summary;
-};
+}
+
+// One SessionsTable consumer routes all session watchdogs. This avoids three
+// independent consumers reading the same shards, and arms timers even if the
+// producer dies immediately after its durable write.
+async function onStream(session,old) {
+  if(!session.sessionId||!session.userId||session.recoveryCursor)return;
+  const sessionId=session.sessionId,attemptId=session.feedbackAttemptId;
+  if(session.feedbackDispatchPending===DISPATCH_MARKER&&session.feedbackJob?.status===FEEDBACK_JOB.PENDING&&
+    work.changed(session,old,['feedbackDispatchPending','feedbackJobUpdatedAt','feedbackAttemptId'])) {
+    await work.enqueue({sessionId,attemptId},work.timestamp(session.feedbackJobUpdatedAt)+DISPATCH_GRACE_MS+1);
+  }
+  if(session.feedbackStatus==='PENDING'&&
+    work.changed(session,old,['feedbackStatus','feedbackAttemptId','feedbackAttemptStartedAt'])) {
+    await work.enqueue({worker:'feedback',kind:'feedbackTimeout',sessionId,attemptId},
+      work.timestamp(session.feedbackAttemptStartedAt)+12*60000+1,process.env.FEEDBACK_RECOVERY_QUEUE_URL);
+  }
+  if(['INITIALIZING','PROCESSING_RESPONSE','LOADING_CONTEXT'].includes(session.currentState)&&
+    work.changed(session,old,['currentState','leaseExpiresAt','jobId'])) {
+    await work.enqueue({worker:'turn',sessionId,jobId:session.jobId},Math.max(Date.now()+1000,session.leaseExpiresAt||
+      work.timestamp(session.updatedAt||session.startTime,session.startedAt)+75000),process.env.TURN_RECOVERY_QUEUE_URL);
+  }
+  if(session.answerAudio&&(!old?.answerAudio||
+    work.changed(session,old,['answerAudioCleanupPending','answerAudioClosed','answerAudioLastExpiry']))) {
+    const dueAt=session.answerAudioCleanupPending?Math.max(Date.now(),(session.answerAudioLastExpiry||0)+90001):
+      work.timestamp(session.startedAt)+6*60*60000+1;
+    await work.enqueue({worker:'feedback',kind:'audioCleanup',sessionId},dueAt,process.env.FEEDBACK_RECOVERY_QUEUE_URL);
+  }
+}
+
+exports.handler=work.handler({worker:'dispatch',onStream,process:processJob,direct:processJob});

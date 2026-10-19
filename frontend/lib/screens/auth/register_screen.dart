@@ -25,23 +25,33 @@ class _ExactRegisterScreenState extends State<ExactRegisterScreen> {
   bool _loading = false;
   bool _googleLoading = false;
   String _error = '';
-  bool _registrationSuccess = false;
 
   Future<void> _handleRegister() async {
-    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-    
+    final emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+
     if (_name.trim().isEmpty || _email.trim().isEmpty || _password.isEmpty) {
       if (mounted) setState(() => _error = "Please fill in all fields.");
       return;
     }
 
     if (!emailRegex.hasMatch(_email.trim())) {
-      if (mounted) setState(() => _error = "Please enter a valid email address.");
+      if (mounted) {
+        setState(() => _error = "Please enter a valid email address.");
+      }
       return;
     }
 
-    if (_password.length < 6) {
-      if (mounted) setState(() => _error = "Password must be at least 6 characters.");
+    if (_password.length < 8 ||
+        !RegExp(r'[A-Z]').hasMatch(_password) ||
+        !RegExp(r'[a-z]').hasMatch(_password) ||
+        !RegExp(r'\d').hasMatch(_password) ||
+        !RegExp(r'''[!@#$%^&*(),.?":{}|<>]''').hasMatch(_password)) {
+      if (mounted) {
+        setState(
+          () => _error =
+              "Use 8+ characters with uppercase, lowercase, a number and a special character.",
+        );
+      }
       return;
     }
     if (!_agreed) {
@@ -57,9 +67,15 @@ class _ExactRegisterScreenState extends State<ExactRegisterScreen> {
         context,
         listen: false,
       ).register(_email.trim(), _password, _name.trim());
-      if (mounted) {
-        setState(() => _registrationSuccess = true);
+      if (!mounted) return;
+      final auth = context.read<AuthProvider>();
+      if (auth.error != null) {
+        setState(() => _error = auth.error!);
+        return;
       }
+      context.go(
+        auth.requiresEmailVerification ? '/verify-email' : '/dashboard',
+      );
     } catch (e) {
       if (mounted) setState(() => _error = "Registration failed. Try again.");
     } finally {
@@ -73,10 +89,18 @@ class _ExactRegisterScreenState extends State<ExactRegisterScreen> {
       _googleLoading = true;
     });
     try {
-      await Provider.of<AuthProvider>(context, listen: false).signInWithGoogle();
-      
+      await Provider.of<AuthProvider>(
+        context,
+        listen: false,
+      ).signInWithGoogle();
+
       if (mounted) {
-        context.go('/dashboard');
+        final auth = context.read<AuthProvider>();
+        if (auth.error != null) {
+          setState(() => _error = auth.error!);
+          return;
+        }
+        if (auth.isAuthenticated) context.go('/dashboard');
       }
     } catch (e) {
       if (mounted) setState(() => _error = "Google Sign-In failed.");
@@ -118,7 +142,10 @@ class _ExactRegisterScreenState extends State<ExactRegisterScreen> {
                     children: [
                       ShaderMask(
                         shaderCallback: (bounds) => LinearGradient(
-                          colors: [Colors.white, Colors.white.withValues(alpha: 0.7)],
+                          colors: [
+                            Colors.white,
+                            Colors.white.withValues(alpha: 0.7),
+                          ],
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                         ).createShader(bounds),
@@ -162,45 +189,9 @@ class _ExactRegisterScreenState extends State<ExactRegisterScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: _registrationSuccess 
-                      ? [
-                          const Icon(Icons.mark_email_read_rounded, size: 64, color: Colors.green),
-                          const SizedBox(height: 24),
-                          const Text(
-                            "Check your email!",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                              fontFamily: 'Montserrat',
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            "A verification link has been sent to $_email. Please verify your account to continue.",
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.white70,
-                              height: 1.5,
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          AppButton(
-                            style: AppButtonStyle.secondary,
-                            borderRadius: 18,
-                            height: 52,
-                            onTap: () => context.pop(),
-                            child: const Text(
-                              "Back to Sign In",
-                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ]
-                      : [
-                          Text(
-                            "Create Account",
+                    children: [
+                      Text(
+                        "Create Account",
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 20,
@@ -221,7 +212,9 @@ class _ExactRegisterScreenState extends State<ExactRegisterScreen> {
                           decoration: BoxDecoration(
                             color: t.error.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: t.error.withValues(alpha: 0.2)),
+                            border: Border.all(
+                              color: t.error.withValues(alpha: 0.2),
+                            ),
                           ),
                           child: Text(
                             _error,

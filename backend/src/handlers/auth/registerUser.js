@@ -1,6 +1,5 @@
 const firebase = require('../../lib/firebase');
-const axios = require('axios');
-const { getFirebaseApiKey } = require('../../lib/secrets');
+const otp = require('../../lib/emailOtp');
 
 /**
  * AWS Lambda Handler: POST /auth/register
@@ -8,7 +7,8 @@ const { getFirebaseApiKey } = require('../../lib/secrets');
 exports.handler = async (event) => {
     try {
         const body = JSON.parse(event.body || '{}');
-        const { email, password, displayName } = body;
+        const { password, displayName } = body;
+        const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
 
         if (!email || !password) {
             return {
@@ -16,6 +16,8 @@ exports.handler = async (event) => {
                 body: JSON.stringify({ error: "Email and password are required" })
             };
         }
+
+        if (typeof password !== 'string' || (displayName !== undefined && typeof displayName !== 'string')) return {statusCode:400,body:JSON.stringify({error:'Invalid registration input'})};
 
         // 1. Enhanced Input Validation
 
@@ -64,6 +66,9 @@ exports.handler = async (event) => {
             };
         }
 
+        // Fail closed before creating an account if OTP delivery is not configured.
+        await otp.configured();
+
         // 2. Create the user in Firebase Auth
         const auth = await firebase.getAuth();
         const userRecord = await auth.createUser({
@@ -87,63 +92,15 @@ exports.handler = async (event) => {
             // We continue because the user is successfully created in Firebase
         }
 
-        // Load the Firebase Web API key (env in local/tests, SSM in prod).
-        let FIREBASE_API_KEY = null;
-        try {
-            FIREBASE_API_KEY = await getFirebaseApiKey();
-        } catch (keyErr) {
-            console.warn("Could not load FIREBASE_API_KEY from env or SSM (/qlue/firebase-api-key):", keyErr.message);
-        }
-        if (!FIREBASE_API_KEY) {
-            console.warn("FIREBASE_API_KEY not found. Email verification skipped.");
-            return {
-                statusCode: 201,
-                body: JSON.stringify({
-                    message: "User registered successfully, but verification email could not be sent (missing API config)",
-                    userId: userRecord.uid
-                })
-            };
-        }
-
-        try {
-            // 4. We use the Web REST API to securely login the user behind the scenes
-            // to get their idToken, which is required to trigger Firebase's native verification email
-            const signInRes = await axios.post(
-                `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`,
-                { email, password, returnSecureToken: true }
-            );
-            
-            const idToken = signInRes.data.idToken;
-
-            // 5. Trigger Firebase's native email sender
-            await axios.post(
-                `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_API_KEY}`,
-                { requestType: 'VERIFY_EMAIL', idToken: idToken }
-            );
-        } catch (emailErr) {
-            console.error("Email verification trigger failed:", emailErr.response?.data || emailErr.message);
-            // We still return 201 because the user account WAS created
-            return {
-                statusCode: 201,
-                body: JSON.stringify({
-                    message: "User registered, but verification email failed to send.",
-                    userId: userRecord.uid,
-                    verificationError: true
-                })
-            };
-        }
-
-        return {
-            statusCode: 201,
-            body: JSON.stringify({
-                message: "User registered successfully! A verification link has been sent to your email address.",
-                userId: userRecord.uid,
-                verificationSent: true
-            })
-        };
+        return { statusCode: 201, headers: {'Content-Type':'application/json','Cache-Control':'no-store'}, body: JSON.stringify({
+            message: 'Account created. Sign in to verify your email with a code.',
+            userId: userRecord.uid, verificationRequired: true
+        }) };
 
     } catch (error) {
-        console.error("Firebase Registration Error:", error.message);
+        require('../../lib/logger').safeConsole.warn('Registration failed', {code:error.code,name:error.name});
+        if (error.statusCode === 503) return {statusCode:503,body:JSON.stringify({error:error.message,code:error.code})};
+        if (error instanceof SyntaxError) return {statusCode:400,body:JSON.stringify({error:'Invalid request body'})};
 
         if (error.code === 'auth/email-already-exists') {
             return {
@@ -155,8 +112,7 @@ exports.handler = async (event) => {
         return {
             statusCode: 500,
             body: JSON.stringify({ 
-                error: "Internal server error during registration",
-                details: error.message
+                error: "Internal server error during registration"
             })
         };
     }

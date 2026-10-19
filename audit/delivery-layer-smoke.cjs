@@ -1,7 +1,8 @@
 // Actual packaged native inference: fixed public model and synthetic silence.
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 assert.equal(process.platform,'linux');assert.equal(process.arch,'arm64');
-const root=path.resolve(__dirname,'../backend/.aws-sam/build'),native=path.join(root,'DeliveryRuntimeLayer/nodejs/node_modules');
+const root=process.argv[2]?path.resolve(process.argv[2]):path.resolve(__dirname,'../backend/.aws-sam/build');
+const native=path.join(root,'DeliveryRuntimeLayer/nodejs/node_modules');
 const model=path.join(root,'DeliveryRuntimeLayer/delivery/models/silero_vad.onnx');
 const delivery=require('../backend/src/lib/deliveryAnalysis');
 assert.equal(crypto.createHash('sha256').update(fs.readFileSync(model)).digest('hex'),delivery.MODEL_SHA);

@@ -4,9 +4,9 @@
  * `deleteAllUserData(uid)` removes every user-owned row and object across all
  * tables and buckets, paginating fully and treating a failed READ as a hard
  * error (never as "nothing to delete"). It returns the list of category
- * failures instead of throwing so the caller can decide the HTTP outcome: the
- * account handler removes the identity ONLY when this returns zero failures,
- * so a partial failure leaves the account intact and the client can retry.
+ * failures instead of throwing so the durable deletion worker can retry from
+ * checkpoints. Firebase access is removed first; the permanent deletion fence
+ * lets cleanup continue safely without a sign-in account.
  * Every operation here is idempotent, so a retry safely re-runs.
  */
 const ddb = require('./dynamodb');
@@ -239,6 +239,12 @@ async function deleteAllUserData(uid, { completed = {}, onCheckpoint = async () 
     }
   };
 
+  if (process.env.EMAIL_OTP_TABLE) await step('emailOtp', async () => {
+    await require('./emailOtpDelivery').remove(uid);
+    const result = await require('./dynamodb').delete(process.env.EMAIL_OTP_TABLE, {id:`USER#${uid}`});
+    if (!result.success) throw result.error;
+    await deleteOwnedScan(process.env.EMAIL_OTP_TABLE, uid, 'id');
+  });
   await step('analysisJobs', () => deleteOwnedScan(process.env.ANALYSIS_JOBS_TABLE||'qlue-analysis-jobs', uid, 'jobId'));
   await step('submissionReceipts', () => deleteOwnedScan(TRANSCRIPTS_TABLE, uid, 'transcriptId'));
   await step('wsConnections', async () => {

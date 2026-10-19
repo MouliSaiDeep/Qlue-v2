@@ -7,8 +7,14 @@ import '../core/models/resume_model.dart';
 import '../core/services/resume_api_service.dart';
 
 class ResumeProvider extends ChangeNotifier {
+  bool _disposed = false;
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
   final ResumeApiService _apiService = ResumeApiService();
-  
+
   List<ResumeModel> _resumes = [];
   List<ResumeModel> get resumes => _resumes;
 
@@ -23,7 +29,7 @@ class ResumeProvider extends ChangeNotifier {
 
   int _maxAllowed = 5;
   int get maxAllowed => _maxAllowed;
-  
+
   final Map<String, Timer> _pollingTimers = {};
 
   // Do not call fetchResumes in the constructor, we will do it when the user is authenticated.
@@ -42,6 +48,7 @@ class ResumeProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     for (var timer in _pollingTimers.values) {
       timer.cancel();
     }
@@ -55,13 +62,13 @@ class ResumeProvider extends ChangeNotifier {
       final data = await _apiService.getResumeList();
       _resumes = data['resumes'] as List<ResumeModel>;
       _maxAllowed = data['maxAllowed'] as int;
-      
+
       try {
         _activeResume = _resumes.firstWhere((r) => r.isActive);
       } catch (e) {
         _activeResume = null;
       }
-      
+
       // Start polling for any resumes that are in parsing state
       for (var resume in _resumes) {
         if (resume.status == ResumeStatus.parsing) {
@@ -95,7 +102,7 @@ class ResumeProvider extends ChangeNotifier {
     try {
       _setLoading(true);
       _setError(null);
-      
+
       Uint8List bytes;
       if (fileOrBytes is Uint8List) {
         bytes = fileOrBytes;
@@ -110,10 +117,12 @@ class ResumeProvider extends ChangeNotifier {
       }
       final digest = sha256.convert(bytes);
       final hashStr = digest.toString();
-      
+
       final validation = await _apiService.validateResumeHash(hashStr);
       if (validation['isDuplicate'] == true) {
-        _setError("Duplicate file detected. This resume has already been uploaded.");
+        _setError(
+          "Duplicate file detected. This resume has already been uploaded.",
+        );
         return false;
       }
 
@@ -137,9 +146,7 @@ class ResumeProvider extends ChangeNotifier {
           data: bytes,
           options: Options(
             // must match exactly what was signed in backend
-            headers: {
-              'Content-Type': 'application/pdf',
-            },
+            headers: {'Content-Type': 'application/pdf'},
             validateStatus: (status) => status != null && status < 400,
           ),
         );
@@ -148,22 +155,22 @@ class ResumeProvider extends ChangeNotifier {
         }
       } on DioException catch (de) {
         final statusCode = de.response?.statusCode;
-        final body = de.response?.data?.toString() ?? de.message ?? 'Unknown error';
+        final body =
+            de.response?.data?.toString() ?? de.message ?? 'Unknown error';
         throw Exception("S3 Upload Failed ($statusCode): $body");
       }
 
       // 4. Trigger Processing — backend responds 202 immediately,
       //    then parses asynchronously. Frontend polls via _startPolling().
       await _apiService.processResumeUpload(resumeId);
-      
+
       // Reload resumes (will show PARSING status)
       await fetchResumes();
 
       // Start polling this resume's status
       _startPolling(resumeId);
-      
-      return true;
 
+      return true;
     } catch (e) {
       _setError(e.toString());
       return false;
@@ -203,12 +210,15 @@ class ResumeProvider extends ChangeNotifier {
   }
 
   void _startPolling(String resumeId) {
-    if (_pollingTimers.containsKey(resumeId)) return;
+    if (_disposed || _pollingTimers.containsKey(resumeId)) return;
 
-    _pollingTimers[resumeId] = Timer.periodic(const Duration(seconds: 2), (timer) async {
+    _pollingTimers[resumeId] = Timer.periodic(const Duration(seconds: 2), (
+      timer,
+    ) async {
       final resume = await fetchResumeDetail(resumeId);
       if (resume != null) {
-        if (resume.status == ResumeStatus.parsed || resume.status == ResumeStatus.failed) {
+        if (resume.status == ResumeStatus.parsed ||
+            resume.status == ResumeStatus.failed) {
           timer.cancel();
           _pollingTimers.remove(resumeId);
           await fetchResumes();

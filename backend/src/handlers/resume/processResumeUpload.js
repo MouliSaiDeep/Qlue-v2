@@ -1,24 +1,23 @@
 const { LambdaClient, InvokeCommand } = require("@aws-sdk/client-lambda");
-const { query, update } = require('../../lib/dynamodb');
+const { update } = require('../../lib/dynamodb');
 const textractClient = require('../../lib/textract');
 const { invokeModel } = require('../../lib/bedrock');
-const { 
-    StartDocumentAnalysisCommand, 
-    GetDocumentAnalysisCommand 
-} = require("@aws-sdk/client-textract");
-const { updateResumeParsingResult, getResumesByUserId, getResumeById } = require('../../models/resume');
+const { updateResumeParsingResult, getResumesByUserId, getResumeById, claimResumeParse, claimResumeExecution } = require('../../models/resume');
+const s3 = require('../../lib/s3');
+const pdf = require('../../lib/pdf');
+const deadline = require('../../lib/deadline');
+const { createHash } = require('node:crypto');
 const { setActiveResumeId } = require('../../models/user');
 const { success, badRequest, notFound, internalError, unauthorized } = require('../../lib/response');
 
-const lambdaClient = new LambdaClient({});
+const lambdaClient = new LambdaClient({ maxAttempts: 1 });
 const RESUMES_TABLE = process.env.RESUMES_TABLE || 'qlue-resumes';
 const BUCKET_NAME = process.env.RESUMES_BUCKET || 'qlue-resumes';
 
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * AWS Lambda Handler: POST /resume/process
- * 
+ *
  * Pattern: Asynchronous Self-Invocation
  * 1. API call arrives.
  * 2. If it's the external API call, update DB and trigger SELF asynchronously via Lambda 'Event' invocation.
@@ -37,7 +36,7 @@ exports.handler = async (event, context) => {
         if (!event.body) return badRequest('Missing request body');
         const body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
         const { resumeId } = body;
-        
+
         if (!resumeId) return badRequest('resumeId is required');
 
         const userId = event.requestContext?.authorizer?.uid;
@@ -47,20 +46,23 @@ exports.handler = async (event, context) => {
         const resumeRecord = await getResumeById(resumeId);
         if (!resumeRecord) return notFound('Resume not found');
         if (resumeRecord.userId !== userId) return unauthorized('User does not own this resume');
-        
+
         const s3Key = resumeRecord.s3Key;
 
-        // 2. Update status to PARSING
-        await updateResumeParsingResult(resumeId, 'PARSING', null, null, userId, resumeRecord.parseAttemptId);
-
-        // 3. Trigger SELF asynchronously
-        const workerPayload = {
-            isAsyncWorker: true,
-            resumeId: resumeId,
-            userId: userId,
-            s3Key: s3Key
-        };
-        if (resumeRecord.parseAttemptId) workerPayload.parseAttemptId = resumeRecord.parseAttemptId;
+        // Completed/in-flight requests are cheap no-ops, even before S3 reads.
+        if (['PARSING', 'PARSED'].includes(resumeRecord.status)) {
+            return success({ resumeId, status: resumeRecord.status, message: 'Resume processing already accepted.' },
+                resumeRecord.status === 'PARSED' ? 200 : 202);
+        }
+        await require('../../lib/paidWork').assertRuntimeEnabled('resumeParse');
+        const meta = await s3.headObject(BUCKET_NAME, s3Key);
+        if (!meta || !meta.versionId || meta.versionId === 'null') return badRequest('The uploaded PDF is unavailable in versioned storage.');
+        const size = pdf.validateDeclaredSize(meta.contentLength, pdf.MAX_RESUME_PDF_BYTES);
+        if (!size.ok) return badRequest(size.message, size.code);
+        const workerPayload = { isAsyncWorker: true, resumeId, userId, s3Key, s3VersionId: meta.versionId };
+        const claim = await claimResumeParse(resumeId, meta.versionId, userId, workerPayload);
+        if (!claim.claimed) return success({ resumeId, status: 'PARSING', message: 'Resume processing already accepted.' }, 202);
+        workerPayload.parseAttemptId = claim.attemptId;
 
         const invokeCommand = new InvokeCommand({
             FunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME,
@@ -68,18 +70,21 @@ exports.handler = async (event, context) => {
             Payload: JSON.stringify(workerPayload)
         });
 
-        await lambdaClient.send(invokeCommand);
+        const accepted = await deadline.sendBounded(lambdaClient, invokeCommand);
+        if (accepted.StatusCode !== 202) throw new Error('Resume worker delivery was not accepted');
         console.info(`Asynchronous worker triggered for ${resumeId}`);
 
-        return success({ 
-            resumeId, 
-            status: 'PARSING', 
-            message: 'Resume received and parsing started.' 
+        return success({
+            resumeId,
+            status: 'PARSING',
+            message: 'Resume received and parsing started.'
         }, 202);
 
     } catch (error) {
         console.error('Process Resume Upload Error:', error);
-        return internalError(error.message);
+        if (error.statusCode === 400) return badRequest(error.message, error.code);
+        if (error.statusCode === 503) return require('../../lib/response').serviceUnavailable(error.message);
+        return internalError('Could not start resume processing. Please try again.');
     }
 };
 
@@ -87,55 +92,18 @@ exports.handler = async (event, context) => {
  * Runs Textract + Bedrock in the background.
  */
 async function processAsync(resumeId, userId, s3Key, parseAttemptId) {
+    const lease = await claimResumeExecution(resumeId, userId, s3Key, parseAttemptId);
+    if (!lease.claimed) return;
+    const source = { leaseOwner: lease.owner };
     try {
-        // Reduced initial wait - S3 is strongly consistent now
-        await sleep(500);
-        
-        // Start Textract Async Analysis
-        const startCommand = new StartDocumentAnalysisCommand({
-            DocumentLocation: { S3Object: { Bucket: BUCKET_NAME, Name: s3Key } },
-            FeatureTypes: ['TABLES', 'FORMS']
+        // Text detection supplies the LINE blocks the AI parser actually uses.
+        // The attempt token also deduplicates OCR after a lost start response.
+        const token = createHash('sha256').update(JSON.stringify([resumeId, parseAttemptId || 'legacy', lease.record.parseVersion || lease.record.s3VersionId || s3Key])).digest('hex');
+        const fullText = await textractClient.extractTextFromPdf(BUCKET_NAME, s3Key, {
+            maxAttempts: 60, versionId: lease.record.parseVersion || lease.record.s3VersionId,
+            maxBytes: pdf.MAX_RESUME_PDF_BYTES, maxPages: pdf.MAX_RESUME_PDF_PAGES,
+            clientRequestToken: token
         });
-        const startRes = await textractClient.send(startCommand);
-        const jobId = startRes.JobId;
-        console.info(`Textract started for resumeId=${resumeId}, jobId=${jobId}`);
-
-        let jobStatus = 'IN_PROGRESS';
-        let attempts = 0;
-        const maxAttempts = 100; // Increased attempts but decreased interval
-
-        while (jobStatus === 'IN_PROGRESS' && attempts < maxAttempts) {
-            // High-frequency polling (every 1.5s) for snappier experience for small PDFs
-            await sleep(1500);
-            attempts++;
-            const getCommand = new GetDocumentAnalysisCommand({ JobId: jobId });
-            const statusRes = await textractClient.send(getCommand);
-            jobStatus = statusRes.JobStatus;
-            
-            // Log only every 5th attempt to keep logs clean
-            if (attempts % 5 === 0) {
-                console.info(`Textract status for ${resumeId}: ${jobStatus} (attempt ${attempts})`);
-            }
-        }
-
-        if (jobStatus !== 'SUCCEEDED') {
-            throw new Error(`Textract job did not succeed. Final status: ${jobStatus}`);
-        }
-
-        // Collect all text blocks
-        let nextToken = null;
-        let fullText = '';
-        do {
-            const pageRes = await textractClient.send(new GetDocumentAnalysisCommand({ 
-                JobId: jobId, 
-                NextToken: nextToken 
-            }));
-            fullText += (pageRes.Blocks || [])
-                .filter(b => b.BlockType === 'LINE')
-                .map(b => b.Text)
-                .join('\n') + '\n';
-            nextToken = pageRes.NextToken;
-        } while (nextToken);
 
         // Validate extraction quality
         const wordCount = fullText.split(/\s+/).length;
@@ -147,7 +115,9 @@ async function processAsync(resumeId, userId, s3Key, parseAttemptId) {
         const parsedData = await invokeBedrockParser(fullText);
 
         // Update final result in DynamoDB
-        await updateResumeParsingResult(resumeId, 'PARSED', parsedData, null, userId, parseAttemptId);
+        const committed = await updateResumeParsingResult(resumeId, 'PARSED', parsedData, null, userId, parseAttemptId, source);
+        if (!committed.success) throw committed.error || new Error('Could not save parsed resume');
+        if (committed.skipped) return;
 
         // PROFILE AUTO-FILL: populate the user's profession and skills from
         // the parsed resume when they haven't set them manually, so the
@@ -181,16 +151,23 @@ async function processAsync(resumeId, userId, s3Key, parseAttemptId) {
         }
         console.info(`Successfully parsed resume ${resumeId}`);
 
-        const allResumes = await getResumesByUserId(userId);
-        if (allResumes.length === 1) {
-            await setActiveResumeId(userId, resumeId);
-            await update(RESUMES_TABLE, { resumeId }, 'SET isActive = :ia', { ':ia': true });
-            console.info(`Auto-set resume ${resumeId} as active for user ${userId}`);
+        try {
+            const allResumes = await getResumesByUserId(userId);
+            if (allResumes.length === 1) {
+                await setActiveResumeId(userId, resumeId);
+                await update(RESUMES_TABLE, { resumeId }, 'SET isActive = :ia', { ':ia': true });
+                console.info(`Auto-set resume ${resumeId} as active for user ${userId}`);
+            }
+        } catch (activationError) {
+            // Parsing is already committed. A profile/index outage must not
+            // mark the paid result FAILED and invite a redundant parse.
+            console.warn('Resume auto-activation skipped:', activationError.name);
         }
 
     } catch (error) {
         console.error(`processAsync error for resumeId=${resumeId}:`, error.message);
-        await updateResumeParsingResult(resumeId, 'FAILED', null, error.message, userId, parseAttemptId);
+        const failed = await deadline.finalize(() => updateResumeParsingResult(resumeId, 'FAILED', null, error.message, userId, parseAttemptId, source));
+        if (!failed.success) throw failed.error || error;
     }
 }
 
@@ -208,7 +185,7 @@ async function invokeBedrockParser(text) {
       "education": [{ "institution": "", "degree": "", "year": "" }]
     }
     Return ONLY strictly valid JSON. Do not return markdown formatted blocks (\`\`\`json).
-    
+
     Resume Text:
     ${text.substring(0, 50000)}`;
 
@@ -219,7 +196,7 @@ async function invokeBedrockParser(text) {
     };
 
     const response = await invokeModel(process.env.BEDROCK_MODEL_ID, body);
-    
+
     let rawText = '';
     if (response.content && response.content[0] && response.content[0].text) {
         rawText = response.content[0].text;
@@ -228,7 +205,7 @@ async function invokeBedrockParser(text) {
     } else {
         rawText = JSON.stringify(response);
     }
-    
+
     try {
         return JSON.parse(rawText.trim());
     } catch (e) {
@@ -237,3 +214,11 @@ async function invokeBedrockParser(text) {
         return JSON.parse(cleaned);
     }
 }
+
+const processResumeRequest = exports.handler;
+exports.handler = (event, context) => require('../../lib/deadline').withDeadline(context,
+    () => processResumeRequest(event, context), {
+        maxMs: event.isAsyncWorker ? 120000 : 25000,
+        userId: event.isAsyncWorker ? event.userId : event.requestContext?.authorizer?.uid,
+        action: 'resumeParse'
+    });

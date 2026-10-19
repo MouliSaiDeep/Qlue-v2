@@ -2,7 +2,8 @@
 const fs=require('fs'),path=require('path'),os=require('os');
 const {Worker}=require('node:worker_threads');
 const {PDFDocument}=require('../backend/node_modules/pdf-lib');
-const layer=path.resolve(__dirname,'../backend/.aws-sam/build/AppDependenciesLayer/nodejs/node_modules');
+const root=process.argv[2]?path.resolve(process.argv[2]):path.resolve(__dirname,'../backend/.aws-sam/build');
+const layer=path.join(root,'AppDependenciesLayer/nodejs/node_modules');
 if(process.platform!=='linux'||process.arch!=='arm64')throw new Error('This smoke gate requires Lambda-compatible Linux arm64');
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'qlue-parser-smoke-'));
 fs.symlinkSync(layer,path.join(temp,'node_modules'),'dir');

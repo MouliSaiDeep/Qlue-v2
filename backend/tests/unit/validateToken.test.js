@@ -35,7 +35,7 @@ describe('validateToken authorizer', () => {
 
     it('should allow access with a valid token in headers', async () => {
         const mockDecodedToken = {
-            uid: 'test-user-123'
+            uid: 'test-user-123', email_verified: true
         };
 
         const mockAuth = {
@@ -99,4 +99,10 @@ describe('validateToken authorizer', () => {
         expect(result.policyDocument.Statement[0].Effect).toBe('Deny');
         expect(result.policyDocument.Statement[0].Resource).toBe(event.methodArn);
     });
+});
+
+test('unverified Firebase tokens cannot authorize protected REST APIs', async () => {
+  firebase.getAuth.mockResolvedValue({verifyIdToken:jest.fn().mockResolvedValue({uid:'u',email_verified:false})});
+  const result=await handler({authorizationToken:'Bearer token',methodArn:'arn:test'});
+  expect(result.policyDocument.Statement[0].Effect).toBe('Deny');
 });

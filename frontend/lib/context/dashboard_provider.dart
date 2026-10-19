@@ -6,6 +6,12 @@ import '../core/models/session_model.dart';
 import '../core/services/dashboard_api_service.dart';
 
 class DashboardProvider extends ChangeNotifier {
+  bool _disposed = false;
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
   final DashboardApiService _apiService = DashboardApiService();
 
   DashboardSummary _summary = DashboardSummary.initial();
@@ -92,7 +98,7 @@ class DashboardProvider extends ChangeNotifier {
 
   /// Starts periodic background refresh. Idempotent.
   void startAutoRefresh() {
-    if (_autoRefreshTimer != null) return;
+    if (_disposed || _autoRefreshTimer != null) return;
     _autoRefreshTimer = Timer.periodic(
       autoRefreshInterval,
       (_) => fetchDashboardData(silent: true),
@@ -106,6 +112,7 @@ class DashboardProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     stopAutoRefresh();
     super.dispose();
   }

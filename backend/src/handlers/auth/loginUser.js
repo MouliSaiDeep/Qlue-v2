@@ -29,7 +29,7 @@ exports.handler = async (event) => {
                 email,
                 password,
                 returnSecureToken: true,
-            }
+            }, {timeout:7000}
         );
 
         const { idToken, refreshToken, localId } = response.data;
@@ -43,7 +43,7 @@ exports.handler = async (event) => {
                 statusCode: 403,
                 body: JSON.stringify({
                     error: "EMAIL_NOT_VERIFIED",
-                    message: "Please click the verification link sent to your email to activate your account before logging in."
+                    message: "Sign in to verify your email with a six-digit code."
                 })
             };
         }
@@ -60,7 +60,7 @@ exports.handler = async (event) => {
         };
 
     } catch (error) {
-        console.error("Login error:", error.response?.data || error.message);
+        require('../../lib/logger').safeConsole.warn('Login failed', {code:error.code,name:error.name});
         const errorMessage = error.response?.data?.error?.message || "Invalid credentials";
         
         return {

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'context/auth_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
+import 'screens/auth/verify_email_screen.dart';
 import 'screens/tabs/tabs_screen.dart';
 import 'screens/tabs/dashboard_screen.dart';
 import 'screens/tabs/ai_modules_screen.dart';
@@ -135,14 +136,24 @@ GoRouter buildAppRouter(AuthProvider authProvider) {
       }
 
       final isAuthenticated = authProvider.isAuthenticated;
+      final needsVerification = authProvider.requiresEmailVerification;
+      if (needsVerification) {
+        return state.matchedLocation == '/verify-email'
+            ? null
+            : '/verify-email';
+      }
       final isAuthPage =
           state.matchedLocation == '/login' ||
-          state.matchedLocation == '/register';
+          state.matchedLocation == '/register' ||
+          state.matchedLocation == '/verify-email';
 
       if (state.matchedLocation == '/splash') {
         return isAuthenticated ? '/dashboard' : '/login';
       }
 
+      if (!isAuthenticated && state.matchedLocation == '/verify-email') {
+        return '/login';
+      }
       if (!isAuthenticated && !isAuthPage) {
         return '/login';
       }
@@ -165,6 +176,10 @@ GoRouter buildAppRouter(AuthProvider authProvider) {
       GoRoute(
         path: '/register',
         builder: (context, state) => const ExactRegisterScreen(),
+      ),
+      GoRoute(
+        path: '/verify-email',
+        builder: (context, state) => const VerifyEmailScreen(),
       ),
       ShellRoute(
         builder: (context, state, child) => TabsScreen(child: child),

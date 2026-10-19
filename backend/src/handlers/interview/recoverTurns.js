@@ -1,21 +1,32 @@
-const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
 const { SQSClient,SendMessageCommand } = require('@aws-sdk/client-sqs');
-const {sendBounded,withDeadline,remaining}=require('../../lib/deadline');
+const {sendBounded}=require('../../lib/deadline');
+const work=require('../../lib/eventWork');
 const sqs=new SQSClient({maxAttempts:2});
-exports.handler=(event,context)=>withDeadline(context,async()=>{
-  return require('../../lib/recoveryScan').sweep({table:process.env.SESSIONS_TABLE||'qlue-sessions',name:'turns',
-    filter:'currentState IN (:init,:processing,:loading) AND (attribute_not_exists(leaseExpiresAt) OR leaseExpiresAt <= :now)',
-    values:{':init':'INITIALIZING',':processing':'PROCESSING_RESPONSE',':loading':'LOADING_CONTEXT',':now':Date.now()},
-    visit:async session=>{
-      await require('../../lib/deletionJob').assertNotDeleting(session.userId).then(async()=>{
-        const age=Date.now()-Date.parse(session.updatedAt||session.startTime||new Date().toISOString());
-        if((session.jobAttemptCount||0)>=3 || age>12*60000) {
-          await require('../../models/session').updateSessionState(session.sessionId,'ERROR',session.currentState,{
-            expectedVersion:session.version,guardUserId:session.userId,terminationReason:'TURN_RECOVERY_EXHAUSTED'});
-          return;
-        }
-        const job=session.pendingJob||{sessionId:session.sessionId,userId:session.userId,connectionId:session.connectionId,action:'session_init',jobId:`${session.sessionId}#session_init#0`};
-        await sendBounded(sqs,new SendMessageCommand({QueueUrl:process.env.ASYNC_QUEUE_URL,MessageBody:JSON.stringify(job)}));
-      }).catch(error=>{if(error.code!=='ACCOUNT_DELETING'&&error.name!=='ConditionalCheckFailedException') throw error;});
-    }});
-},{maxMs:60000});
+
+async function processJob(task) {
+  if(!task.sessionId)throw new Error('Turn sessionId is required');
+  const session=await work.read(process.env.SESSIONS_TABLE||'qlue-sessions',{sessionId:task.sessionId});
+  if(!session||!['INITIALIZING','PROCESSING_RESPONSE','LOADING_CONTEXT'].includes(session.currentState))return;
+  if(task.jobId&&task.jobId!==session.jobId)return;
+  await require('../../lib/deletionJob').assertNotDeleting(session.userId);
+  if(session.leaseExpiresAt>Date.now())return work.enqueue(task,session.leaseExpiresAt+1);
+  const age=Date.now()-work.timestamp(session.updatedAt||session.startTime,session.startedAt);
+  if((session.jobAttemptCount||0)>=3||age>12*60000||(task.checks||0)>=10) {
+    await require('../../models/session').updateSessionState(session.sessionId,'ERROR',session.currentState,{
+      expectedVersion:session.version,guardUserId:session.userId,terminationReason:'TURN_RECOVERY_EXHAUSTED'});
+    return;
+  }
+  const job=session.pendingJob||(session.currentState==='INITIALIZING'?{
+    sessionId:session.sessionId,userId:session.userId,connectionId:session.connectionId,
+    action:'session_init',jobId:`${session.sessionId}#session_init#0`
+  }:null);
+  if(!job) {
+    await require('../../models/session').updateSessionState(session.sessionId,'ERROR',session.currentState,{
+      expectedVersion:session.version,guardUserId:session.userId,terminationReason:'TURN_RECOVERY_PAYLOAD_MISSING'});
+    return;
+  }
+  await sendBounded(sqs,new SendMessageCommand({QueueUrl:process.env.ASYNC_QUEUE_URL,MessageBody:JSON.stringify(job)}));
+  await work.enqueue({sessionId:session.sessionId,jobId:session.jobId,checks:(task.checks||0)+1},Date.now()+75000);
+}
+
+exports.handler=work.handler({worker:'turn',process:processJob,direct:processJob});

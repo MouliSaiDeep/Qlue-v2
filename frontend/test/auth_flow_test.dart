@@ -10,10 +10,15 @@ import 'package:frontend/screens/auth/login_screen.dart';
 import 'package:frontend/core/theme.dart';
 
 class MockFirebaseAuth extends Mock implements FirebaseAuth {}
+
 class MockUser extends Mock implements User {}
+
 class MockGoogleSignIn extends Mock implements GoogleSignIn {}
+
 class MockDio extends Mock implements Dio {}
+
 class MockUserCredential extends Mock implements UserCredential {}
+
 class MockAuthProvider extends Mock implements AuthProvider {}
 
 void main() {
@@ -25,16 +30,19 @@ void main() {
     mockAuth = MockFirebaseAuth();
     mockUser = MockUser();
 
-    when(() => mockAuth.authStateChanges()).thenAnswer((_) => Stream.value(null));
+    when(
+      () => mockAuth.authStateChanges(),
+    ).thenAnswer((_) => Stream.value(null));
     when(() => mockUser.email).thenReturn('test@test.com');
     when(() => mockUser.uid).thenReturn('user123');
     when(() => mockUser.emailVerified).thenReturn(true);
 
     authProvider = MockAuthProvider();
-    
+
     // Default mocks for the provider
     when(() => authProvider.isLoading).thenReturn(false);
     when(() => authProvider.error).thenReturn(null);
+    when(() => authProvider.requiresEmailVerification).thenReturn(false);
     when(() => authProvider.isAuthenticated).thenReturn(false);
     when(() => authProvider.isInitializing).thenReturn(false);
     when(() => authProvider.currentUser).thenReturn(null);
@@ -45,9 +53,7 @@ void main() {
       colors: AppThemeColors.dark,
       child: ChangeNotifierProvider<AuthProvider>.value(
         value: authProvider,
-        child: MaterialApp(
-          home: child,
-        ),
+        child: MaterialApp(home: child),
       ),
     );
   }
@@ -65,14 +71,16 @@ void main() {
       // stay appearance-agnostic.
       await tester.enterText(find.byType(EditableText).first, 'test@test.com');
       await tester.enterText(find.byType(EditableText).last, 'password123');
-      
+
       // Tap Sign In button
       await tester.tap(find.text('Sign In'));
-      
+
       await tester.pump();
 
       // Check if the login method was called correctly on the provider.
-      verify(() => authProvider.login('test@test.com', 'password123')).called(1);
+      verify(
+        () => authProvider.login('test@test.com', 'password123'),
+      ).called(1);
     });
   });
 }

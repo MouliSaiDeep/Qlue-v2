@@ -9,7 +9,7 @@ const BUCKET_NAME = process.env.SCRAPED_CONTENT_BUCKET || process.env.RESUMES_BU
 
 // Reject oversized uploads before they cost a Textract job (10 MB is generous
 // for a job description).
-const MAX_JD_PDF_BYTES = 10 * 1024 * 1024;
+const { MAX_JD_PDF_BYTES, validateDeclaredSize } = require('../../lib/pdf');
 
 /**
  * POST /jd/upload-url
@@ -36,9 +36,8 @@ exports.handler = async (event) => {
         if (!String(fileName).toLowerCase().endsWith('.pdf')) {
             return badRequest('Only .pdf files are allowed', 'INVALID_FILE_TYPE');
         }
-        if (Number(fileSize) > MAX_JD_PDF_BYTES) {
-            return badRequest('File is too large (max 10 MB)', 'FILE_TOO_LARGE');
-        }
+        const size = validateDeclaredSize(fileSize, MAX_JD_PDF_BYTES);
+        if (!size.ok) return badRequest(size.message, size.code);
 
         const sanitized = String(fileName).replace(/[^a-zA-Z0-9._-]/g, '_');
         const jobPdfKey = `jd/${userId}/${Date.now()}_${randomUUID()}_${sanitized}`;

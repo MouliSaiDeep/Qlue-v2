@@ -4,6 +4,7 @@ const { randomUUID } = require('crypto');
 const { success, badRequest, unauthorized, conflict, internalError } = require('../../lib/response');
 
 const BUCKET_NAME = process.env.RESUMES_BUCKET || 'qlue-resumes';
+const { validateDeclaredSize, MAX_RESUME_PDF_BYTES } = require('../../lib/pdf');
 
 /**
  * AWS Lambda Handler: POST /resume/presigned-url
@@ -24,7 +25,9 @@ exports.handler = async (event) => {
             return badRequest('Missing fileName, fileSize, or fileHash');
         }
 
-        if (!fileName.toLowerCase().endsWith('.pdf')) {
+        const size = validateDeclaredSize(fileSize, MAX_RESUME_PDF_BYTES);
+        if (!size.ok) return badRequest(size.message, size.code);
+        if (!String(fileName).toLowerCase().endsWith('.pdf')) {
             return badRequest('Only .pdf files are allowed', 'INVALID_FILE_TYPE');
         }
 

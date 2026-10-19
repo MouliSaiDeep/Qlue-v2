@@ -57,7 +57,8 @@ async function run(jobId) {
     ExpressionAttributeNames:{'#s':'status'},ExpressionAttributeValues:{':zero':0,':one':1,':max':3,':running':'RUNNING',':pending':'PENDING',':owner':owner,':expiry':now+130000,':now':now}}),job.userId);
   }catch(error){if(error.name==='ConditionalCheckFailedException') return;throw error;}
   const ctx=deadline.current();if(ctx) {ctx.userId=job.userId;ctx.action=job.kind==='jd'?'jdAnalysis':'scrape';}
-  const handler=job.kind==='jd'?require('../handlers/jd/analyzeJobMatch').processAnalysis:require('../handlers/website/validateWebsite').processAnalysis;
+  const implementation=job.kind==='jd'?require('../handlers/jd/analyzeJobMatch'):require('../handlers/website/validateWebsite');
+  const handler=implementation.processAnalysis||implementation.handler;
   let result;
   try {result=await handler({requestContext:{authorizer:{uid:job.userId}},body:job.body});}
   catch(error){result=response.internalError('Analysis could not complete. Please retry.');}

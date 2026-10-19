@@ -17,6 +17,10 @@ exports.handler = async (event) => {
         const auth = await firebase.getAuth();
         const decodedToken = await auth.verifyIdToken(bearerToken, true);
         
+        if (decodedToken.email_verified !== true) {
+            return generatePolicy(decodedToken.uid, 'Deny', event.methodArn || '*');
+        }
+
         // Return IAM Policy for Authorized user
         // Using '*' for resource to allow the cached policy to work for all endpoints
         return generatePolicy(decodedToken.uid, 'Allow', '*', {

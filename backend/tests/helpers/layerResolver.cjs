@@ -1,6 +1,7 @@
 const fs=require('fs'),path=require('path');
-const layer=path.resolve(__dirname,'../../.aws-sam/build/AppDependenciesLayer/nodejs');
-const delivery=path.resolve(__dirname,'../../.aws-sam/build/DeliveryRuntimeLayer/nodejs');
+const root=process.env.QLUE_TEST_BUILD_ROOT?path.resolve(process.env.QLUE_TEST_BUILD_ROOT):path.resolve(__dirname,'../../.aws-sam/build');
+const layer=path.join(root,'AppDependenciesLayer/nodejs');
+const delivery=path.join(root,'DeliveryRuntimeLayer/nodejs');
 module.exports=(request,options)=>{
  if(!request.startsWith('.')&&!path.isAbsolute(request)&&!request.startsWith('node:')) {
    const name=request.startsWith('@')?request.split('/').slice(0,2).join('/'):request.split('/')[0];

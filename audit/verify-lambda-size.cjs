@@ -1,6 +1,6 @@
 // Bound the actual built production tree, including code and both layers.
 const fs=require('node:fs'),path=require('node:path');
-const root=path.resolve(__dirname,'../backend/.aws-sam/build');
+const root=process.argv[2]?path.resolve(process.argv[2]):path.resolve(__dirname,'../backend/.aws-sam/build');
 const credentials=[];
 function bytes(dir){return fs.readdirSync(dir,{withFileTypes:true}).reduce((n,e)=>{
  const p=path.join(dir,e.name);if(e.isDirectory())return n+bytes(p);

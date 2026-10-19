@@ -3,7 +3,7 @@ const path = require('node:path');
 test.each(['task-variant-correct.cjs', 'task-fragment-correct.cjs'])(
   'actual input/stage regression: %s', fixture => {
     expect(() => execFileSync(process.execPath, [path.resolve(__dirname,
-      '../../../audit/review-2026-10-08', fixture)], {encoding:'utf8'})).not.toThrow();
+      '../../../audit/review-2026-10-08', fixture)], {encoding:'utf8',env:{...process.env,QLUE_TEST_EVIDENCE_DIR:require('node:os').tmpdir()}})).not.toThrow();
   }
 );
 const {isClarification} = require('../../src/handlers/interview/processUserInput');
