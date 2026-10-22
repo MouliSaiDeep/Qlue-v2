@@ -18,6 +18,12 @@ function withDeadline(context,fn,{maxMs=25000,userId,action,reserveMs=4000}={}) 
   const finishUntil=Date.now()+Math.min(maxMs,context?.getRemainingTimeInMillis?.()||maxMs);
   return work.run({finishUntil,workUntil:finishUntil-reserveMs,userId,action},fn);
 }
+// Bind a verified owner without extending the parent's absolute deadline.
+// A batch can contain work belonging to different users.
+function withIdentity(userId,fn) {
+  if(typeof userId!=='string'||!userId.trim())throw new Error('Verified paid-work owner is required');
+  return current()?work.run({...current(),userId},fn):withDeadline(null,fn,{maxMs:60000,userId});
+}
 function finalize(fn) {
   const ctx=current();
   return ctx?work.run({...ctx,workUntil:ctx.finishUntil-250},fn):fn();
@@ -35,4 +41,4 @@ async function* streamBounded(stream,{maxBytes=10*1024*1024,label='stream',deadl
     }
   } finally {stream.destroy?.();Promise.resolve(stream.cancel?.()).catch(()=>{});}
 }
-module.exports={current,remaining,absolute,bounded,sendBounded,withDeadline,streamBounded,finalize};
+module.exports={current,remaining,absolute,bounded,sendBounded,withDeadline,withIdentity,streamBounded,finalize};

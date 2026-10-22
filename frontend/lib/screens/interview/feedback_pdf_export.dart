@@ -7,7 +7,7 @@ import '../../core/models/feedback_report_model.dart';
 
 /// Builds a light-mode PDF that mirrors the FeedbackReportScreen UI:
 /// header, overall-score card with a semicircle gauge, a dimension-breakdown
-/// card (radar chart + per-dimension bars), the Summary / Strengths /
+/// card (all criterion scores and their explanations), the Summary / Strengths /
 /// Weaknesses sections (all expanded, not tabbed), and the Q&A transcript.
 ///
 /// The on-screen report is forced dark; here everything is rendered on white
@@ -39,27 +39,24 @@ class FeedbackPdfBuilder {
     required String role,
     required int overallScore,
   }) async {
-    final doc = pw.Document(
-      title: 'Qlue Feedback — $topic',
-      author: 'Qlue AI',
-    );
+    final doc = pw.Document(title: 'Qlue Feedback — $topic', author: 'Qlue AI');
 
     final score = overallScore;
     final scoreColor = _scoreColor(score);
 
-    // Dimensions sorted high→low (mirrors the screen).
-    final dims = report.dimensionScores.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    final dims = report.dimensionScores.entries.toList();
 
     // Embed Montserrat (bundled with the app) so smart quotes, em-dashes and
     // accented characters in AI summaries/transcripts render correctly and the
     // PDF matches the app's typography. Falls back to Helvetica if unavailable.
     pw.ThemeData theme;
     try {
-      final regular =
-          pw.Font.ttf(await rootBundle.load('assets/fonts/Montserrat-Regular.ttf'));
-      final bold =
-          pw.Font.ttf(await rootBundle.load('assets/fonts/Montserrat-Bold.ttf'));
+      final regular = pw.Font.ttf(
+        await rootBundle.load('assets/fonts/Montserrat-Regular.ttf'),
+      );
+      final bold = pw.Font.ttf(
+        await rootBundle.load('assets/fonts/Montserrat-Bold.ttf'),
+      );
       theme = pw.ThemeData.withFont(base: regular, bold: bold);
     } catch (_) {
       theme = pw.ThemeData.withFont();
@@ -70,14 +67,13 @@ class FeedbackPdfBuilder {
         pageFormat: PdfPageFormat.a4,
         theme: theme,
         margin: const pw.EdgeInsets.fromLTRB(28, 30, 28, 28),
-        header: (ctx) => ctx.pageNumber == 1
-            ? _header(topic)
-            : pw.SizedBox(height: 0),
+        header: (ctx) =>
+            ctx.pageNumber == 1 ? _header(topic) : pw.SizedBox(height: 0),
         footer: (ctx) => _footer(ctx),
         build: (ctx) => [
           _scoreCard(userName, role, score, scoreColor),
           pw.SizedBox(height: 16),
-          _dimensionCard(dims),
+          _dimensionCard(dims, report.scoreExplanations),
           pw.SizedBox(height: 16),
           _summarySection(report),
           pw.SizedBox(height: 16),
@@ -204,11 +200,7 @@ class FeedbackPdfBuilder {
     int score,
     PdfColor scoreColor,
   ) {
-    final badge = score >= 80
-        ? 'Top 15% of candidates'
-        : score >= 50
-            ? 'Solid performance'
-            : 'Keep practicing!';
+    const badge = 'Practice assessment';
 
     return _card(
       padding: 18,
@@ -361,56 +353,36 @@ class FeedbackPdfBuilder {
 
   // --------------------------------------------------------- dimension card
 
-  static pw.Widget _dimensionCard(List<MapEntry<String, double>> dims) {
-    // Chart uses the top 3 dimensions (mirrors the screen), padded if needed.
-    var chart = dims.take(3).toList();
-    if (chart.isEmpty) {
-      chart = [
-        const MapEntry('Clarity', 80),
-        const MapEntry('Fluency', 70),
-        const MapEntry('Vocabulary', 90),
-      ];
-    }
-    while (chart.length < 3) {
-      chart.add(MapEntry('Metric ${chart.length + 1}', 80));
-    }
-    final data = chart.map((e) => (e.value / 100).clamp(0.0, 1.0)).toList();
-    final labels = chart.map((e) => e.key).toList();
-    final barDims = dims.isEmpty ? chart : dims;
-
+  static pw.Widget _dimensionCard(
+    List<MapEntry<String, double>> dims,
+    List<ScoreExplanation> explanations,
+  ) {
     return _card(
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
+          _sectionTitle('Score breakdown'),
+          pw.SizedBox(height: 8),
           pw.Text(
-            'Dimension Breakdown',
-            style: pw.TextStyle(
-              fontSize: 15,
-              fontWeight: pw.FontWeight.bold,
-              color: _text,
-            ),
+            'The overall score is the weighted average of these criteria.',
+            style: const pw.TextStyle(color: _textSecondary, fontSize: 11),
           ),
-          pw.SizedBox(height: 14),
-          pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.center,
-            children: [
-              _radar(data, labels),
-              pw.SizedBox(width: 16),
-              pw.Expanded(
-                child: pw.Column(
-                  children: barDims
-                      .map((d) => _dimensionBar(d.key, d.value.toDouble()))
-                      .toList(),
-                ),
+          if (dims.isEmpty)
+            pw.Text('No criterion scores were saved for this report.'),
+          for (final d in dims) ...[
+            pw.SizedBox(height: 14),
+            _dimensionBar(d.key, d.value),
+            for (final e in explanations.where((e) => e.label == d.key)) ...[
+              pw.Text(
+                '${e.weight.round()}% of overall score',
+                style: const pw.TextStyle(fontSize: 10, color: _textTertiary),
+              ),
+              pw.SizedBox(height: 5),
+              pw.Text(
+                e.reason,
+                style: const pw.TextStyle(fontSize: 11, color: _textSecondary),
               ),
             ],
-          ),
-          if (dims.length >= 2) ...[
-            pw.SizedBox(height: 10),
-            pw.Text(
-              'Strongest: ${dims.first.key}   ·   Focus next: ${dims.last.key}',
-              style: const pw.TextStyle(fontSize: 10, color: _textSecondary),
-            ),
           ],
         ],
       ),
@@ -475,129 +447,6 @@ class FeedbackPdfBuilder {
     );
   }
 
-  static pw.Widget _radar(List<double> data, List<String> labels) {
-    const s = 150.0;
-    return pw.SizedBox(
-      width: s,
-      height: s,
-      child: pw.Stack(
-        children: [
-          pw.CustomPaint(
-            size: const PdfPoint(s, s),
-            painter: (canvas, size) {
-              final cx = size.x / 2;
-              final cy = size.y / 2;
-              final radius = min(size.x, size.y) / 2 - 26;
-              final n = data.length;
-              final step = 2 * pi / n;
-              // y-up: subtract sin so the first vertex sits at the TOP.
-              double px(double ang, double rr) => cx + rr * cos(ang);
-              double py(double ang, double rr) => cy - rr * sin(ang);
-
-              // Grid rings.
-              canvas
-                ..setLineWidth(0.8)
-                ..setStrokeColor(_track);
-              for (var ring = 1; ring <= 4; ring++) {
-                final rr = radius * ring / 4;
-                for (var j = 0; j <= n; j++) {
-                  final ang = (j % n) * step + pi / 2;
-                  final x = px(ang, rr);
-                  final y = py(ang, rr);
-                  if (j == 0) {
-                    canvas.moveTo(x, y);
-                  } else {
-                    canvas.lineTo(x, y);
-                  }
-                }
-                canvas.strokePath();
-              }
-              // Axes.
-              for (var j = 0; j < n; j++) {
-                final ang = j * step + pi / 2;
-                canvas
-                  ..moveTo(cx, cy)
-                  ..lineTo(px(ang, radius), py(ang, radius))
-                  ..strokePath();
-              }
-              // Data polygon fill.
-              canvas.setFillColor(const PdfColor.fromInt(0xFFD1FADF));
-              for (var j = 0; j <= n; j++) {
-                final ang = (j % n) * step + pi / 2;
-                final rr = radius * data[j % n];
-                final x = px(ang, rr);
-                final y = py(ang, rr);
-                if (j == 0) {
-                  canvas.moveTo(x, y);
-                } else {
-                  canvas.lineTo(x, y);
-                }
-              }
-              canvas.fillPath();
-              // Data polygon outline.
-              canvas
-                ..setStrokeColor(const PdfColor.fromInt(0xFF16A34A))
-                ..setLineWidth(1.8);
-              for (var j = 0; j <= n; j++) {
-                final ang = (j % n) * step + pi / 2;
-                final rr = radius * data[j % n];
-                final x = px(ang, rr);
-                final y = py(ang, rr);
-                if (j == 0) {
-                  canvas.moveTo(x, y);
-                } else {
-                  canvas.lineTo(x, y);
-                }
-              }
-              canvas.strokePath();
-              // Vertex dots.
-              canvas.setFillColor(const PdfColor.fromInt(0xFF16A34A));
-              for (var j = 0; j < n; j++) {
-                final ang = j * step + pi / 2;
-                final rr = radius * data[j];
-                canvas.drawEllipse(px(ang, rr), py(ang, rr), 2.4, 2.4);
-              }
-              canvas.fillPath();
-            },
-          ),
-          // Labels (n == 3): top-center, lower-right, lower-left.
-          if (labels.isNotEmpty)
-            pw.Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: pw.Center(child: _radarLabel(labels[0])),
-            ),
-          if (labels.length > 1)
-            pw.Positioned(
-              bottom: 14,
-              right: 2,
-              child: _radarLabel(labels[1]),
-            ),
-          if (labels.length > 2)
-            pw.Positioned(
-              bottom: 14,
-              left: 2,
-              child: _radarLabel(labels[2]),
-            ),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _radarLabel(String text) {
-    return pw.Text(
-      text,
-      style: pw.TextStyle(
-        fontSize: 8,
-        fontWeight: pw.FontWeight.bold,
-        color: _textSecondary,
-      ),
-    );
-  }
-
-  // ------------------------------------------------------------- sections
-
   static pw.Widget _summarySection(FeedbackReportModel report) {
     return _card(
       padding: 18,
@@ -617,9 +466,13 @@ class FeedbackPdfBuilder {
             ),
           ),
           pw.SizedBox(height: 16),
-          _metricRow('Confidence Level', 'High', _primary),
+          _metricRow('Assessment', 'Answer content', _primary),
           pw.SizedBox(height: 8),
-          _metricRow('Pace', 'Steady', _success),
+          _metricRow(
+            'Overall score',
+            '${report.overallScore.round()}/100',
+            _scoreColor(report.overallScore),
+          ),
         ],
       ),
     );
@@ -647,7 +500,7 @@ class FeedbackPdfBuilder {
 
   static pw.Widget _strengthsSection(FeedbackReportModel report) {
     final items = report.strengths.isEmpty
-        ? ['Great effort in completing the session.']
+        ? ['No specific strengths were saved in this report.']
         : report.strengths;
     return _card(
       padding: 18,
@@ -664,7 +517,7 @@ class FeedbackPdfBuilder {
 
   static pw.Widget _weaknessesSection(FeedbackReportModel report) {
     final items = report.weaknesses.isEmpty
-        ? ['No major weaknesses identified.']
+        ? ['No specific gaps were recorded for this assessment.']
         : report.weaknesses;
     return _card(
       padding: 18,

@@ -27,5 +27,7 @@ for (const file of ['vad_stt_service.dart', 'speech_engine.dart', 'speech_worker
   assert(![...seen].some(p => path.basename(p) === file), `Offline engine reachable: ${file}`);
 }
 const provider = fs.readFileSync(path.join(root, 'features/interview/providers/interview_provider.dart'), 'utf8');
-assert(/sttService\s*\?\?\s*SystemSpeechSttService\(\)/.test(provider));
+assert(/sttService\s*\?\?\s*defaultSttService\(\)/.test(provider));
+assert(/Env\.awsSttEnabled[\s\S]+:\s*SystemSpeechSttService\(\)/.test(provider));
+assert(/bool\.fromEnvironment\(\s*'AWS_STT_ENABLED',\s*defaultValue:\s*false/.test(fs.readFileSync(path.join(root,'core/env.dart'),'utf8')));
 console.log(JSON.stringify({reachableFiles:seen.size, systemRecognizerDefault:true, offlineEngineReachable:false}));

@@ -4,13 +4,22 @@ const quota=require('../../../src/lib/quota');
 let db;const date=()=>new Date().toISOString().slice(0,10);
 beforeEach(()=>{db=new DocumentBoundary();jest.spyOn(ddb.docClient,'send').mockImplementation(c=>db.send(c));});
 afterEach(()=>jest.restoreAllMocks());
-test('missing account fails closed, unknown tier resolves to free, and premium is allowed by policy',()=>{expect(()=>quota.getUserTier(undefined)).toThrow(/deleted/i);expect(quota.getUserTier({})).toBe('free');expect(quota.getUserTier({tier:'enterprise'})).toBe('free');expect(quota.getUserTier({tier:'free'})).toBe('free');expect(quota.getLimit('free','interview')).toBe(10);expect(quota.isPremiumVoiceAllowed('free')).toBe(true);});
+test('missing account fails closed, unknown tier resolves to free, and premium remains locked',()=>{expect(()=>quota.getUserTier(undefined)).toThrow(/deleted/i);expect(quota.getUserTier({})).toBe('free');expect(quota.getUserTier({tier:'enterprise'})).toBe('free');expect(quota.getUserTier({tier:'free'})).toBe('free');expect(quota.getLimit('free','interview')).toBe(10);expect(quota.isPremiumVoiceAllowed('free')).toBe(false);});
 test('reservation returns actual accounting and uses an atomic deletion fence plus conditional counter',async()=>{
  db.seed('qlue-usage',{userId:'u',date:date(),interview:2});expect(await quota.reserveQuota('u','interview')).toEqual({allowed:true,used:3,limit:10,remaining:7});
  const txn=db.calls.find(c=>c.constructor.name==='TransactWriteCommand').input.TransactItems;expect(txn[0].ConditionCheck.TableName).toBe('qlue-deletion-jobs');expect(txn[1].Update.ConditionExpression).toBe('attribute_not_exists(#a) OR #a < :limit');
 });
 test('cap denial does not increment and concurrent reservations have one final winner',async()=>{
  db.seed('qlue-usage',{userId:'u',date:date(),interview:9});const results=await Promise.all([quota.reserveQuota('u','interview'),quota.reserveQuota('u','interview')]);expect(results.filter(x=>x.allowed)).toHaveLength(1);expect(results.find(x=>!x.allowed)).toEqual({allowed:false,used:10,limit:10,remaining:0});
+});
+
+test('ten interviews per user are independent, and the eleventh is denied only for its owner',async()=>{
+ for(let i=0;i<10;i++)expect((await quota.reserveQuota('first','interview')).allowed).toBe(true);
+ expect(await quota.reserveQuota('first','interview')).toMatchObject({allowed:false,used:10,remaining:0});
+ expect((await quota.getUsage('second')).interviews).toEqual({used:0,limit:10,remaining:10});
+ for(let i=0;i<10;i++)expect((await quota.reserveQuota('second','interview')).allowed).toBe(true);
+ expect((await quota.getUsage('first')).interviews).toEqual({used:10,limit:10,remaining:0});
+ expect(await quota.reserveQuota('second','interview')).toMatchObject({allowed:false,used:10,remaining:0});
 });
 test('unknown action remains counted without a cap',async()=>{expect(quota.getLimit('free','other')).toBeNull();db.seed('qlue-usage',{userId:'u',date:date(),other:41});expect(await quota.reserveQuota('u','other')).toEqual({allowed:true,used:42,limit:null,remaining:null});});
 test('external throughput errors propagate',async()=>{db.beforeSend=c=>{if(c.constructor.name==='TransactWriteCommand')throw Object.assign(new Error('Unavailable'),{name:'ProvisionedThroughputExceededException'});};await expect(quota.reserveQuota('u','interview')).rejects.toMatchObject({name:'ProvisionedThroughputExceededException'});});

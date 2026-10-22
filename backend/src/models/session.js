@@ -56,7 +56,7 @@ async function createSession(sessionId, userId, moduleType, itemData = {}) {
         userId,
         moduleType,
         itemData,
-        voiceId: itemData.voiceId || 'Tiffany',
+        voiceId: require('../lib/voicePolicy').preference(itemData.voiceId).voiceId,
         engine: itemData.engine || 'neural',
         currentState: INTERVIEW_STATES.INITIALIZING,
         turnCount: 0,

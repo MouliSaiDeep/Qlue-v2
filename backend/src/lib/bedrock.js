@@ -1,5 +1,6 @@
 const diagnostics=require('./logger').safeConsole;
 const {beforePaidCall}=require('./paidWork');
+const {recordMetrics}=require('./metrics');
 const {sendBounded,remaining,bounded,streamBounded}=require('./deadline');
 /**
  * Amazon Bedrock Client Wrapper specifically tuned for Qlue's Nemotron-4-340b-instruct pipeline.
@@ -35,18 +36,24 @@ async function invokeModel(modelId, params, options = {}) {
     ...(params.outputConfig && resolvedModelId === 'nvidia.nemotron-super-3-120b' ? {outputConfig:params.outputConfig} : {}),
     inferenceConfig: {
       maxTokens: params.max_tokens || 1000,
-      temperature: params.temperature || 0.7,
+      temperature: params.temperature ?? 0.7,
       topP: 0.9
     }
   });
 
-  const maxRetries = options.retries || 2;
+  const maxRetries = options.retries ?? 2;
   let attempt = 0;
 
   while (attempt <= maxRetries) {
+    // Admission failures are final; do not wrap them as provider errors or
+    // retry them. Count every actual provider attempt before sending it.
+    await beforePaidCall('interview');
+    const started = Date.now();
+    recordMetrics('Model', {ProviderAttempt:1});
     try {
-      await beforePaidCall('interview');
       const response = await sendBounded(bedrockClient,command);
+      recordMetrics('Model', {ProviderSuccess:1,ProviderLatencyMs:Date.now()-started,
+        InputTokens:response.usage?.inputTokens,OutputTokens:response.usage?.outputTokens});
       
       // Standardize response format
       const responseBody = {
@@ -60,6 +67,7 @@ async function invokeModel(modelId, params, options = {}) {
 
       return responseBody;
     } catch (error) {
+      recordMetrics('Model', {ProviderFailure:1,ProviderLatencyMs:Date.now()-started});
       attempt++;
       if (error.name === 'ModelTimeoutException' || error.name === 'ThrottlingException' || error.$metadata?.httpStatusCode === 429) {
         if (attempt > maxRetries) {
@@ -89,20 +97,24 @@ async function invokeModelStream(modelId, params, onToken) {
         system: params.system ? [{ text: params.system }] : [{ text: systemPrompt }],
         inferenceConfig: {
             maxTokens: params.max_tokens || 1000,
-            temperature: params.temperature || 0.7,
+            temperature: params.temperature ?? 0.7,
             topP: 0.9
         }
     });
 
+    await beforePaidCall('interview');
+    const started = Date.now();
+    recordMetrics('Model', {ProviderAttempt:1});
     try {
         const abortController = new AbortController();
 
 
-        await beforePaidCall('interview');
         const response = await sendBounded(bedrockClient, command, { abortSignal: abortController.signal });
         let fullText = "";
+        let usage;
 
         for await (const event of streamBounded(response.stream,{label:'bedrockBody'})) {
+            if(event.metadata?.usage)usage=event.metadata.usage;
             if(remaining()<=0) {abortController.abort();throw new Error('Inference deadline exhausted');}
             if (event.contentBlockDelta) {
                 const token = event.contentBlockDelta.delta.text;
@@ -111,8 +123,11 @@ async function invokeModelStream(modelId, params, onToken) {
             }
         }
 
+        recordMetrics('Model', {ProviderSuccess:1,ProviderLatencyMs:Date.now()-started,
+          InputTokens:usage?.inputTokens,OutputTokens:usage?.outputTokens});
         return fullText;
     } catch (error) {
+        recordMetrics('Model', {ProviderFailure:1,ProviderLatencyMs:Date.now()-started});
         diagnostics.error('Bedrock Streaming Error:', error);
         if (error.name === 'AbortError' || error.message === 'BEDROCK_TIMEOUT' || error.name === 'TimeoutError') {
             throw new QlueError('Bedrock stream timed out after 15 seconds of inactivity.', 'BEDROCK_TIMEOUT', 504, error.message);

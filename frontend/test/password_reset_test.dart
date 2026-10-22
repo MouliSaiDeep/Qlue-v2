@@ -269,6 +269,31 @@ void main() {
       ),
     );
     await tester.pump();
+    expect(find.text('owner@example.com'), findsOneWidget);
+    expect(find.text('Interview Ready'), findsNothing);
+    expect(find.text('Email Address'), findsNothing);
+    expect(find.text('Change Password'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Voice Model'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Voice Model'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Premium'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tiffany'), findsOneWidget);
+    expect(find.textContaining('Locked'), findsWidgets);
+    await tester.tap(find.text('Tiffany'));
+    await tester.pump();
+    verifyNever(
+      () => profile.updateUserProfile(
+        voiceId: any(named: 'voiceId'),
+        voiceMode: any(named: 'voiceMode'),
+      ),
+    );
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.byKey(const Key('profile-reset-password')),
       350,

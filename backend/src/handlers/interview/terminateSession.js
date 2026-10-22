@@ -138,8 +138,8 @@ async function terminate(event, rechecks = 0) {
     // opened a session by accident and ended it immediately), there is
     // nothing to score. Generating feedback from an empty transcript produced
     // hallucinated scores (users saw 80/100 for saying nothing). Such
-    // sessions are terminated as ungraded: no feedback pipeline, excluded
-    // from dashboard stats but with retained text accessible in History.
+    // sessions are terminated as ungraded: no feedback pipeline and excluded
+    // from dashboard stats/history. Owned detail remains available for recovery.
     //
     // I-08: trust the DURABLE, strongly-consistent `answeredCount` on the session
     // row (stamped by processUserInput the instant a real answer is accepted)

@@ -27,6 +27,11 @@ if (hasReleaseKeystore) {
 }
 val allowDebugReleaseSigning =
     (project.findProperty("qlue.allowDebugReleaseSigning") as String?)?.toBoolean() ?: false
+val sttProbe = providers.gradleProperty("qlueSttProbe").orElse("false").get().toBoolean() ||
+    (project.findProperty("target")?.toString()?.endsWith("stt_probe_main.dart") == true)
+if (sttProbe && gradle.startParameter.taskNames.any { it.contains("release", ignoreCase=true) }) {
+    throw GradleException("The STT probe is debug-only and must never be released.")
+}
 
 android {
     namespace = "com.qlue.sloths1"
@@ -45,6 +50,8 @@ android {
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.qlue.sloths1"
+        if (sttProbe) applicationIdSuffix = ".sttprobe"
+        manifestPlaceholders["appLabel"] = if (sttProbe) "Qlue STT Probe" else "Qlue"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -101,6 +108,13 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    implementation("com.github.gkonovalov.android-vad:webrtc:2.0.10")
+    testImplementation("junit:junit:4.13.2")
+}
+// The isolated probe does not initialize Firebase and has a different app ID.
+tasks.matching { it.name.endsWith("GoogleServices") }.configureEach { onlyIf { !sttProbe } }
 
 // Experimental offline recognition is unreachable from main.dart. Keep its
 // tooling dependency, but omit its unused JNI libraries in production.

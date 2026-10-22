@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Optional Qlue gateway private origin subnets and immutable container repository; no NAT gateway.
+Parameters:
+  ProvisionNetwork: {Type: String, Default: 'false', AllowedValues: ['false', 'true']}
+  VpcId: {Type: 'AWS::EC2::VPC::Id'}
+  AvailabilityZoneA: {Type: 'AWS::EC2::AvailabilityZone::Name'}
+  AvailabilityZoneB: {Type: 'AWS::EC2::AvailabilityZone::Name'}
+  SubnetCidrA: {Type: String, Default: 172.31.96.0/24}
+  SubnetCidrB: {Type: String, Default: 172.31.97.0/24}
+  VocabularyBucket: {Type: String, AllowedPattern: '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$', Description: Existing private bucket for the public technical vocabulary file}
+Conditions:
+  Provision: !Equals [!Ref ProvisionNetwork, 'true']
+Resources:
+  OriginSubnetA:
+    Type: AWS::EC2::Subnet
+    Condition: Provision
+    Properties: {VpcId: !Ref VpcId, AvailabilityZone: !Ref AvailabilityZoneA, CidrBlock: !Ref SubnetCidrA, MapPublicIpOnLaunch: false}
+  OriginSubnetB:
+    Type: AWS::EC2::Subnet
+    Condition: Provision
+    Properties: {VpcId: !Ref VpcId, AvailabilityZone: !Ref AvailabilityZoneB, CidrBlock: !Ref SubnetCidrB, MapPublicIpOnLaunch: false}
+  OriginRoutes:
+    Type: AWS::EC2::RouteTable
+    Condition: Provision
+    Properties: {VpcId: !Ref VpcId}
+  OriginRoutesA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: Provision
+    Properties: {RouteTableId: !Ref OriginRoutes, SubnetId: !Ref OriginSubnetA}
+  OriginRoutesB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: Provision
+    Properties: {RouteTableId: !Ref OriginRoutes, SubnetId: !Ref OriginSubnetB}
+  Repository:
+    Type: AWS::ECR::Repository
+    Condition: Provision
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RepositoryName: qlue-audio-gateway
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration: {ScanOnPush: true}
+      EncryptionConfiguration: {EncryptionType: AES256}
+  VocabularyDataRole:
+    Type: AWS::IAM::Role
+    Condition: Provision
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: transcribe.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition: {StringEquals: {'aws:SourceAccount': !Ref 'AWS::AccountId'}}
+      Policies:
+        - PolicyName: ReadPublicTechnicalVocabulary
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${VocabularyBucket}/qlue-public-vocabulary/technical-en-IN-v1.tsv'
+              - Effect: Allow
+                Action: s3:GetBucketLocation
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${VocabularyBucket}'
+Outputs:
+  VocabularyDataRoleArn:
+    Condition: Provision
+    Value: !GetAtt VocabularyDataRole.Arn
+  PrivateSubnets:
+    Condition: Provision
+    Value: !Join [',', [!Ref OriginSubnetA, !Ref OriginSubnetB]]
+  RepositoryArn:
+    Condition: Provision
+    Value: !GetAtt Repository.Arn
+  RepositoryUri:
+    Condition: Provision
+    Value: !GetAtt Repository.RepositoryUri

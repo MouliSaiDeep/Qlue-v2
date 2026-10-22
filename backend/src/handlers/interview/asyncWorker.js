@@ -230,7 +230,11 @@ function planIntroTurn(moduleType, session, isReprompt) {
   return { stageForPrompt: 'CLOSING', nextIntroStage: INTRO_STAGES.COMPLETE, willClose: true };
 }
 
-async function generateAtomicTurn({
+function generateAtomicTurn(args) {
+  return require('../../lib/deadline').withIdentity(args.session?.userId,()=>generateOwnedAtomicTurn(args));
+}
+
+async function generateOwnedAtomicTurn({
   connectionId,
   sessionId,
   session,
@@ -239,6 +243,7 @@ async function generateAtomicTurn({
   preGeneratedText,
   isReprompt = false,
   currentAnswer,
+  currentAsr,
   currentAnswerTurnIndex,
   voiceId: requestedVoiceId,
   engine: requestedEngine,
@@ -247,7 +252,7 @@ async function generateAtomicTurn({
   const startTime = Date.now();
 
   try {
-    const voiceId = requestedVoiceId || session.voiceId || 'Ruth'; // COST-FIX: Ruth supports the cheaper neural engine (Tiffany is generative-only)
+    const voiceId = require('../../lib/voicePolicy').preference(requestedVoiceId || session.voiceId).voiceId;
     const engine = requestedEngine || session.engine || 'neural';
     // VOICE MODE: 'premium' authorises generative synthesis for this session.
     const voiceMode = requestedVoiceMode || session.itemData?.voiceMode || session.voiceMode || 'cost_saver';
@@ -261,7 +266,7 @@ async function generateAtomicTurn({
     const contextTranscripts = await getContextWindow(sessionId, MAX_CONTEXT_MESSAGES);
     let conversationHistory = contextTranscripts.map(t => ({
       speaker: t.speaker,
-      text: t.text,
+      text: t.speaker === 'USER' ? (require('../../lib/feedbackAssessment').safeAnswer(t.text,t.asr).text || '[uncertain audio]') : t.text,
       turnIndex: t.turnIndex,
       seq: t.seq,
       createdAt: t.createdAt
@@ -278,7 +283,7 @@ async function generateAtomicTurn({
         ? currentAnswerTurnIndex
         : (session.turnCount || 0);
       conversationHistory = conversationHistory.filter(t => !(t.speaker === 'USER' && t.turnIndex === answerTurn));
-      conversationHistory.push({ speaker: 'USER', text: currentAnswer, turnIndex: answerTurn });
+      conversationHistory.push({ speaker: 'USER', text: require('../../lib/feedbackAssessment').safeAnswer(currentAnswer,currentAsr).text || '[uncertain audio]', turnIndex: answerTurn });
       conversationHistory = conversationHistory.slice().sort(compareTranscripts);
     }
 
@@ -679,6 +684,7 @@ exports.handler = async (event) => {
       }
       else if (action === 'turn_submit') {
         const processResult = await processUserInput.handler({
+          [processUserInput.ASR_EVIDENCE]: body.asr,
           requestContext: {
             authorizer: {
               uid: userId
@@ -754,6 +760,7 @@ exports.handler = async (event) => {
           // I-08: hand the accepted answer to the prompt builder directly so it
           // is present even under transcripts-GSI lag (not re-read from the index).
           currentAnswer: processBody.acceptedAnswer,
+          currentAsr: processBody.acceptedAsr,
           currentAnswerTurnIndex: processBody.acceptedTurnIndex,
           voiceId,
           engine,

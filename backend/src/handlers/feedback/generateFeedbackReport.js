@@ -1,89 +1,21 @@
-/**
- * Lambda handler for generating qualitative feedback reports using Bedrock.
- */
-const { invokeModel, buildFeedbackPrompt } = require('../../lib/bedrock');
-const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
-
-const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'us-east-1' });
-const STORE_LAMBDA = process.env.STORE_FEEDBACK_LAMBDA;
-
-function getRealisticSummary(score, moduleType) {
-  if (score >= 85) return `Candidate demonstrated strong proficiency in the ${moduleType} module and meets hiring standards for this specific area.`;
-  if (score >= 70) return `Candidate showed baseline competence in the ${moduleType} module, but requires targeted improvement before being considered competitive.`;
-  if (score >= 50) return `Candidate exhibited significant gaps in the ${moduleType} module. Core competencies were not adequately demonstrated.`;
-  return `Candidate failed to meet minimum expectations for the ${moduleType} module. Fundamental review of concepts and communication is required.`;
+const {LambdaClient,InvokeCommand}=require('@aws-sdk/client-lambda');
+const assessment=require('../../lib/feedbackAssessment');
+const lambda=new LambdaClient({region:process.env.AWS_REGION||'us-east-1',maxAttempts:1});
+async function report(event) {
+  if(!await require('../../lib/feedbackAttempt').currentAttempt(event))return {success:true,stale:true};
+  let result=event.assessmentResult;
+  // Pre-rollout jobs have no validated rubric result. Do not resurrect their
+  // unvalidated marks or make an independent second model judgment.
+  if(!result||result.reportVersion!==assessment.VERSION)result=assessment.unavailable('LEGACY_EVALUATION_RETRY_REQUIRED');
+  if(result.analysisStatus==='OK') {
+    result=assessment.verifyReport(result,event.moduleType);
+  } else if(result.analysisStatus!=='UNAVAILABLE')throw Error('Invalid assessment status');
+  else result=assessment.unavailable(result.assessment?.reason||'EVALUATION_UNAVAILABLE');
+  const payload={...result,sessionId:event.sessionId,userId:event.userId,attemptId:event.attemptId,
+    moduleType:event.moduleType,sessionMetadata:event.metadata};
+  await require('../../lib/deadline').sendBounded(lambda,new InvokeCommand({
+    FunctionName:process.env.STORE_FEEDBACK_LAMBDA,InvocationType:'Event',Payload:Buffer.from(JSON.stringify(payload))
+  }));
+  return {success:true,sessionId:event.sessionId};
 }
-
-exports.handler = async (event) => {
-  const { sessionId, userId, moduleType, transcript, dimensionScores, metadata } = event;
-
-  try {
-    if (!await require('../../lib/feedbackAttempt').currentAttempt(event)) return {success:true,stale:true};
-    console.info(`Generating qualitative feedback for session ${sessionId}`);
-
-    // 1. Build feedback prompt and invoke Bedrock
-    // Note: Ensure buildFeedbackPrompt explicitly instructs the LLM to "be brutally honest, objective, and do not sugar-coat weaknesses."
-    const promptParams = buildFeedbackPrompt(moduleType, transcript, dimensionScores);
-
-    const bedrockResponse = await invokeModel(undefined, promptParams, { logTokens: true });
-    
-    // 2. Parse Bedrock response
-    let feedbackData = {};
-    try {
-      const text = bedrockResponse.content?.[0]?.text || '';
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON found in response");
-      feedbackData = JSON.parse(jsonMatch[0]);
-    } catch (e) {
-      console.error('Failed to parse Bedrock feedback JSON:', e);
-      // Realistic fallback instead of fake positivity
-      feedbackData = {
-        strengths: ['Unable to extract specific strengths from this session.'],
-        improvements: ['System error prevented detailed weakness extraction. Review transcript manually.'],
-        recommendations: ['Repeat the module to generate a complete qualitative profile.']
-      };
-    }
-
-    // 3. Compute overall score (Average of dimensions as fallback for computeModuleScores)
-    // BUG FIX: guard against missing dimensionScores — the previous code threw
-    // TypeError here, crashing the exact path meant to degrade gracefully.
-    const scores = Object.values(dimensionScores || {});
-    const overallScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-
-    // 4. Prepare complete report payload
-    const reportPayload = {
-      attemptId: event.attemptId,
-      sessionId,
-      userId,
-      moduleType,
-      status: 'COMPLETE',
-      analysisStatus: 'OK',
-      overallScore: Math.round(overallScore * 10) / 10, // 1 decimal place
-      dimensionScores: dimensionScores || {},
-      strengths: feedbackData.strengths || [],
-      weaknesses: feedbackData.improvements || feedbackData.weaknesses || [],
-      recommendations: feedbackData.recommendations || [],
-      // Use the strict tiered summary rather than a sugar-coated default
-      executiveSummary: feedbackData.summary || getRealisticSummary(overallScore, moduleType),
-      sessionMetadata: metadata
-    };
-
-    console.info(`Feedback report generated for ${sessionId}. Triggering storage.`);
-    
-    const command = new InvokeCommand({
-      FunctionName: STORE_LAMBDA,
-      InvocationType: 'Event',
-      Payload: Buffer.from(JSON.stringify(reportPayload))
-    });
-
-    await require('../../lib/deadline').sendBounded(lambdaClient,command);
-    
-    return { success: true, sessionId };
-
-  } catch (error) {
-    console.error(`Feedback generation failed for session ${sessionId}:`, error);
-    throw error;
-  }
-};
-const stableHandler=exports.handler;
-exports.handler=(event,context)=>require('../../lib/deadline').withDeadline(context,()=>stableHandler(event),{maxMs:60000,userId:event.userId});
+exports.handler=(event,context)=>require('../../lib/deadline').withDeadline(context,()=>report(event),{maxMs:25000,userId:event.userId});

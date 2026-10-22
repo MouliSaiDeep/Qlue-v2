@@ -8,139 +8,21 @@ import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/theme.dart';
 import '../../context/auth_provider.dart';
-import '../../context/appearance_provider.dart';
 import '../../context/dashboard_provider.dart';
 import '../../context/resume_provider.dart';
 import '../../components/input_field.dart';
 import '../../core/notifications.dart';
 import '../../core/update_service.dart';
 import '../profile/help_support_screen.dart';
+import '../profile/appearance_preferences.dart';
+import '../profile/widgets/profile_settings.dart';
+export '../profile/widgets/profile_settings.dart';
 import '../auth/password_reset_dialog.dart';
 import '../auth/delete_account_dialog.dart';
 import '../../components/glass_card.dart';
 import '../../components/glass_controls.dart';
 import '../../components/avatar.dart';
 import '../../components/spectral_background.dart';
-
-class SettingRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color iconColor;
-  final Color iconBg;
-  final Widget? right;
-  final VoidCallback? onPress;
-  final bool destructive;
-
-  const SettingRow({
-    super.key,
-    required this.icon,
-    required this.label,
-    required this.iconColor,
-    required this.iconBg,
-    this.right,
-    this.onPress,
-    this.destructive = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppThemeColors.of(context);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPress,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-          child: Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: iconBg,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Center(child: Icon(icon, size: 15, color: iconColor)),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: destructive ? t.error : t.text,
-                ),
-              ),
-              const Spacer(),
-              if (right != null)
-                Expanded(
-                  child: Align(alignment: Alignment.centerRight, child: right!),
-                )
-              else if (onPress != null && !destructive)
-                Icon(
-                  FeatherIcons.chevronRight,
-                  size: 16,
-                  color: t.textTertiary,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class ProfileSection extends StatelessWidget {
-  final String title;
-  final Widget child;
-
-  const ProfileSection({super.key, required this.title, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppThemeColors.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
-            child: Text(
-              title,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.8,
-                color: t.textTertiary,
-              ),
-            ),
-          ),
-          GlassCard(
-            borderRadius: 18,
-            padding: EdgeInsets.zero,
-            hasMetallicBorder: true,
-            child: child,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class ProfileDiv extends StatelessWidget {
-  const ProfileDiv({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppThemeColors.of(context);
-    return Container(
-      height: 1,
-      margin: const EdgeInsets.only(left: 62),
-      color: t.borderSubtle,
-    );
-  }
-}
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -391,315 +273,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _showAppearanceSheet() {
-    final t = AppThemeColors.of(context);
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => Consumer<AppearanceProvider>(
-        builder: (ctx, appearance, _) => Container(
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 20,
-            bottom: MediaQuery.of(ctx).padding.bottom + 24,
-          ),
-          decoration: BoxDecoration(
-            color: t.bgSecondary,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            border: Border.all(color: t.metallicBorder.withValues(alpha: 0.2)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: t.textTertiary.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                "Appearance",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: t.text,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                "Make Qlue yours — changes apply instantly everywhere.",
-                style: TextStyle(fontSize: 12, color: t.textTertiary),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                "GLASS STYLE",
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1,
-                  color: t.textTertiary,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: _styleChoice(
-                      t,
-                      "Liquid Glass",
-                      "liquid",
-                      appearance,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _styleChoice(t, "Classic", "classic", appearance),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Text(
-                "GLASS INTENSITY",
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1,
-                  color: t.textTertiary,
-                ),
-              ),
-              AppSlider(
-                value: appearance.glassIntensity,
-                min: 0.6,
-                max: 1.4,
-                activeColor: t.primary,
-                inactiveColor: t.metallicBorder.withValues(alpha: 0.3),
-                onChanged: (v) => appearance.setGlassIntensity(v),
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "Subtle",
-                    style: TextStyle(fontSize: 11, color: t.textTertiary),
-                  ),
-                  Text(
-                    "Heavy",
-                    style: TextStyle(fontSize: 11, color: t.textTertiary),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Reduce motion",
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: t.text,
-                        ),
-                      ),
-                      Text(
-                        "Calms ambient animations, saves battery",
-                        style: TextStyle(fontSize: 11, color: t.textTertiary),
-                      ),
-                    ],
-                  ),
-                  AppSwitch(
-                    value: appearance.reduceMotion,
-                    activeColor: t.primary,
-                    onChanged: (v) => appearance.setReduceMotion(v),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _styleChoice(
-    AppThemeColors t,
-    String label,
-    String value,
-    AppearanceProvider appearance,
-  ) {
-    final selected = appearance.glassStyle == value;
-    return GestureDetector(
-      onTap: () => appearance.setGlassStyle(value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: selected
-              ? t.primary.withValues(alpha: 0.18)
-              : t.bg.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: selected
-                ? t.primary
-                : t.metallicBorder.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: selected ? t.primary : t.textSecondary,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showChangePasswordDialog() {
-    final t = AppThemeColors.of(context);
-    final currentCtrl = TextEditingController();
-    final newCtrl = TextEditingController();
-    final confirmCtrl = TextEditingController();
-    bool busy = false;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          backgroundColor: t.bgSecondary,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-          title: Text(
-            "Change Password",
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: t.text,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _passwordField(t, currentCtrl, "Current password"),
-              const SizedBox(height: 12),
-              _passwordField(t, newCtrl, "New password"),
-              const SizedBox(height: 8),
-              Text(
-                AuthProvider.passwordRequirements,
-                style: TextStyle(color: t.textSecondary, fontSize: 12),
-              ),
-              const SizedBox(height: 12),
-              _passwordField(t, confirmCtrl, "Confirm new password"),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: busy ? null : () => Navigator.of(ctx).pop(),
-              child: Text("Cancel", style: TextStyle(color: t.textSecondary)),
-            ),
-            TextButton(
-              onPressed: busy
-                  ? null
-                  : () async {
-                      final current = currentCtrl.text;
-                      final fresh = newCtrl.text;
-                      if (!AuthProvider.isStrongPassword(fresh)) {
-                        Notify.error(
-                          context,
-                          AuthProvider.passwordRequirements,
-                        );
-                        return;
-                      }
-                      if (fresh != confirmCtrl.text) {
-                        Notify.error(context, "New passwords do not match.");
-                        return;
-                      }
-                      if (fresh == current) {
-                        Notify.error(
-                          context,
-                          "New password must differ from the current one.",
-                        );
-                        return;
-                      }
-                      setDialogState(() => busy = true);
-                      final err = await context
-                          .read<AuthProvider>()
-                          .changePassword(current, fresh);
-                      if (!mounted || !ctx.mounted) return;
-                      setDialogState(() => busy = false);
-                      if (err == null) {
-                        Navigator.of(ctx).pop();
-                        Notify.success(
-                          context,
-                          "Password updated successfully.",
-                        );
-                      } else {
-                        Notify.error(context, err);
-                      }
-                    },
-              child: busy
-                  ? SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: t.primary,
-                      ),
-                    )
-                  : Text(
-                      "Update",
-                      style: TextStyle(
-                        color: t.primary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _passwordField(
-    AppThemeColors t,
-    TextEditingController ctrl,
-    String hint,
-  ) {
-    return TextField(
-      controller: ctrl,
-      obscureText: true,
-      autocorrect: false,
-      enableSuggestions: false,
-      style: TextStyle(color: t.text, fontSize: 13.5),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: TextStyle(color: t.textTertiary, fontSize: 12.5),
-        filled: true,
-        fillColor: t.bg.withValues(alpha: 0.4),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 12,
-        ),
-      ),
-    );
-  }
+  void _showAppearanceSheet() => showAppearancePreferences(context);
 
   void _showVoiceSelectionSheet() {
     final t = AppThemeColors.of(context);
@@ -738,6 +312,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       },
     ];
 
+    var browsingMode = 'cost_saver';
     showModalBottomSheet(
       context: context,
       useRootNavigator: true,
@@ -746,39 +321,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) => Consumer<AuthProvider>(
           builder: (context, auth, _) {
-            final mode = auth.voiceMode;
+            final mode = browsingMode;
             final visibleVoices = voices
                 .where((v) => v['mode'] == mode)
                 .toList();
-
-            Future<void> applyMode(String newMode) async {
-              if (newMode == auth.voiceMode) return;
-              // Switching mode also snaps the selected voice to a valid one for
-              // that mode, so voiceId and voiceMode never disagree.
-              final defaultVoice = newMode == 'premium' ? 'Tiffany' : 'Ruth';
-              final stillValid = voices.any(
-                (v) => v['name'] == auth.voiceId && v['mode'] == newMode,
-              );
-              try {
-                await auth.updateUserProfile(
-                  voiceMode: newMode,
-                  voiceId: stillValid ? auth.voiceId : defaultVoice,
-                );
-                if (context.mounted) {
-                  Notify.success(
-                    context,
-                    newMode == 'premium'
-                        ? "Premium voices enabled"
-                        : "Cost Saver voices enabled",
-                  );
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  Notify.error(context, "Failed to update voice mode");
-                }
-              }
-              if (mounted) setModalState(() {});
-            }
 
             return GlassCard(
               borderRadius: 32,
@@ -797,7 +343,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Choose a voice mode, then pick a persona.',
+                    'Ruth is the default. Premium voices are view-only.',
                     style: TextStyle(fontSize: 11, color: t.textTertiary),
                   ),
                   const SizedBox(height: 16),
@@ -812,7 +358,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           subtitle: 'Neural • Free-tier',
                           icon: FeatherIcons.feather,
                           active: mode == 'cost_saver',
-                          onTap: () => applyMode('cost_saver'),
+                          onTap: () =>
+                              setModalState(() => browsingMode = 'cost_saver'),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -820,10 +367,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: _voiceModeChip(
                           t,
                           title: 'Premium',
-                          subtitle: 'Generative • Lifelike',
-                          icon: FeatherIcons.zap,
+                          subtitle: 'Locked · View voices',
+                          icon: FeatherIcons.lock,
                           active: mode == 'premium',
-                          onTap: () => applyMode('premium'),
+                          onTap: () =>
+                              setModalState(() => browsingMode = 'premium'),
                         ),
                       ),
                     ],
@@ -838,7 +386,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: SingleChildScrollView(
                       child: Column(
                         children: visibleVoices.map((v) {
-                          final isSelected = auth.voiceId == v['name'];
+                          final locked = v['mode'] == 'premium';
+                          final isSelected =
+                              !locked && auth.voiceId == v['name'];
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 12.0),
                             child: GlassCard(
@@ -848,29 +398,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ? t.primary.withValues(alpha: 0.1)
                                   : null,
                               hasMetallicBorder: isSelected,
-                              onTap: () async {
-                                try {
-                                  final selectedVoice = v['name']!;
-                                  await auth.updateUserProfile(
-                                    voiceId: selectedVoice,
-                                    voiceMode: v['mode'],
-                                  );
-                                  if (context.mounted) {
-                                    Notify.success(
-                                      context,
-                                      "Voice updated to $selectedVoice",
-                                    );
-                                  }
-                                } catch (e) {
-                                  if (context.mounted) {
-                                    Notify.error(
-                                      context,
-                                      "Failed to update voice model",
-                                    );
-                                  }
-                                }
-                                if (mounted) setModalState(() {});
-                              },
+                              onTap: locked
+                                  ? null
+                                  : () async {
+                                      try {
+                                        final selectedVoice = v['name']!;
+                                        await auth.updateUserProfile(
+                                          voiceId: selectedVoice,
+                                          voiceMode: v['mode'],
+                                        );
+                                        if (context.mounted) {
+                                          Notify.success(
+                                            context,
+                                            "Voice updated to $selectedVoice",
+                                          );
+                                        }
+                                      } catch (e) {
+                                        if (context.mounted) {
+                                          Notify.error(
+                                            context,
+                                            "Failed to update voice model",
+                                          );
+                                        }
+                                      }
+                                      if (mounted) setModalState(() {});
+                                    },
                               child: Row(
                                 children: [
                                   Container(
@@ -885,6 +437,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     child: Icon(
                                       isSelected
                                           ? FeatherIcons.check
+                                          : locked
+                                          ? FeatherIcons.lock
                                           : FeatherIcons.user,
                                       size: 18,
                                       color: isSelected
@@ -907,7 +461,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           ),
                                         ),
                                         Text(
-                                          v['desc']!,
+                                          locked
+                                              ? '${v['desc']} · Locked'
+                                              : v['desc']!,
                                           style: TextStyle(
                                             fontSize: 12,
                                             color: t.textTertiary,
@@ -1794,13 +1350,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                             child: Row(
                               children: [
-                                Text(
-                                  auth.displayName,
-                                  style: TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w900,
-                                    color: t.text,
-                                    letterSpacing: -0.5,
+                                Flexible(
+                                  child: Text(
+                                    auth.displayName,
+                                    style: TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w900,
+                                      color: t.text,
+                                      letterSpacing: -0.5,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -1828,7 +1386,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            "Interview Ready",
+                            auth.email.isNotEmpty
+                                ? auth.email
+                                : 'Email unavailable',
+                            key: const Key('profile-header-email'),
                             style: TextStyle(
                               fontSize: 13,
                               color: t.textSecondary,
@@ -1943,40 +1504,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         onPress: _showVoiceSelectionSheet,
                       ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // ACCOUNT Section
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: ProfileSection(
-                  title: "Account",
-                  child: Column(
-                    children: [
-                      SettingRow(
-                        icon: FeatherIcons.mail,
-                        label: 'Email Address',
-                        iconColor: t.success,
-                        iconBg: t.success.withValues(alpha: 0.15),
-                        right: Text(
-                          auth.email.isNotEmpty ? auth.email : "—",
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: t.textSecondary,
-                          ),
-                        ),
-                        onPress: () => Notify.info(
-                          context,
-                          'Email cannot be changed directly.',
-                        ),
-                      ),
                       const ProfileDiv(),
                       SettingRow(
                         icon: FeatherIcons.droplet,
@@ -1984,26 +1511,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         iconColor: t.primary,
                         iconBg: t.primary.withValues(alpha: 0.15),
                         onPress: _showAppearanceSheet,
-                      ),
-                      const ProfileDiv(),
-                      SettingRow(
-                        icon: FeatherIcons.lock,
-                        label: 'Change Password',
-                        iconColor: t.warning,
-                        iconBg: t.warning.withValues(alpha: 0.15),
-                        onPress: _showChangePasswordDialog,
-                      ),
-                      const ProfileDiv(),
-                      SettingRow(
-                        key: const Key('profile-reset-password'),
-                        icon: FeatherIcons.mail,
-                        label: 'Reset Password',
-                        iconColor: t.warning,
-                        iconBg: t.warning.withValues(alpha: 0.15),
-                        onPress: () => showPasswordResetDialog(
-                          context,
-                          currentAccountOnly: true,
-                        ),
                       ),
                     ],
                   ),
@@ -2070,14 +1577,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: ProfileSection(
                   title: 'Account',
-                  child: SettingRow(
-                    key: const Key('profile-delete-account'),
-                    icon: FeatherIcons.trash2,
-                    label: 'Delete Account',
-                    destructive: true,
-                    iconColor: t.error,
-                    iconBg: t.error.withValues(alpha: 0.15),
-                    onPress: () => showDeleteAccountDialog(context),
+                  child: Column(
+                    children: [
+                      SettingRow(
+                        key: const Key('profile-reset-password'),
+                        icon: FeatherIcons.mail,
+                        label: 'Reset Password',
+                        iconColor: t.warning,
+                        iconBg: t.warning.withValues(alpha: 0.15),
+                        onPress: () => showPasswordResetDialog(
+                          context,
+                          currentAccountOnly: true,
+                        ),
+                      ),
+                      const ProfileDiv(),
+                      SettingRow(
+                        key: const Key('profile-delete-account'),
+                        icon: FeatherIcons.trash2,
+                        label: 'Delete Account',
+                        destructive: true,
+                        iconColor: t.error,
+                        iconBg: t.error.withValues(alpha: 0.15),
+                        onPress: () => showDeleteAccountDialog(context),
+                      ),
+                    ],
                   ),
                 ),
               ),

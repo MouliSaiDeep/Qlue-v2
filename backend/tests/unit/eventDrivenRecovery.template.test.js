@@ -7,13 +7,21 @@ const baseline = require('../fixtures/recovery-template-baseline.json');
 const functions = Object.keys(baseline.functions);
 
 test('all six polling schedules are removed, preserving every existing environment value and policy', () => {
-  expect(template.Globals.Function.Environment).toEqual(baseline.globals);
+  expect(template.Globals.Function.Environment).toMatchObject(baseline.globals);
   for (const id of functions) {
     const properties = resources[id].Properties;
     expect(Object.values(properties.Events || {}).some(event => event.Type === 'Schedule')).toBe(false);
     expect(properties.Environment.Variables).toMatchObject(baseline.functions[id].environment?.Variables || {});
     expect(properties.Policies).toEqual(expect.arrayContaining(baseline.functions[id].policies));
   }
+});
+
+test('ten interview sessions belong to each user, with separate user and system provider guards',()=>{
+  const env=template.Globals.Function.Environment.Variables;
+  expect(env.QUOTA_FREE_INTERVIEWS).toBe('10');
+  expect(env.USER_PAID_ATTEMPT_LIMIT).toEqual({Ref:'UserPaidAttemptDailyLimit'});
+  expect(template.Parameters.UserPaidAttemptDailyLimit.Default).toBe(500);
+  expect(env.PAID_ATTEMPT_LIMIT).toEqual({Ref:'PaidAttemptDailyLimit'});
 });
 
 test('streams include old/new images and filter actual state fields without adding a competing interview consumer', () => {

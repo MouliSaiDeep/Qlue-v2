@@ -87,6 +87,7 @@ function buildTranscript(sessionId, turnIndex, speaker, text, options = {}) {
         seq,
         speaker,
         text,
+        ...(speaker === 'USER' && options.asr ? {asr:options.asr} : {}),
         createdAt: Date.now(),
         timestamp: new Date().toISOString()
     };

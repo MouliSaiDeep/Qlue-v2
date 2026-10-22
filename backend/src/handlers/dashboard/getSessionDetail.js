@@ -84,6 +84,12 @@ exports.handler = async (event) => {
 
         // 2. Get Associated Feedback (if any)
         const feedback = await getCurrentFeedback(session);
+        if (feedback?.analysisStatus === 'UNAVAILABLE') {
+            // Existing app versions coerce null marks to 0. Use their existing
+            // error state instead of displaying a score that was not assigned.
+            return {statusCode:422,body:JSON.stringify({error:'ASSESSMENT_UNAVAILABLE',
+                message:'A reliable assessment could not be produced. No score was assigned.',retryable:true,sessionId})};
+        }
 
         // 3. Get Transcript
         // I-08: delegate to the model, which paginates the GSI (a single page

@@ -8,6 +8,7 @@ const { handler } = require('../../src/handlers/interview/initializeSession');
 jest.mock('../../src/models/session');
 jest.mock('../../src/models/user');
 jest.mock('../../src/models/resume');
+jest.mock('../../src/lib/audioHost',()=>({wake:jest.fn()}));
 jest.mock('../../src/lib/quota', () => ({
   ACTIONS: { INTERVIEW: 'interview' },
   getUserTier: jest.fn(() => 'free'),
@@ -26,6 +27,7 @@ jest.mock('../../src/handlers/interview/terminateSession', () => ({
 }));
 
 describe('initializeSession handler', () => {
+  afterEach(()=>{delete process.env.AUDIO_HOST_WAKE_FUNCTION;});
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.WEBSOCKET_ENDPOINT = 'https://api.example.com';
@@ -120,6 +122,21 @@ describe('initializeSession handler', () => {
     expect(body.usage).toEqual({ interviewsUsed: 1, interviewsLimit: 10, interviewsRemaining: 9 });
     expect(reserveQuota).toHaveBeenCalledWith('user123', 'interview', 'free');
   });
+  it('prewarms only an admitted owned session, without making audio readiness block initialization',async()=>{
+    process.env.AUDIO_HOST_WAKE_FUNCTION='private-wake';
+    const wake=require('../../src/lib/audioHost').wake;wake.mockResolvedValue({queued:true});
+    const event={requestContext:{authorizer:{uid:'user123',emailVerified:true}},body:JSON.stringify({moduleType:'INTRO'})};
+    const result=await handler(event);expect(result.statusCode).toBe(200);
+    expect(wake).toHaveBeenCalledWith('user123',JSON.parse(result.body).sessionId,{background:true});
+    expect(createSession.mock.invocationCallOrder[0]).toBeLessThan(wake.mock.invocationCallOrder[0]);
+    wake.mockClear();reserveQuota.mockResolvedValue({allowed:false,used:10,limit:10,remaining:0});
+    expect((await handler(event)).statusCode).toBe(429);expect(wake).not.toHaveBeenCalled();
+  });
+  it('a failed best-effort prewarm preserves the created session and its quota',async()=>{
+    process.env.AUDIO_HOST_WAKE_FUNCTION='private-wake';require('../../src/lib/audioHost').wake.mockRejectedValue(Error('unavailable'));
+    const result=await handler({requestContext:{authorizer:{uid:'user123',emailVerified:true}},body:JSON.stringify({moduleType:'INTRO'})});
+    expect(result.statusCode).toBe(200);expect(refundQuota).not.toHaveBeenCalled();
+  });
 
   it('should return 429 when the daily interview quota is exhausted', async () => {
     const event = {
@@ -139,6 +156,16 @@ describe('initializeSession handler', () => {
     // A blocked reservation never creates a session and needs no refund.
     expect(createSession).not.toHaveBeenCalled();
     expect(refundQuota).not.toHaveBeenCalled();
+  });
+
+  it.each([{principalId:'verified-owner',emailVerified:true},{claims:{sub:'verified-owner',email_verified:'true'}}])('provider work and interview quota use the same verified owner %j',async authorizer=>{
+    createSession.mockImplementationOnce(async()=>{
+      expect(require('../../src/lib/deadline').current().userId).toBe('verified-owner');
+      return true;
+    });
+    const result=await handler({requestContext:{authorizer},body:JSON.stringify({moduleType:'INTRO',userId:'forged-owner'})});
+    expect(result.statusCode).toBe(200);
+    expect(reserveQuota).toHaveBeenCalledWith('verified-owner','interview','free');
   });
 
   it('should return 409 if an active session already exists (no quota consumed)', async () => {

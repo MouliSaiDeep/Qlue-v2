@@ -56,6 +56,7 @@ class InterviewSpeechRecognizer(private val activity: Activity, messenger: Binar
             try {
                 when (call.method) {
                     "available" -> result.success(SpeechRecognizer.isRecognitionAvailable(activity))
+                    "releaseForAws" -> releaseForAws { result.success(null) }
                     "prepareAnswerAudio" -> {
                         discardAnswerAudio()
                         if (Build.VERSION.SDK_INT >= 33 && !fixtureRequired && foreground) answerRecording = runCatching { AnswerAudioRecording(activity) }.getOrNull()
@@ -300,6 +301,11 @@ class InterviewSpeechRecognizer(private val activity: Activity, messenger: Binar
         foreground = false; cancel(); closeFixture()
     }
     fun resumeForeground() { foreground = true }
+    fun releaseForAws(complete: () -> Unit) {
+        val recording=answerRecording;answerRecording=null
+        cancel();recording?.stop()
+        audioWorker.execute { recording?.discard();activity.runOnUiThread(complete) }
+    }
     fun close() {
         discardAnswerAudio()
         cancel(); closeFixture(); methods.setMethodCallHandler(null); events.setStreamHandler(null); sink = null

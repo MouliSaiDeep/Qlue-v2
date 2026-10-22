@@ -58,8 +58,10 @@ class InterviewRecoveryControls extends StatelessWidget {
           ),
         if (provider.currentPhase == InterviewPhase.listening &&
             !provider.isListening)
-          const Text(
-            'Getting microphone ready…',
+          Text(
+            provider.isPreparingVoice
+                ? 'Preparing voice service… Your microphone stays off until it is ready.'
+                : 'Getting microphone ready…',
             style: TextStyle(color: Colors.white70),
           ),
       ],

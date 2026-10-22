@@ -317,15 +317,14 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> {
               SafeArea(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    // Keep v1.0.8's centered composition on ordinary phones.
-                    // Short screens and large text scroll so the current
-                    // recovery controls and transcript remain accessible.
+                    // Keep the stable centered composition on ordinary phones,
+                    // including 800px screens after system safe-area insets.
+                    // Only genuinely short viewports or large text need the
+                    // compact scrolling layout. Recording notices must not
+                    // switch the layout while an answer is being captured.
                     final compact =
-                        constraints.maxHeight < 780 ||
-                        MediaQuery.textScalerOf(context).scale(1) > 1.3 ||
-                        provider.errorMessage != null ||
-                        provider.recordingNotice != null ||
-                        isConnecting;
+                        constraints.maxHeight < 640 ||
+                        MediaQuery.textScalerOf(context).scale(1) > 1.3;
                     final sphere = SizedBox(
                       key: const Key('interview-sphere-slot'),
                       height: compact

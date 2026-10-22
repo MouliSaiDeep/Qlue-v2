@@ -173,6 +173,7 @@ function isBlockedAddress(ip) {
 }
 
 function parseUrl(raw) {
+  if(typeof raw!=='string'||raw.length>4096)throw new QlueError('Invalid URL provided',ERROR_CODES.INVALID_URL,400);
   let url;
   try {
     url = new URL(raw);
@@ -182,6 +183,7 @@ function parseUrl(raw) {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new QlueError('Only http(s) URLs are allowed', ERROR_CODES.INVALID_URL, 400);
   }
+  if(url.username||url.password)throw forbidden('URL credentials are not allowed');
   const port = url.port ? Number(url.port) : (url.protocol === 'https:' ? 443 : 80);
   if (!ALLOWED_PORTS.has(port)) throw forbidden('URL port is not allowed');
   const host = url.hostname.replace(/^\[|\]$/g, ''); // unwrap IPv6 literal

@@ -38,6 +38,13 @@ describe('bedrock lib', () => {
         expect(bedrockMock.calls()).toHaveLength(2);
     }, 10000);
 
+    it('honors temperature zero and disables hidden retry multiplication', async () => {
+        bedrockMock.on(ConverseCommand).rejects(Object.assign(new Error('Throttled'),{name:'ThrottlingException'}));
+        await expect(invokeModel('model-id',{messages:[],temperature:0},{retries:0})).rejects.toThrow();
+        expect(bedrockMock.commandCalls(ConverseCommand)).toHaveLength(1);
+        expect(bedrockMock.commandCalls(ConverseCommand)[0].args[0].input.inferenceConfig.temperature).toBe(0);
+    });
+
     it('invokeModelStream should aggregate tokens', async () => {
         const mockStream = {
             async *[Symbol.asyncIterator]() {

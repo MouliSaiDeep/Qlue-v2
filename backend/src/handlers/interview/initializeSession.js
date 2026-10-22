@@ -1,7 +1,7 @@
 const diagnostics=require('../../lib/logger').safeConsole;
 const { createSession, getActiveSessionForUser, INTERVIEW_STATES } = require('../../models/session');
 const { getUserById } = require('../../models/user');
-const { getUserTier, isPremiumVoiceAllowed, reserveQuota, refundQuota, assertServiceEnabled, assertAccountActive, ACTIONS } = require('../../lib/quota');
+const { getUserTier, reserveQuota, refundQuota, assertServiceEnabled, assertAccountActive, ACTIONS } = require('../../lib/quota');
 const { QlueError } = require('../../lib/errors');
 const { randomUUID } = require('crypto');
 
@@ -72,7 +72,7 @@ exports.handler = async (event) => {
             }
             throw deletingErr;
         }
-        const voiceId = body.voiceId || user?.voiceId || 'Tiffany';
+        const voiceId = require('../../lib/voicePolicy').preference(body.voiceId || user?.voiceId).voiceId;
         const tier = getUserTier(user);
 
         // ---- Phase B: cheap validations (no quota consumed, no paid work) ----
@@ -187,14 +187,11 @@ exports.handler = async (event) => {
             if (body.resumeId) itemData.resumeId = body.resumeId;
             if (body.websiteUrl) itemData.websiteUrl = body.websiteUrl;
 
-            // VOICE MODE: server-side eligibility (finding 3). The client may
-            // REQUEST 'premium', but the tier decides. 'premium' unlocks
-            // generative voices; 'cost_saver' is pinned to the cheaper neural
-            // engine (a client can no longer force a generative engine).
-            const requestedPremium = body.voiceMode === 'premium';
-            const voiceMode = (requestedPremium && isPremiumVoiceAllowed(tier)) ? 'premium' : 'cost_saver';
+            // Premium is visible in the catalog but locked for every account.
+            // Old app preferences cannot opt a new session into paid voices.
+            const voiceMode = 'cost_saver';
             itemData.voiceMode = voiceMode;
-            itemData.engine = (voiceMode === 'premium') ? (body.engine || 'generative') : 'neural';
+            itemData.engine = 'neural';
 
             // WEBSITE MODULE: snapshot scraped content + a target concept onto
             // the session (prefer the scrape validateWebsite just cached for this
@@ -287,6 +284,12 @@ exports.handler = async (event) => {
                 throw createErr; // refunded by the outer catch below
             }
 
+            // Wake compute as soon as an owned session exists. Audio recording
+            // and paid transcription still start only after the question ends.
+            if(process.env.AUDIO_HOST_WAKE_FUNCTION) {
+                try { await require('../../lib/audioHost').wake(userId,sessionId,{background:true}); }
+                catch(error) { diagnostics.warn('Audio prewarm deferred:',error.name); }
+            }
             // WEBSOCKET_ENDPOINT is set by SAM template as https://... but frontend needs wss://
             const wsHttpEndpoint = process.env.WEBSOCKET_ENDPOINT || '';
             let wsUrl = '';
@@ -331,4 +334,9 @@ exports.handler = async (event) => {
 };
 
 const initialization=exports.handler;
-exports.handler=(event,context)=>require('../../lib/deadline').withDeadline(context,()=>initialization(event),{maxMs:25000,userId:event.requestContext?.authorizer?.uid});
+exports.handler=(event,context)=>{
+  const authorizer=event.requestContext?.authorizer;
+  return require('../../lib/deadline').withDeadline(context,()=>initialization(event),{
+    maxMs:25000,userId:authorizer?.uid||authorizer?.principalId||authorizer?.claims?.sub
+  });
+};

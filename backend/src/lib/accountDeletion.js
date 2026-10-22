@@ -239,6 +239,7 @@ async function deleteAllUserData(uid, { completed = {}, onCheckpoint = async () 
     }
   };
 
+  if (process.env.STT_SESSIONS_TABLE) await step('speechRecognition', () => deleteOwnedScan(process.env.STT_SESSIONS_TABLE, uid, 'pk'));
   if (process.env.EMAIL_OTP_TABLE) await step('emailOtp', async () => {
     await require('./emailOtpDelivery').remove(uid);
     const result = await require('./dynamodb').delete(process.env.EMAIL_OTP_TABLE, {id:`USER#${uid}`});

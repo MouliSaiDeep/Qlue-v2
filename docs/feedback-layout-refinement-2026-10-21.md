@@ -1,0 +1,13 @@
+# Feedback layout refinement — 21 October 2026
+
+Restored the lower feedback layout from GitHub's stable `v1.0.9` tag (`447d2fcc0ec39f70e5f84e6d3de52df6c525015e`), verified against the remote tag. The ordinary layout again uses the liquid-glass Summary / Strengths / To Improve switcher, full inline summary, and the inline Q&A transcript card. Large-text mode keeps wrapping tab controls so a narrow phone does not clip the labels. Corrected weighted scores, assessed-answer counts, and honest empty-report text remain in use.
+
+At the user's selected preference, the score breakdown now uses one radar/spider chart with every real criterion and a compact, tappable score list. Tapping a plotted point, axis label or score row opens its evidence and explanation. The selected criterion is highlighted in the chart and score list. Swipe horizontally or use the previous/next buttons to compare criteria in the same sheet; navigation stops at the first/last criterion. Animations respect both system and app Reduce Motion settings. These interactions use report data already on the phone and make no additional backend calls. Reports with fewer than three criteria retain their real score list without inventing chart axes.
+
+The overall-score gauge is larger, with more space between the arc and number. Its number remains readable without overlapping the arc at large system text sizes. Other uses of the shared gauge retain their layout.
+
+Validation: 15 targeted Flutter checks passed, including radar-point selection, zero-score axes, report loading/failure states, restored tabs and inline transcripts, previous/next/swipe behavior, the navigation boundary, 320px layout with doubled text size, reduced motion, PDF export and visual renders. Static analysis of the changed screen and tests passed. Visual evidence is retained under ignored `tmp/feedback-layout-refinement-20261021/`. The latest radar-only revision preserves seven surrounding sections exactly, including the restored tabs, summary, Q&A transcript and overall score card; evidence is in `scope-verification.json`.
+
+This refinement changes the feedback screen and its UI tests. It requires an updated APK. The existing backend scoring fixes and profile/voice changes are retained. No commit, push or GitHub release is part of this update.
+
+Final APK: `output/Qlue-1.0.9-feedback-radar.apk`, version **1.0.9+10009**, 79,908,829 bytes. SHA-256: `efcf9985053e9b232c07539a280a24262f5c58028ac738430ab6495003c0cb28`. Release signature and 16KiB zip alignment passed; signing certificate matches the existing app. AWS Transcribe and automatic answer completion remain enabled in this build.

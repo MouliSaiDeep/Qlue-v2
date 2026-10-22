@@ -69,7 +69,9 @@ exports.handler = async (event) => {
       const result=await require('../../lib/dynamodb').get(process.env.FEEDBACK_TABLE||'qlue-feedback',{feedbackId:session.feedbackId},{consistentRead:true});
       if(!result.success)throw result.error||Error('Feedback read failed');
       const saved=result.data;
-      if(saved?.sessionId===sessionId&&saved.userId===uid&&saved.qualitativeStatus==='UNAVAILABLE'&&saved.dimensionScores)partial=saved;
+      if(saved?.sessionId===sessionId&&saved.userId===uid&&saved.dimensionScores&&
+        (saved.qualitativeStatus==='UNAVAILABLE'||body.refreshAssessment===true&&saved.reportVersion==='content-rubric-v2'&&
+          saved.assessment?.coachingVersion!==require('../../lib/feedbackCoaching').VERSION))partial=saved;
     }
 
     // 6. Never wipe a report that actually succeeded.

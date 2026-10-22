@@ -1,6 +1,9 @@
 const diagnostics=require('../../lib/logger').safeConsole;
 const { getSessionById, updateSessionState, INTERVIEW_STATES } = require('../../models/session');
 const { saveTranscript } = require('../../models/transcript');
+// In-process worker capability: public JSON/API requests cannot forge Symbol
+// properties. Recognition evidence was verified at WebSocket admission.
+exports.ASR_EVIDENCE = Symbol('verifiedAsr');
 
 const SILENCE_THRESHOLD = 5; // BE-BUG #5 FIX: was 3, too aggressive for interviews
 const MAX_TURNS = 20;
@@ -154,7 +157,8 @@ exports.handler = async (event) => {
     }
 
     // Save user transcript
-    await saveTranscript(sessionId, turnIndex, 'USER', textTranscript, { eventId: clientTurnId, ...lease });
+    const authoritativeAsr=event[exports.ASR_EVIDENCE];
+    await saveTranscript(sessionId, turnIndex, 'USER', textTranscript, { eventId: clientTurnId, ...(authoritativeAsr?{asr:authoritativeAsr}:{}), ...lease });
 
     // Check exit intent
     if (detectExitIntent(textTranscript)) {
@@ -171,6 +175,17 @@ exports.handler = async (event) => {
     // it in the transcript, but do not consume the first/revised attempt.
     const isIntro = ['INTRO', 'SELF_INTRO'].includes(session.moduleType);
     const words = String(textTranscript || '').trim().split(/\s+/).filter(Boolean);
+    if(require('../../lib/conversationRepair').isNameCorrection(textTranscript)) {
+      const updated=await preserveStateWithUpdates(sessionId,session.currentState,{...lease});
+      if(updated===ABORTED)return {statusCode:200,body:JSON.stringify({aborted:true})};
+      // Re-ask the actual question after a correction; otherwise the repair
+      // acknowledgment would replace the on-screen question. Strip any earlier
+      // greeting/name from the prefix instead of repeating the recognition error.
+      const question=typeof session.questionText==='string'
+        ? session.questionText.match(/\b(?:could you|can you|what|how|why|when|where|which|tell me|describe|explain|walk me)\b[\s\S]*/i)?.[0] : null;
+      return {statusCode:200,body:JSON.stringify({shouldTerminate:false,isReprompt:true,
+        nextAIResponse:'Thank you for correcting me. '+(question||'Please continue with your answer to the current question.'),session:updated||null})};
+    }
     if (isClarification(textTranscript)) {
       // Same durable receipt is not another clarification attempt.
       const retries = (session.clarificationRetries || 0)
@@ -264,6 +279,7 @@ exports.handler = async (event) => {
         // lag the model could otherwise miss or misorder the latest answer.
         acceptedAnswer: textTranscript,
         acceptedTurnIndex: turnIndex,
+        acceptedAsr: authoritativeAsr || null,
         session: updatedSession || null
       })
     };

@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import '../models/interview_state.dart';
+import '../models/speech_failure.dart';
+export '../models/interview_state.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -8,28 +11,12 @@ import '../../../core/network/dio_client.dart';
 import '../../../core/network/websocket_client.dart';
 import '../../../shared/services/stt_service.dart';
 import '../../../shared/services/system_speech_stt_service.dart';
+import '../../../shared/services/aws_transcribe_stt_service.dart';
+import '../../../core/env.dart';
+import '../../../core/voice_policy.dart';
 import '../../../shared/services/tts_service.dart';
 
-enum InterviewPhase {
-  ready,
-  speaking,
-  listening,
-  processing,
-  reconnecting,
-  error,
-}
-
-class TranscriptEntry {
-  final String role;
-  final String text;
-  final DateTime timestamp;
-
-  TranscriptEntry({
-    required this.role,
-    required this.text,
-    required this.timestamp,
-  });
-}
+part 'interview_response_recovery.dart';
 
 /// Factory seam for the interview WebSocket so tests can inject a fake socket
 /// without opening a real network connection. Production uses [_defaultWsFactory].
@@ -51,7 +38,7 @@ class InterviewProvider extends ChangeNotifier {
   List<TranscriptEntry> transcript = [];
   String? errorMessage;
   String? recordingNotice;
-  String _selectedVoiceId = 'Tiffany';
+  String _selectedVoiceId = 'Ruth';
   // COST: must match the backend default (POLLY_DEFAULT_ENGINE, 'neural').
   // The backend overrides whatever the client sends, so 'generative' here was
   // only ever misleading — but if the override is relaxed it would silently
@@ -71,11 +58,9 @@ class InterviewProvider extends ChangeNotifier {
     String? engine,
     String voiceMode = 'cost_saver',
   }) {
-    _selectedVoiceId = voiceId;
-    _voiceMode = voiceMode;
-    // Engine follows the mode unless explicitly overridden.
-    _selectedEngine =
-        engine ?? (voiceMode == 'premium' ? 'generative' : 'neural');
+    _selectedVoiceId = VoicePolicy.resolve(voiceId);
+    _voiceMode = 'cost_saver';
+    _selectedEngine = 'neural';
     _safeNotify();
   }
 
@@ -88,6 +73,7 @@ class InterviewProvider extends ChangeNotifier {
   String finalTranscript = "";
   bool isConnecting = false;
   bool isListening = false;
+  bool isPreparingVoice = false;
   bool isSessionEnded = false;
   String? terminationReason;
   bool? feedbackExpected;
@@ -96,6 +82,7 @@ class InterviewProvider extends ChangeNotifier {
 
   WebSocketClient? _wsClient;
   final SttService _sttService;
+  Map<String, dynamic> get speechDiagnostics => _sttService.diagnostics;
   final TtsService _ttsService;
   final FirebaseAuth? _injectedAuth;
   final WebSocketClientFactory _wsFactory;
@@ -210,10 +197,20 @@ class InterviewProvider extends ChangeNotifier {
     TtsService? ttsService,
     FirebaseAuth? auth,
     WebSocketClientFactory? wsFactory,
-  }) : _sttService = sttService ?? SystemSpeechSttService(),
+  }) : _sttService = sttService ?? defaultSttService(),
        _ttsService = ttsService ?? TtsService(),
        _injectedAuth = auth,
        _wsFactory = wsFactory ?? _defaultWsFactory;
+
+  static SttService defaultSttService() => Env.awsSttEnabled
+      ? AwsTranscribeSttService(
+          language: Env.awsSttLanguage,
+          stability: Env.awsSttStability,
+          pause: Duration(
+            milliseconds: Env.awsSttPauseMs < 4000 ? 4000 : Env.awsSttPauseMs,
+          ),
+        )
+      : SystemSpeechSttService();
 
   void _cancelSocketSubscriptions() {
     _socketGeneration++;
@@ -516,6 +513,19 @@ class InterviewProvider extends ChangeNotifier {
       }
       if (!valid()) return;
       _pauseCapture();
+      if (expectsAnswer && !preserveDraft && sid != null && question != null) {
+        // Hide permission/recorder allocation and ticket latency under playback.
+        // The microphone and paid recognition stream remain stopped.
+        unawaited(
+          _sttService
+              .prewarmQuestion(
+                sessionId: sid,
+                turnId: question,
+                identity: '$sid:$gen:$question',
+              )
+              .catchError((Object _) {}),
+        );
+      }
       var refreshed = false;
       while (valid()) {
         try {
@@ -725,6 +735,7 @@ class InterviewProvider extends ChangeNotifier {
   bool _isEnding = false;
 
   void _pauseCapture() {
+    isPreparingVoice = false;
     _captureFinalized = true;
     _captureClosing = false;
     _captureId++;
@@ -770,6 +781,12 @@ class InterviewProvider extends ChangeNotifier {
     isListening = false;
     _currentPhase = InterviewPhase.listening;
     final gen = _generation;
+    if (sessionId != null && _currentTurnId != null) {
+      _sttService.setQuestionContext(
+        sessionId: sessionId!,
+        turnId: _currentTurnId!,
+      );
+    }
     _sttService.configureCapture(
       identity: '${sessionId ?? 'local'}:$gen:${_currentTurnId ?? capture}',
       preserve: preserve,
@@ -830,11 +847,13 @@ class InterviewProvider extends ChangeNotifier {
                 _captureClosingFailure = error.errorMsg;
                 return;
               }
-              if (error.errorMsg.contains('permission')) {
+              final failure = SpeechFailure.fromCode(error.errorMsg);
+              if (failure?.terminal == true) {
                 _pauseCapture();
-                microphoneAvailable = false;
-                errorMessage =
-                    'Microphone permission is denied. Enable it in device settings before starting an interview.';
+                if (error.errorMsg.contains('permission')) {
+                  microphoneAvailable = false;
+                }
+                errorMessage = failure!.message;
                 _currentPhase = InterviewPhase.error;
                 _safeNotify();
               } else if (error.errorMsg == 'error_no_match' ||
@@ -842,9 +861,21 @@ class InterviewProvider extends ChangeNotifier {
                 _recoverMicrophone(capture, gen);
               } else {
                 _recoverMicrophone(capture, gen);
+                if (failure != null && _currentPhase != InterviewPhase.error) {
+                  errorMessage = failure.message;
+                  _safeNotify();
+                }
               }
             },
             onStatus: (status) {
+              if (valid() && status == 'transcriptionRecovered') {
+                _finalizeCapture(capture);
+              }
+              if (valid() && status == 'recordingClipped') {
+                recordingNotice =
+                    'The microphone recording is clipping. Try speaking farther from the microphone; this is a recording-quality issue.';
+                _safeNotify();
+              }
               if (valid() && status == 'recordingUnavailable') {
                 recordingNotice =
                     'Recording is unavailable on this device. Your interview continues with transcript feedback; delivery measurements will be unavailable.';
@@ -854,6 +885,7 @@ class InterviewProvider extends ChangeNotifier {
                   !_captureClosing &&
                   (status == 'starting' || status == 'listening')) {
                 isListening = status == 'listening';
+                isPreparingVoice = status == 'starting';
                 _safeNotify();
               }
               if (valid() && !_captureClosing && status == 'done') {
@@ -861,7 +893,7 @@ class InterviewProvider extends ChangeNotifier {
               }
             },
           )
-          .timeout(const Duration(seconds: 30));
+          .timeout(Duration(seconds: _sttService.usesAudioEndpoint ? 120 : 30));
       if (valid() && !_captureClosing) {
         isListening = _sttService.isListening;
         _safetyTimer?.cancel();
@@ -896,6 +928,7 @@ class InterviewProvider extends ChangeNotifier {
 
   void _recoverMicrophone(int capture, int gen) {
     isListening = false;
+    isPreparingVoice = false;
     if (_segmentRecoveryRequested) return;
     _segmentRecoveryRequested = true;
     _safetyTimer
@@ -1065,10 +1098,14 @@ class InterviewProvider extends ChangeNotifier {
     _initWebSocket();
   }
 
-  Future<void> doneSpeaking() => _finalizeCapture(_captureId);
+  Future<void> doneSpeaking() {
+    _sttService.confirmRecovery();
+    return _finalizeCapture(_captureId);
+  }
 
   Future<void> submitTypedAnswer(String text) async {
     if (text.trim().isEmpty || _isEnding || isSessionEnded) return;
+    _sttService.confirmRecovery();
     if (_captureFinalized) {
       _captureId++;
       _captureFinalized = false;
@@ -1086,6 +1123,8 @@ class InterviewProvider extends ChangeNotifier {
       'sessionId': sessionId,
       'textTranscript': text,
       'isSilence': text.isEmpty,
+      if (_sttService.submissionMetadata case final metadata?)
+        'stt': {...metadata, 'edited': text != partialTranscript.trim()},
       if (audioExpected) 'audioExpected': true,
       'clientTurnId':
           '${sessionId ?? 'local'}-$_generation-$capture-${DateTime.now().microsecondsSinceEpoch}',
@@ -1096,92 +1135,6 @@ class InterviewProvider extends ChangeNotifier {
     };
     _answerAcknowledged = false;
     _sendPendingAnswer();
-    _safeNotify();
-  }
-
-  void _sendPendingAnswer() {
-    if (_pendingAnswer == null) return;
-    if (sessionId == null && _wsClient == null) return;
-    if (_wsClient == null || _transportLost || !_wsClient!.isConnected) {
-      _scheduleResponseRecovery();
-      return;
-    }
-    _wsClient?.sendMessage({'type': 'turn_submit', 'payload': _pendingAnswer});
-    _armResponseWatchdog();
-  }
-
-  void _armResponseWatchdog() {
-    final gen = _generation;
-    _responseTimer?.cancel();
-    _responseTimer = Timer(const Duration(seconds: 45), () {
-      if (!_isStale(gen) && !_isEnding) _scheduleResponseRecovery();
-    });
-  }
-
-  void _requestReconnect() {
-    if (_wsClient == null || !_wsClient!.isConnected || _transportLost) {
-      _scheduleResponseRecovery();
-      return;
-    }
-    _awaitingReconnect = true;
-    _requestId = '$_generation-${++_recoveryOperation}';
-    _wsClient?.sendMessage({
-      'type': 'session_reconnect',
-      'payload': {
-        'sessionId': sessionId,
-        'turnId': _currentTurnId,
-        'requestId': _requestId,
-      },
-    });
-    _armResponseWatchdog();
-  }
-
-  void _scheduleResponseRecovery() {
-    if (_isEnding ||
-        isSessionEnded ||
-        _suspended ||
-        _recoveryStopped ||
-        _recoveryTimer?.isActive == true) {
-      return;
-    }
-    _responseTimer?.cancel();
-    if (_responseRetries >= maxRecoveryAttempts) {
-      _stopRecovery(
-        'Interview recovery stopped after 3 attempts. Your answer is kept in this session. You can end the interview.',
-      );
-      return;
-    }
-    _currentPhase = InterviewPhase.reconnecting;
-    errorMessage = 'Recovering your interview automatically…';
-    final gen = _generation;
-    _recoveryTimer = Timer(const Duration(seconds: 2), () async {
-      if (_isStale(gen) || _isEnding || _suspended || _recoveryStopped) return;
-      if (_connectingTransport || _isInitializing) {
-        return; // the active real operation owns its deadline
-      }
-      recoveryAttempt = ++_responseRetries;
-      errorMessage =
-          'Recovering your interview automatically ($recoveryAttempt/3)…';
-      _safeNotify();
-      // Reuse the exact clientTurnId; a retry must never become a new answer.
-      if (sessionId == null && _initialRequest != null) {
-        await initSession(
-          _initialRequest!['type'],
-          resumeId: _initialRequest!['resumeId'],
-          websiteUrl: _initialRequest!['websiteUrl'],
-          analysisId: _initialRequest!['analysisId'],
-        );
-      } else if (_refreshCredentials ||
-          _wsClient == null ||
-          !_wsClient!.isConnected ||
-          _transportLost) {
-        await resumeSession();
-      } else if (_pendingAnswer != null) {
-        _sendPendingAnswer();
-      } else {
-        _requestReconnect();
-      }
-    });
     _safeNotify();
   }
 

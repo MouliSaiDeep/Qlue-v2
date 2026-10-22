@@ -27,26 +27,19 @@ const VOICE_ENGINE_SUPPORT = {
 const COST_SAVER_VOICE = 'Ruth';
 
 /**
- * Whether generative synthesis is permitted for this specific request.
- * Priority: explicit per-request opt-in (Premium voice mode) > env default.
- * The env var remains a global kill-switch: if POLLY_ALLOW_GENERATIVE is
- * explicitly 'false' it blocks even Premium requests (useful once free credits
- * run out); otherwise the per-request flag decides.
+ * Global launch policy. Premium voices remain locked for all accounts,
+ * including old clients, stored preferences, and legacy environment opt-ins.
  */
 function isGenerativeAllowed(allowGenerative) {
-  if (process.env.POLLY_ALLOW_GENERATIVE === 'false') return false; // hard global block
-  if (allowGenerative === true) return true;                        // Premium request
-  return process.env.POLLY_ALLOW_GENERATIVE === 'true';             // env-level opt-in
+  return false; // Server-owned launch lock; even legacy sessions use neural.
 }
 
 /**
  * Resolve the (voice, engine) pair actually sent to Polly.
  * - Honours the requested engine when the voice supports it, else falls back
  *   to the cheapest engine that voice offers.
- * - Cost-saver mode (default): unless generative is allowed for this request
- *   (Premium voice mode) or via POLLY_ALLOW_GENERATIVE=true, any resolution
- *   that lands on 'generative' is substituted with Ruth/neural, keeping
- *   synthesis inside the 1M-chars/month neural free tier.
+ * - Any generative-only selection resolves to Ruth/neural while Premium is
+ *   locked. Existing standard voice choices remain available.
  *
  * @param {object} [options]
  * @param {boolean} [options.allowGenerative] per-request Premium opt-in.
@@ -96,6 +89,9 @@ async function synthesizeSpeech(text, voiceId = 'Ruth', requestedEngine = null, 
   // resolved voice/engine and the character count only.
   diagnostics.log(`[Polly] Synthesizing: voice=${finalVoiceId}, engine=${finalEngine}, chars=${text.length}`);
 
+  // A denied quota/stop switch is not a voice-engine failure. Do not retry
+  // another engine or spend more attempts when admission was refused.
+  await beforePaidCall('interview');
   try {
     const command = new SynthesizeSpeechCommand({
       Text: text,
@@ -105,7 +101,6 @@ async function synthesizeSpeech(text, voiceId = 'Ruth', requestedEngine = null, 
       TextType: 'text'
     });
 
-    await beforePaidCall('interview');
     const response = await sendBounded(pollyClient,command);
     
     // Convert stream to base64

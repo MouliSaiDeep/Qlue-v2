@@ -46,7 +46,7 @@ describe('getUserProfile handler', () => {
 
         expect(response.statusCode).toBe(200);
         const body = JSON.parse(response.body);
-        expect(body).toEqual(mockUser);
+        expect(body).toEqual({...mockUser,voiceId:'Ruth',voiceMode:'cost_saver'});
         expect(getUserById).toHaveBeenCalledWith('user-123');
     });
 
@@ -122,7 +122,7 @@ describe('getUserProfile handler', () => {
         expect(body.photoUrl).toBe('');
         expect(body.profession).toBe('');
         expect(body.skills).toEqual([]);
-        expect(body.voiceId).toBe('Tiffany');
+        expect(body.voiceId).toBe('Ruth');
         expect(body.activeResumeId).toBeNull();
     });
 

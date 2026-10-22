@@ -31,13 +31,16 @@ async function promote(event, report) {
   if(event.attemptId) { condition+=' AND feedbackAttemptId = :attempt'; values[':attempt']=event.attemptId; }
   else condition+=' AND attribute_not_exists(feedbackAttemptId)';
   let expression='SET feedbackStatus = :status, feedbackId = :id, currentState = :ended';
-  if(report.dimensionScores) { expression+=', accumulatedScores = :scores';values[':scores']=report.dimensionScores; }
+  if(report.analysisStatus!=='UNAVAILABLE'&&report.dimensionScores) { expression+=', accumulatedScores = :scores';values[':scores']=report.dimensionScores; }
+  if(report.analysisStatus==='OK'&&report.reportVersion==='content-rubric-v2') {
+    expression+=', assessmentOverallScore = :overall';values[':overall']=report.overallScore;
+  }
   if(report.deliveryMeasurements) {expression+=', deliveryMeasurements = :delivery';values[':delivery']=report.deliveryMeasurements;}
   if(process.env.ANSWER_AUDIO_BUCKET) {expression+=', answerAudioClosed = :audioClosed, answerAudioCleanupPending = :audioClosed';values[':audioClosed']=true;}
   expression+=' REMOVE feedbackDispatchPending';
   // A failed final assessment must not leave earlier provisional scores in
   // dashboard averages. Canonical report/attempt fencing still owns this write.
-  if (report.analysisStatus === 'UNAVAILABLE') expression += ', accumulatedScores';
+  if (report.analysisStatus === 'UNAVAILABLE') expression += ', accumulatedScores, assessmentOverallScore';
   await ddb.fencedSend(new UpdateCommand({TableName:table(),Key:{sessionId:event.sessionId},UpdateExpression:expression,ConditionExpression:condition,ExpressionAttributeValues:values}),event.userId);
 }
 module.exports={currentAttempt,claim,promote};

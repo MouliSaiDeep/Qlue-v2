@@ -1,0 +1,29 @@
+{
+  "vocabularyManifest": {},
+  "technicalTerms": [
+    {"term": "Flutter", "aliases": []},
+    {"term": "AWS", "aliases": ["A W S"]},
+    {"term": "DynamoDB", "aliases": ["Dynamo DB"]},
+    {"term": "PostgreSQL", "aliases": ["Postgres SQL"]},
+    {"term": "Kubernetes", "aliases": []}
+  ],
+  "recordings": [
+    {
+      "id": "replace-with-consented-recording-id",
+      "wav": "recording.wav",
+      "consented": false,
+      "humanVerified": false,
+      "reference": null,
+      "speakerId": "replace-with-anonymous-speaker-id",
+      "split": "evaluation",
+      "language": "en-IN",
+      "stability": "off",
+      "topic": "technical",
+      "device": "record-the-device-model",
+      "accent": "self-described-accent",
+      "headset": "record-built-in-or-headset-model",
+      "noise": "describe-the-recording-environment",
+      "systemHypothesis": null
+    }
+  ]
+}

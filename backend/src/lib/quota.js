@@ -66,7 +66,7 @@ const TIER_LIMITS = {
     // Generative voices are deliberately enabled for the free tier (funded by
     // credits, bounded by the daily interview cap). Flip to false when paid
     // tiers land to reserve premium voices for subscribers.
-    premiumVoice: true
+    premiumVoice: false
   }
   // Example future tier:
   // pro: { interview: 100, jdAnalysis: null, scrape: null, resumeParse: null, premiumVoice: true }
@@ -138,8 +138,7 @@ function getLimit(tier, action) {
 }
 
 function isPremiumVoiceAllowed(tier) {
-  const cfg = TIER_LIMITS[tier] || TIER_LIMITS[DEFAULT_TIER];
-  return !!cfg.premiumVoice;
+  return false; // Premium personas are visible but locked for every tier.
 }
 
 /**

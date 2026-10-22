@@ -5,7 +5,7 @@ const { synthesizeSpeech: pollySynthesizeSpeech } = require('../../lib/polly');
  */
 module.exports = {
   synthesizeSpeech: async (text, options = {}) => {
-    const voiceId = options.voiceId || 'Tiffany';
+    const voiceId = require('../../lib/voicePolicy').preference(options.voiceId).voiceId;
     const engine = options.engine || null;
     const result = await pollySynthesizeSpeech(text, voiceId, engine);
     return {

@@ -59,24 +59,7 @@ exports.handler = async (event) => {
         continue;
       }
 
-      // 2. Build complete transcript text
       if(!selected.answers.length) continue;
-      const fullTranscript = selected.rows
-        .map(t => `${(t.speaker || 'UNKNOWN').toUpperCase()}: ${t.text}`)
-        .join('\n\n');
-
-      // Fetch interim scores accumulated during the live session so the
-      // analysis lambda can weigh them into the final report. (This was
-      // always expected by the feedback pipeline tests but never wired up.)
-      let accumulatedScores = {};
-      try {
-        const sessionResult = await ddb.get(SESSIONS_TABLE, { sessionId });
-        if (sessionResult.success && sessionResult.data?.accumulatedScores) {
-          accumulatedScores = sessionResult.data.accumulatedScores;
-        }
-      } catch (scoreErr) {
-        diagnostics.warn(`Could not fetch accumulated scores for ${sessionId}:`, scoreErr.name);
-      }
 
       // 3. Invoke analyzeTranscript asynchronously
       const payload = {
@@ -84,11 +67,10 @@ exports.handler = async (event) => {
         attemptId: snsMessage.attemptId,
         userId,
         moduleType,
-        transcript: fullTranscript,
-        accumulatedScores,
         contextRef,
         assessmentContext:require('../../lib/feedbackTranscript').assessmentContext(live),
         acceptedAnswers:selected.answers,
+        answerPairs:require('../../lib/feedbackAssessment').pairs(selected),
         transcriptAdmission:selected.legacy?'LEGACY_FILTERED':'ACCEPTED_IDS',
         ...(snsMessage.retryReportId?{retryReportId:snsMessage.retryReportId}:{}),
         metadata: {
@@ -97,6 +79,10 @@ exports.handler = async (event) => {
           endTime: transcriptResult.data[transcriptResult.data.length - 1].timestamp
         }
       };
+      if(Buffer.byteLength(JSON.stringify(payload))>240000) {
+        delete payload.answerPairs;
+        payload.assessmentInputLimitExceeded=true;
+      }
 
       diagnostics.info(`Triggering analysis for session ${sessionId}`);
       const command = new InvokeCommand({

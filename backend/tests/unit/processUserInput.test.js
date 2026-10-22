@@ -6,8 +6,29 @@ jest.mock('../../src/models/session');
 jest.mock('../../src/models/transcript');
 
 describe('processUserInput handler', () => {
+  it('retains a name correction without consuming an answer or question', async()=>{
+    const session={userId:'u',moduleType:'RESUME',turnCount:2,answeredCount:1,currentState:INTERVIEW_STATES.LOADING_CONTEXT,questionText:'Hello, Rashid. Could you describe the connection lifecycle?'};
+    getSessionById.mockResolvedValue(session);updateSessionState.mockResolvedValue(session);
+    const response=await handler({body:JSON.stringify({sessionId:'s',clientTurnId:'repair',textTranscript:'Sorry, you got my name wrong. My name is Rishi.'}),requestContext:{authorizer:{uid:'u'}}});
+    expect(JSON.parse(response.body)).toMatchObject({shouldTerminate:false,isReprompt:true,session});
+    expect(JSON.parse(response.body).nextAIResponse).toBe('Thank you for correcting me. Could you describe the connection lifecycle?');
+    expect(updateSessionState.mock.calls[0][3]).not.toHaveProperty('incrementAnsweredCount');
+    expect(saveTranscript).toHaveBeenCalled();
+  });
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('keeps server ASR evidence but ignores ASR claims in a public JSON request', async () => {
+    const input=require('../../src/handlers/interview/processUserInput');
+    const session={userId:'u',moduleType:'HR',currentState:INTERVIEW_STATES.LOADING_CONTEXT};
+    getSessionById.mockResolvedValue(session);updateSessionState.mockResolvedValue(session);
+    const body=JSON.stringify({sessionId:'s',textTranscript:'I built an API and tested it.',clientTurnId:'a',asr:{forged:true}});
+    await input.handler({body,requestContext:{authorizer:{uid:'u'}}});
+    expect(saveTranscript.mock.calls.at(-1)[4]).not.toHaveProperty('asr');
+    const asr={provider:'aws-transcribe',originalTranscript:'I built an API and tested it.',uncertainty:{version:1,spans:[],incomplete:false}};
+    await input.handler({body,requestContext:{authorizer:{uid:'u'}},[input.ASR_EVIDENCE]:asr});
+    expect(saveTranscript.mock.calls.at(-1)[4].asr).toEqual(asr);
   });
 
   it.each(['INTRO', 'SELF_INTRO'])('re-prompts a fragment without consuming the revised %s attempt', async (moduleType) => {

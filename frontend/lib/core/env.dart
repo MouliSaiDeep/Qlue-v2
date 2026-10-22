@@ -10,19 +10,46 @@
 /// build_runner step: the file is read fresh on every build, so editing
 /// env.json and rebuilding is always enough for changes to take effect.
 abstract class Env {
+  // Independent of backend/gateway gates. OFF in ordinary and release builds.
+  static const awsSttEnabled = bool.fromEnvironment(
+    'AWS_STT_ENABLED',
+    defaultValue: false,
+  );
+  static const awsSttLanguage = String.fromEnvironment(
+    'AWS_STT_LANGUAGE',
+    defaultValue: 'en-IN',
+  );
+  static const awsSttStability = String.fromEnvironment(
+    'AWS_STT_STABILITY',
+    defaultValue: 'off',
+  );
+  static const awsSttPauseMs = int.fromEnvironment(
+    'AWS_STT_PAUSE_MS',
+    defaultValue: 4000,
+  );
   static const String apiBaseUrl = String.fromEnvironment('API_BASE_URL');
   static const String websocketUrl = String.fromEnvironment('WEBSOCKET_URL');
-  static const String firebaseApiKey = String.fromEnvironment('FIREBASE_API_KEY');
+  static const String firebaseApiKey = String.fromEnvironment(
+    'FIREBASE_API_KEY',
+  );
   static const String firebaseAppId = String.fromEnvironment('FIREBASE_APP_ID');
-  static const String messagingSenderId = String.fromEnvironment('MESSAGING_SENDER_ID');
-  static const String firebaseProjectId = String.fromEnvironment('FIREBASE_PROJECT_ID');
+  static const String messagingSenderId = String.fromEnvironment(
+    'MESSAGING_SENDER_ID',
+  );
+  static const String firebaseProjectId = String.fromEnvironment(
+    'FIREBASE_PROJECT_ID',
+  );
   static const String measurementId = String.fromEnvironment('MEASUREMENT_ID');
-  static const String googleClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
+  static const String googleClientId = String.fromEnvironment(
+    'GOOGLE_CLIENT_ID',
+  );
   // The WEB OAuth client id. On Android/iOS this must be passed to
   // GoogleSignIn.initialize(serverClientId:) so Google mints the ID token that
   // Firebase signInWithCredential requires; without it idToken is null and
   // Google sign-in silently fails right after the account picker.
-  static const String googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+  static const String googleWebClientId = String.fromEnvironment(
+    'GOOGLE_WEB_CLIENT_ID',
+  );
 
   /// Optional fallback address shown on the in-app Help & Support screen. The
   /// form now submits through the backend (POST /support) and stays in-app; this

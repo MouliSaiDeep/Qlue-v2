@@ -98,3 +98,17 @@ backend/template-migration.yaml
 /audit/full-stable-2026-10-11/private/
 
 /audit/full-stable-2026-10-11/deployment/private/
+
+# Local release binaries and private investigation snapshots are not source.
+/output/
+/audit/**/private/
+/frontend/coverage/
+
+# Python caches and local tooling.
+__pycache__/
+*.pyc
+/frontend/.claude/
+
+# Unused offline speech experiments are not release inputs.
+/frontend/assets/speech/
+/frontend/packages/speech_to_text/

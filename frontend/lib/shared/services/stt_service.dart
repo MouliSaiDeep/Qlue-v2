@@ -23,6 +23,20 @@ class SttService {
   bool get usesAudioEndpoint => false;
   bool get heardSpeech => _heardSpeech;
   bool get hasUnconfirmedSpeech => false;
+  bool get requiresRecoveryConfirmation => false;
+  void confirmRecovery() {}
+  Map<String, dynamic>? get submissionMetadata => null;
+  Map<String, dynamic> get diagnostics => const {};
+  // Optional preparation only: never records audio or starts recognition.
+  Future<void> prewarmQuestion({
+    required String sessionId,
+    required String turnId,
+    required String identity,
+  }) async {}
+  void setQuestionContext({
+    required String sessionId,
+    required String turnId,
+  }) {}
   bool get supportedPlatform => true;
   void enableAnswerAudio(bool enabled) {}
   bool get answerAudioAvailable => false;

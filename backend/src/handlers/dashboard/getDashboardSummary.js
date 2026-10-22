@@ -13,7 +13,8 @@ const USERS_TABLE = process.env.USERS_TABLE || 'qlue-users';
 /**
  * Calculates a unified integer score from the accumulatedScores object.
  */
-function calculateAggregateScore(accumulatedScores) {
+function calculateAggregateScore(accumulatedScores, assessmentOverallScore) {
+    if (Number.isFinite(assessmentOverallScore)) return Math.round(assessmentOverallScore);
     if (!accumulatedScores || Object.keys(accumulatedScores).length === 0) return 0;
     
     let totalScore = 0;
@@ -54,7 +55,7 @@ exports.handler = async (event) => {
             ExpressionAttributeValues: {
                 ':uid': userId
             },
-            ProjectionExpression: 'moduleType, accumulatedScores, discarded'
+            ProjectionExpression: 'moduleType, accumulatedScores, assessmentOverallScore, discarded'
         };
 
         const userCmd = new GetCommand({
@@ -90,7 +91,7 @@ exports.handler = async (event) => {
 
             // Only score sessions that generated metrics
             if (session.accumulatedScores && Object.keys(session.accumulatedScores).length > 0) {
-                const aggrScore = calculateAggregateScore(session.accumulatedScores);
+                const aggrScore = calculateAggregateScore(session.accumulatedScores, session.assessmentOverallScore);
                 scoresArray.push(aggrScore);
                 completedSessions++;
                 

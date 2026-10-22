@@ -21,7 +21,10 @@ test('real initialization, answer acceptance, report generation and persistence 
  await sessions.updateSessionState(sessionId,'TERMINATED','LOADING_CONTEXT');
  bedrock.on(ConverseCommand).resolves({output:{message:{content:[{text:JSON.stringify({strengths:['Communication'],improvements:['Be specific'],summary:'Good interview'})}]}},usage:{inputTokens:10,outputTokens:10}});
  process.env.STORE_FEEDBACK_REPORT_LAMBDA='store';
- expect(await reports.handler({sessionId,userId:'u',moduleType:'HR',transcript:'USER: I am a software engineer.',dimensionScores:{Clarity:80},metadata:{turnCount:1}})).toMatchObject({success:true});
+ const assessment=require('../../src/lib/feedbackAssessment');
+ const prepared=assessment.prepare({moduleType:'HR',answerPairs:[{answerId:'one',question:'Describe your role.',answer:'I am a software engineer.'}]});
+ const evaluated=assessment.validate(JSON.stringify({answers:[{answerId:'one',levels:[1,0,1,2],evidenceIds:['e1','','e1','e1']}]}),prepared);
+ expect(await reports.handler({sessionId,userId:'u',moduleType:'HR',assessmentResult:assessment.report(prepared,evaluated),metadata:{turnCount:1}})).toMatchObject({success:true});
  const command=lambda.commandCalls(InvokeCommand).at(-1).args[0].input;
  const payload=JSON.parse(Buffer.from(command.Payload).toString());
  const saved=await storage.handler(payload);

@@ -131,7 +131,7 @@ async function handleSessionInit(connectionId, body, userId) {
     if ([INTERVIEW_STATES.TERMINATED,INTERVIEW_STATES.ERROR,INTERVIEW_STATES.GENERATING_FEEDBACK].includes(session.currentState)) {
       return postToConnection(connectionId,errorFrame(null,requestIdentity.getStore(),[409,'SESSION_TERMINAL',false,'This interview has stopped.']));
     }
-    const finalVoiceId = allowedVoices.includes(voiceId) ? voiceId : (session.voiceId || 'Tiffany');
+    const finalVoiceId = require('../../lib/voicePolicy').preference(allowedVoices.includes(voiceId) ? voiceId : session.voiceId).voiceId;
 
     // VOICE MODE: the session was created with a voiceMode ('premium' unlocks
     // generative voices, 'cost_saver' stays on neural). The engine follows from
@@ -253,9 +253,12 @@ async function handleTurnSubmit(connectionId, body, userId) {
       return await sendError(connectionId, 'TURN_IN_PROGRESS', 409);
     }
 
+    let asr;
+    try { asr=await require('../../lib/sttSession').evidence(userId,session,body); }
+    catch(error){return sendError(connectionId,error.code||'ASR_NOT_FINAL',error.statusCode||503);}
     const job = {connectionId,sessionId,userId,clientTurnId,jobId:clientTurnId,
       requestId:body.requestId,turnId:body.turnId,
-      body:{textTranscript,isSilence,currentConceptId,...(body.audioExpected === true ? {audioExpected:true} : {})},action:'turn_submit',
+      body:{textTranscript,isSilence,currentConceptId,...(asr?{asr}:{}),...(body.audioExpected === true ? {audioExpected:true} : {})},action:'turn_submit',
       voiceId:voiceId||session.voiceId, ...resolveVoiceMode(session,body),expectedTurnCount:session.turnCount||0};
     // BUG-3 FIX: Make state update atomic - only update if currently USER_RESPONDING
     try {
@@ -273,7 +276,7 @@ async function handleTurnSubmit(connectionId, body, userId) {
     }
 
     const allowedVoices = (process.env.ALLOWED_VOICES || 'Tiffany,Ruth,Joanna,Matthew,Stephen').split(',');
-    const finalVoiceId = allowedVoices.includes(voiceId) ? voiceId : (session.voiceId || 'Tiffany');
+    const finalVoiceId = require('../../lib/voicePolicy').preference(allowedVoices.includes(voiceId) ? voiceId : session.voiceId).voiceId;
 
     // COST-FIX / VOICE MODE: see session_init note above.
     const { voiceMode: finalVoiceMode, engine: finalEngine } = resolveVoiceMode(session, body);
@@ -296,7 +299,7 @@ async function handleTurnSubmit(connectionId, body, userId) {
           requestId: body.requestId,
           turnId: body.turnId,
           jobId: clientTurnId,
-          body: { textTranscript, isSilence, currentConceptId },
+          body: { textTranscript, isSilence, currentConceptId,...(asr?{asr}:{}) },
           action: 'turn_submit',
           voiceId: finalVoiceId,
           engine: finalEngine,

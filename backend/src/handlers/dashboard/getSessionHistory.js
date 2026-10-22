@@ -97,9 +97,12 @@ exports.handler = async (event) => {
         return {
             statusCode: 200,
             body: JSON.stringify({
-                // Explicit ungraded outcomes retain a history/transcript entry;
-                // old discarded sessions keep their existing hidden behavior.
-                sessions: (result.Items || []).filter(x => !x.discarded || x.feedbackExpected === false),
+                // No accepted answer means no interview-history entry. Keep
+                // legacy rows without a count and genuine zero-score answers.
+                // feedbackExpected=false must never unhide a discarded row.
+                sessions: (result.Items || []).filter(x => !x.discarded && x.answeredCount !== 0).map(x =>
+                    Number.isFinite(x.assessmentOverallScore)
+                        ? {...x, accumulatedScores:{Overall:Math.round(x.assessmentOverallScore)}} : x),
                 nextCursor,
                 // Retained for backward compatibility with older clients; new
                 // clients should use the opaque `nextCursor`.

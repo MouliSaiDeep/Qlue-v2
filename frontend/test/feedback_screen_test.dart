@@ -32,6 +32,28 @@ class NoFeedbackAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+class UnavailableFeedbackAdapter implements HttpClientAdapter {
+  int requests = 0;
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    requests++;
+    return ResponseBody.fromString(
+      '{"error":"ASSESSMENT_UNAVAILABLE","retryable":true}',
+      422,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
 // The feedback screen self-fetches its report via Dio; these tests use the
 // screen's @visibleForTesting hooks (initialReport / initialError / autoFetch)
 // to render each state deterministically without network or Firebase.
@@ -106,6 +128,31 @@ void main() {
     expect(find.text('Failed to load'), findsOneWidget);
     expect(find.text('Go Back'), findsOneWidget);
   });
+
+  testWidgets(
+    'terminal assessment failure stops loading without polling again',
+    (tester) async {
+      final dio = DioClient().dio;
+      final interceptors = dio.interceptors.toList();
+      final previous = dio.httpClientAdapter;
+      final adapter = UnavailableFeedbackAdapter();
+      dio.interceptors.clear();
+      dio.httpClientAdapter = adapter;
+      addTearDown(() {
+        dio.httpClientAdapter = previous;
+        dio.interceptors.addAll(interceptors);
+      });
+      await tester.pumpWidget(
+        wrap(const FeedbackReportScreen(sessionId: 'failed-assessment')),
+      );
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 12));
+      expect(adapter.requests, 1);
+      expect(find.textContaining('No score was assigned'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('Go Back'), findsOneWidget);
+    },
+  );
 
   testWidgets('renders report data', (WidgetTester tester) async {
     final report = FeedbackReportModel(

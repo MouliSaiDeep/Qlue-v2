@@ -7,6 +7,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private var interviewAudio: InterviewAudioCapture? = null
     private var interviewSpeech: InterviewSpeechRecognizer? = null
+    private var awsPcm: AwsPcmCapture? = null
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "qlue/speech_review")
@@ -17,12 +18,16 @@ class MainActivity : FlutterActivity() {
             }
         interviewAudio = InterviewAudioCapture(this, flutterEngine.dartExecutor.binaryMessenger)
         interviewSpeech = InterviewSpeechRecognizer(this, flutterEngine.dartExecutor.binaryMessenger)
+        awsPcm = AwsPcmCapture(this, flutterEngine.dartExecutor.binaryMessenger) { complete ->
+            interviewSpeech?.releaseForAws(complete) ?: complete()
+        }
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         interviewAudio?.permissionCompleted(requestCode, grantResults)
     }
     override fun onPause() {
+        awsPcm?.suspendCapture()
         interviewAudio?.suspendCapture()
         interviewSpeech?.suspendCapture()
         super.onPause()
@@ -31,8 +36,10 @@ class MainActivity : FlutterActivity() {
         super.onResume()
         interviewAudio?.resumeForeground()
         interviewSpeech?.resumeForeground()
+        awsPcm?.resumeForeground()
     }
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        awsPcm?.close(); awsPcm = null
         interviewAudio?.close()
         interviewSpeech?.close()
         interviewAudio = null

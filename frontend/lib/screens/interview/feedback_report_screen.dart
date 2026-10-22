@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:feather_icons/feather_icons.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lg;
 import '../../core/theme.dart';
 import 'package:provider/provider.dart';
 import '../../context/auth_provider.dart';
+import '../../context/appearance_provider.dart';
 import '../../components/semi_circle_gauge.dart';
 import '../../core/models/session_model.dart';
 import '../../core/models/feedback_report_model.dart';
@@ -18,6 +18,8 @@ import '../../components/glass_card.dart';
 import '../../components/glass_controls.dart';
 import '../../components/spectral_background.dart';
 import 'feedback_pdf_export.dart';
+import 'widgets/feedback_radar_chart.dart';
+import 'widgets/feedback_sections.dart';
 
 class FeedbackReportScreen extends StatefulWidget {
   final SessionModel? session;
@@ -46,6 +48,8 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
   bool _isLoading = true;
   bool _isExporting = false;
   int _activeTabIndex = 0;
+  String? _focusedCriterion;
+  bool _motionDisabled = false;
   String? _errorMessage;
   FeedbackReportModel? _report;
 
@@ -54,7 +58,7 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
   final List<String> _loadingPhrases = [
     "Analyzing your transcription...",
     "Evaluating core dimensions...",
-    "Cross-referencing behavioral patterns...",
+    "Reviewing your answer evidence...",
     "Synthesizing actionable feedback...",
     "Finalizing comprehensive report...",
   ];
@@ -107,6 +111,7 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
       final response = await DioClient().dio.get(
         '${ApiConstants.feedbackReport}/$sId?_t=$cacheBuster',
       );
+      if (!mounted) return;
 
       if (response.statusCode == 200) {
         // FE-BUG FIX: Ensure data is parsed correctly even if API Gateway returns text/plain
@@ -115,6 +120,16 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
 
         // The endpoint returns {session, feedback, transcript}
         var feedbackData = data['feedback'];
+        if (data['session']?['feedbackStatus'] == 'FAILED' ||
+            feedbackData?['analysisStatus'] == 'UNAVAILABLE') {
+          _loadingTimer?.cancel();
+          setState(() {
+            _isLoading = false;
+            _errorMessage =
+                'A reliable assessment could not be produced. No score was assigned. Please retry feedback from History.';
+          });
+          return;
+        }
         if (feedbackData == null &&
             data['session']?['feedbackExpected'] == false) {
           if (!mounted) return;
@@ -155,20 +170,30 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
         throw Exception("Failed to load report: ${response.statusCode}");
       }
     } catch (e) {
+      if (!mounted) return;
       debugPrint("Error fetching feedback report: $e");
       // Do NOT retry on auth errors (401/403) — they won't resolve on their own.
       final is4xxAuthError =
           e is DioException &&
           (e.response?.statusCode == 401 || e.response?.statusCode == 403);
-      if (!is4xxAuthError && retries > 0) {
+      final status = e is DioException ? e.response?.statusCode : null;
+      final unavailable = status == 422;
+      final terminalClientError =
+          status != null && status >= 400 && status < 500 && status != 429;
+      if (!terminalClientError && retries > 0) {
         // Continue retrying only for transient failures
         await Future.delayed(const Duration(seconds: 3));
         if (mounted) _fetchReport(retries: retries - 1);
       } else {
+        _loadingTimer?.cancel();
         setState(() {
           _isLoading = false;
           _errorMessage = is4xxAuthError
               ? "Authentication error. Please log in again and retry."
+              : unavailable
+              ? 'A reliable assessment could not be produced. No score was assigned. Please retry feedback from History.'
+              : status == 404
+              ? 'This interview could not be found.'
               : "Unable to load feedback at this time. It may still be generating.";
         });
       }
@@ -225,6 +250,9 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
     // Force Dark Theme Colors for this screen
     final t = AppThemeColors.dark;
     final topPadding = MediaQuery.of(context).padding.top;
+    _motionDisabled =
+        MediaQuery.disableAnimationsOf(context) ||
+        (context.watch<AppearanceProvider?>()?.reduceMotion ?? false);
 
     return SpectralBackground(
       child: AppThemeColorsProvider(
@@ -281,7 +309,7 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
               width: 64,
               height: 64,
               child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(t.primary),
+                valueColor: AlwaysStoppedAnimation<Color>(t.accentGreen),
                 strokeWidth: 3,
               ),
             ),
@@ -401,7 +429,9 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
                       height: 18,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(t.primary),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          t.accentGreen,
+                        ),
                       ),
                     ),
                   ),
@@ -428,127 +458,9 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
   }
 
   Widget _buildScoreCard(AppThemeColors t) {
-    final score = _report?.overallScore.round() ?? widget.session?.score ?? 0;
+    final score = _report!.overallScore.round();
     final auth = context.read<AuthProvider>();
-    final String role = auth.profession.isNotEmpty
-        ? auth.profession
-        : (widget.session?.moduleType ?? 'Candidate');
-    final Color scoreColor = _scoreColor(score);
-
-    return GlassCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      borderRadius: 24,
-      blurSigma: 26,
-      child: Row(
-        children: [
-          // Identity
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  auth.displayName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: t.text,
-                    letterSpacing: -0.4,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  role,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12.5, color: t.textSecondary),
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scoreColor.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: scoreColor.withValues(alpha: 0.25),
-                    ),
-                  ),
-                  child: Text(
-                    score >= 80
-                        ? "Top 15% of candidates"
-                        : score >= 50
-                        ? "Solid performance"
-                        : "Keep practicing!",
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: scoreColor,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Score gauge
-          SemiCircleGauge(
-            progress: score / 100.0,
-            color: scoreColor,
-            trackColor: t.metallicBorder.withValues(alpha: 0.25),
-            width: 128,
-            strokeWidth: 11,
-            center: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  "$score",
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    color: scoreColor,
-                    height: 1.0,
-                  ),
-                ),
-                Text(
-                  "OVERALL",
-                  style: TextStyle(
-                    fontSize: 8.5,
-                    letterSpacing: 1.5,
-                    color: t.textTertiary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSpiderChartCard(AppThemeColors t) {
-    List<double> finalData = [0.8, 0.7, 0.9];
-    List<String> finalLabels = ["Clarity", "Fluency", "Vocabulary"];
-    List<MapEntry<String, num>> allDims = [];
-
-    if (_report != null && _report!.dimensionScores.isNotEmpty) {
-      allDims =
-          _report!.dimensionScores.entries
-              .map((e) => MapEntry(e.key, e.value as num))
-              .toList()
-            ..sort((a, b) => b.value.compareTo(a.value));
-      final chartDims = allDims.take(3).toList();
-      finalData = chartDims.map((e) => e.value / 100.0).toList();
-      finalLabels = chartDims.map((e) => e.key).toList();
-      while (finalData.length < 3) {
-        finalData.add(0.8);
-        finalLabels.add("Metric ${finalData.length}");
-      }
-    }
-
+    final color = _scoreColor(score);
     return GlassCard(
       padding: const EdgeInsets.all(20),
       borderRadius: 24,
@@ -556,129 +468,430 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            "Dimension Breakdown",
+            auth.displayName,
             style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
               color: t.text,
             ),
           ),
           const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // CLIPPING FIX: the painter draws its labels beyond the chart
-              // bounds; the inner padding keeps them inside the card.
-              SizedBox(
-                width: 150,
-                height: 150,
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: CustomPaint(
-                    painter: RadarChartPainter(
-                      t: t,
-                      data: finalData,
-                      labels: finalLabels,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final gauge = SemiCircleGauge(
+                progress: score / 100,
+                color: color,
+                trackColor: t.metallicBorder.withValues(alpha: .25),
+                width: 168,
+                center: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '$score',
+                      key: const Key('feedback-overall-score'),
+                      textScaler: TextScaler.noScaling,
+                      style: TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w900,
+                        color: color,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'OUT OF 100',
+                      textScaler: TextScaler.noScaling,
+                      style: TextStyle(fontSize: 10, color: t.textSecondary),
+                    ),
+                  ],
+                ),
+              );
+              final description = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Overall score',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: t.text,
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              // Every dimension with its exact value — the info the big
-              // chart alone never conveyed.
-              Expanded(
-                child: Column(
-                  children:
-                      (allDims.isEmpty
-                              ? finalLabels.asMap().entries.map(
-                                  (e) => MapEntry(
-                                    e.value,
-                                    (finalData[e.key] * 100),
-                                  ),
-                                )
-                              : allDims.map(
-                                  (e) => MapEntry(e.key, e.value.toDouble()),
-                                ))
-                          .map(
-                            (d) => _buildDimensionBar(
-                              t,
-                              d.key,
-                              d.value.toDouble(),
-                            ),
-                          )
-                          .toList(),
-                ),
-              ),
-            ],
-          ),
-          if (allDims.length >= 2) ...[
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Icon(FeatherIcons.award, size: 13, color: t.success),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    "Strongest: ${allDims.first.key} · Focus next: ${allDims.last.key}",
-                    style: TextStyle(fontSize: 11.5, color: t.textSecondary),
+                  const SizedBox(height: 6),
+                  Text(
+                    _report!.assessmentScope == 'FINAL_INTRODUCTION'
+                        ? 'Based on your final introduction.'
+                        : 'Based on your accepted answers.',
+                    style: TextStyle(color: t.textSecondary, height: 1.4),
                   ),
-                ),
-              ],
+                ],
+              );
+              return constraints.maxWidth < 300 ||
+                      MediaQuery.textScalerOf(context).scale(1) > 1.3
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        gauge,
+                        const SizedBox(height: 16),
+                        description,
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        gauge,
+                        const SizedBox(width: 24),
+                        Expanded(child: description),
+                      ],
+                    );
+            },
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'A practice assessment of answer content. It does not measure speaking confidence or predict hiring outcomes.',
+            style: TextStyle(color: t.textSecondary, fontSize: 12, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSpiderChartCard(AppThemeColors t) {
+    final dimensions = _report!.dimensionScores.entries.toList();
+    return GlassCard(
+      padding: const EdgeInsets.all(20),
+      borderRadius: 24,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          buildFeedbackSectionTitle(
+            t,
+            'Score breakdown',
+            FeatherIcons.barChart2,
+          ),
+          if (dimensions.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Tap a point or criterion for details.',
+              style: TextStyle(color: t.textSecondary, fontSize: 12),
             ),
+          ],
+          const SizedBox(height: 16),
+          if (dimensions.isEmpty)
+            Text(
+              'No criterion scores were saved for this report.',
+              style: TextStyle(color: t.textSecondary),
+            ),
+          if (dimensions.length >= 3)
+            FeedbackRadarChart(
+              scores: _report!.dimensionScores,
+              selectedCriterion: _focusedCriterion,
+              onSelected: (label) => _showCriterionDetails(t, label),
+              accent: t.accentGreen,
+              foreground: t.textSecondary,
+              pointColor: _scoreColor,
+              reduceMotion: _motionDisabled,
+            ),
+          for (final dimension in dimensions)
+            _buildDimensionRow(t, dimension.key, dimension.value),
+          if (_report!.practiceBaseline != null ||
+              _report!.answerScores.length > 1) ...[
+            const SizedBox(height: 24),
+            Text(
+              _report!.practiceBaseline != null
+                  ? 'Your practice progress'
+                  : 'Answer by answer',
+              style: TextStyle(
+                color: t.text,
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 14),
+            if (_report!.practiceBaseline != null) ...[
+              buildFeedbackGlassStatBar(
+                t,
+                'First introduction',
+                _report!.practiceBaseline!.round(),
+                _scoreColor(_report!.practiceBaseline!.round()),
+              ),
+              const SizedBox(height: 12),
+              buildFeedbackGlassStatBar(
+                t,
+                'Revised introduction',
+                _report!.overallScore.round(),
+                _scoreColor(_report!.overallScore.round()),
+              ),
+            ] else
+              for (final entry in _report!.answerScores.indexed) ...[
+                buildFeedbackGlassStatBar(
+                  t,
+                  'Answer ${entry.$1 + 1}',
+                  entry.$2.round(),
+                  _scoreColor(entry.$2.round()),
+                ),
+                const SizedBox(height: 12),
+              ],
           ],
         ],
       ),
     );
   }
 
-  Widget _buildDimensionBar(AppThemeColors t, String label, double value) {
-    final Color barColor = _scoreColor(value);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 9),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11.5, color: t.textSecondary),
-                ),
+  Widget _buildDimensionRow(AppThemeColors t, String label, double value) {
+    final selected = _focusedCriterion == label;
+    final stacked = MediaQuery.textScalerOf(context).scale(1) > 1.3;
+    return Semantics(
+      selected: selected,
+      child: Material(
+        color: selected
+            ? t.accentGreen.withValues(alpha: .1)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          key: ValueKey('criterion-$label'),
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => _showCriterionDetails(t, label),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: _scoreColor(value),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          style: TextStyle(
+                            color: t.text,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (stacked)
+                          Text(
+                            '${value.round()}/100',
+                            style: TextStyle(
+                              color: _scoreColor(value),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (!stacked) const SizedBox(width: 12),
+                  if (!stacked)
+                    Text(
+                      '${value.round()}/100',
+                      style: TextStyle(
+                        color: _scoreColor(value),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    FeatherIcons.chevronRight,
+                    size: 15,
+                    color: t.textSecondary,
+                  ),
+                ],
               ),
-              Text(
-                "${value.round()}",
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.bold,
-                  color: t.text,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 5),
-          // Liquid-glass progress bar (glowing fill + track) replacing the flat
-          // Material LinearProgressIndicator. minWidth:0 lets it shrink to the
-          // narrow column beside the radar chart instead of forcing 200px.
-          SizedBox(
-            width: double.infinity,
-            child: lg.GlassProgressIndicator.linear(
-              value: (value / 100).clamp(0.0, 1.0),
-              height: 6,
-              minWidth: 0,
-              color: barColor,
-              backgroundColor: t.metallicBorder.withValues(alpha: 0.18),
             ),
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _criterionDetails(AppThemeColors t, String label, double value) {
+    ScoreExplanation? explanation;
+    for (final item in _report!.scoreExplanations) {
+      if (item.label == label) {
+        explanation = item;
+        break;
+      }
+    }
+    return [
+      buildFeedbackGlassStatBar(t, label, value.round(), _scoreColor(value)),
+      if (explanation != null && explanation.weight > 0) ...[
+        const SizedBox(height: 12),
+        Text(
+          '${explanation.weight.round()}% of the overall score',
+          style: TextStyle(color: t.textSecondary),
+        ),
+      ],
+      const SizedBox(height: 20),
+      Text(
+        explanation?.reason ??
+            'A score explanation was not saved for this older report.',
+        style: TextStyle(color: t.text, height: 1.5),
+      ),
+      if (explanation != null &&
+          explanation.evidence.any((q) => q.trim().isNotEmpty)) ...[
+        const SizedBox(height: 20),
+        Text(
+          'From your answer',
+          style: TextStyle(color: t.accentGreen, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        for (final quote in explanation.evidence.where(
+          (q) => q.trim().isNotEmpty,
+        ))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: SelectableText(
+              '“$quote”',
+              style: TextStyle(color: t.textSecondary, height: 1.5),
+            ),
+          ),
+      ],
+      if (explanation != null && explanation.improvement.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        Text(
+          'Try next',
+          style: TextStyle(color: t.accentGreen, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          explanation.improvement,
+          style: TextStyle(color: t.text, height: 1.5),
+        ),
+      ],
+    ];
+  }
+
+  void _showCriterionDetails(AppThemeColors t, String label) {
+    final dimensions = _report!.dimensionScores.entries.toList();
+    var selected = dimensions.indexWhere((d) => d.key == label);
+    if (selected < 0) return;
+    setState(() => _focusedCriterion = label);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: t.bgSecondary,
+      showDragHandle: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * .88,
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, updateSheet) {
+          void select(int next) {
+            if (next < 0 || next >= dimensions.length) return;
+            updateSheet(() => selected = next);
+            if (mounted) {
+              setState(() => _focusedCriterion = dimensions[next].key);
+            }
+          }
+
+          final dimension = dimensions[selected];
+          return GestureDetector(
+            key: const Key('criterion-detail-sheet'),
+            onHorizontalDragEnd: (details) {
+              final speed = details.primaryVelocity ?? 0;
+              if (speed.abs() > 200) select(selected + (speed < 0 ? 1 : -1));
+            },
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                24,
+                0,
+                24,
+                24 + MediaQuery.viewPaddingOf(ctx).bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          dimension.key,
+                          style: TextStyle(
+                            color: t.text,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Close details',
+                        onPressed: () => Navigator.pop(ctx),
+                        icon: Icon(FeatherIcons.x, color: t.textSecondary),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      IconButton(
+                        tooltip: 'Previous criterion',
+                        onPressed: selected > 0
+                            ? () => select(selected - 1)
+                            : null,
+                        icon: const Icon(FeatherIcons.chevronLeft),
+                        color: t.accentGreen,
+                      ),
+                      Expanded(
+                        child: Semantics(
+                          liveRegion: true,
+                          child: Text(
+                            '${selected + 1} of ${dimensions.length} · Swipe to compare',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: t.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Next criterion',
+                        onPressed: selected < dimensions.length - 1
+                            ? () => select(selected + 1)
+                            : null,
+                        icon: const Icon(FeatherIcons.chevronRight),
+                        color: t.accentGreen,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  ..._criterionDetails(t, dimension.key, dimension.value),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
 
   Widget _buildNavigationTabs(AppThemeColors t) {
+    // Keep large text readable on narrow phones.
+    if (MediaQuery.textScalerOf(context).scale(1) > 1.3) {
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final entry in ['Summary', 'Strengths', 'To Improve'].indexed)
+            ChoiceChip(
+              label: Text(entry.$2),
+              selected: _activeTabIndex == entry.$1,
+              onSelected: (_) => setState(() => _activeTabIndex = entry.$1),
+            ),
+        ],
+      );
+    }
     // Inline liquid-glass segmented switcher (same engine as the bottom nav).
     // Switches the content area below between Summary / Strengths / To Improve.
     return lg.GlassTabBar.inline(
@@ -709,7 +922,9 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
       padding: const EdgeInsets.all(24),
       borderRadius: 24,
       child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
+        duration: _motionDisabled
+            ? Duration.zero
+            : const Duration(milliseconds: 300),
         child: _buildTabContent(t),
       ),
     );
@@ -721,17 +936,20 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
         {
           final dims = _report?.dimensionScores ?? const {};
           final dimCount = dims.length;
-          final avgDim = dimCount > 0
-              ? (dims.values.reduce((a, b) => a + b) / dimCount).round()
-              : 0;
-          final answered = (_report?.transcript ?? [])
-              .where((e) => e.role.toUpperCase() != 'AI')
-              .length;
+          final answered =
+              _report?.assessedAnswers ??
+              (_report?.transcript ?? [])
+                  .where((e) => e.role.toUpperCase() == 'USER')
+                  .length;
           return Column(
             key: const ValueKey("summary"),
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildSectionTitle(t, "Executive Summary", FeatherIcons.fileText),
+              buildFeedbackSectionTitle(
+                t,
+                "Executive Summary",
+                FeatherIcons.fileText,
+              ),
               const SizedBox(height: 16),
               Text(
                 _report?.executiveSummary ??
@@ -744,20 +962,25 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
               ),
               if (dimCount > 0) ...[
                 const SizedBox(height: 22),
-                _buildGlassStatBar(t, "Average across dimensions", avgDim),
+                buildFeedbackGlassStatBar(
+                  t,
+                  "Overall weighted score",
+                  _report!.overallScore.round(),
+                  _scoreColor(_report!.overallScore.round()),
+                ),
               ],
               const SizedBox(height: 18),
               if (dimCount > 0)
-                _buildMetricRow(
+                buildFeedbackMetricRow(
                   t,
                   "Dimensions evaluated",
                   "$dimCount",
-                  t.primary,
+                  t.accentGreen,
                 ),
               if (answered > 0)
-                _buildMetricRow(
+                buildFeedbackMetricRow(
                   t,
-                  "Questions answered",
+                  "Answers assessed",
                   "$answered",
                   t.success,
                 ),
@@ -769,17 +992,17 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
           key: const ValueKey("strengths"),
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildSectionTitle(t, "Your Strengths", FeatherIcons.zap),
+            buildFeedbackSectionTitle(t, "Your Strengths", FeatherIcons.zap),
             const SizedBox(height: 16),
             if (_report?.strengths.isEmpty ?? true)
-              _buildBulletPoint(
+              buildFeedbackBulletPoint(
                 t,
-                "Great effort in completing the session.",
+                "No specific strengths were saved in this report.",
                 t.success,
               )
             else
               ...(_report?.strengths.map(
-                    (s) => _buildBulletPoint(t, s, t.success),
+                    (s) => buildFeedbackBulletPoint(t, s, t.success),
                   ) ??
                   []),
           ],
@@ -791,34 +1014,34 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
             key: const ValueKey("weaknesses"),
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildSectionTitle(
+              buildFeedbackSectionTitle(
                 t,
                 "Areas for Improvement",
                 FeatherIcons.alertCircle,
               ),
               const SizedBox(height: 16),
               if (_report?.weaknesses.isEmpty ?? true)
-                _buildBulletPoint(
+                buildFeedbackBulletPoint(
                   t,
-                  "No major weaknesses identified.",
+                  "No specific gaps were recorded for this assessment.",
                   t.warning,
                 )
               else
                 ...(_report?.weaknesses.map(
-                      (w) => _buildBulletPoint(t, w, t.warning),
+                      (w) => buildFeedbackBulletPoint(t, w, t.warning),
                     ) ??
                     []),
               if (recs.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Divider(color: t.border.withValues(alpha: 0.15), height: 28),
-                _buildSectionTitle(
+                buildFeedbackSectionTitle(
                   t,
                   "Recommended next steps",
                   FeatherIcons.target,
                 ),
                 const SizedBox(height: 16),
                 ...recs.asMap().entries.map(
-                  (e) => _buildRecommendationItem(t, e.key + 1, e.value),
+                  (e) => buildFeedbackRecommendationItem(t, e.key + 1, e.value),
                 ),
               ],
             ],
@@ -836,7 +1059,11 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle(t, "Q&A Transcript", FeatherIcons.messageSquare),
+        buildFeedbackSectionTitle(
+          t,
+          "Q&A Transcript",
+          FeatherIcons.messageSquare,
+        ),
         const SizedBox(height: 20),
         transcript.isEmpty
             ? GlassCard(
@@ -886,7 +1113,7 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
         Icon(
           isQuestion ? FeatherIcons.mic : FeatherIcons.user,
           size: 16,
-          color: isQuestion ? t.primary : t.textSecondary,
+          color: isQuestion ? t.accentGreen : t.textSecondary,
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -898,294 +1125,4 @@ class _FeedbackReportScreenState extends State<FeedbackReportScreen> {
       ],
     );
   }
-
-  Widget _buildSectionTitle(AppThemeColors t, String title, IconData icon) {
-    return Row(
-      children: [
-        Icon(icon, size: 20, color: t.primary),
-        const SizedBox(width: 10),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: t.text,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMetricRow(
-    AppThemeColors t,
-    String label,
-    String value,
-    Color color,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: TextStyle(color: t.textSecondary)),
-          Text(
-            value,
-            style: TextStyle(fontWeight: FontWeight.bold, color: color),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBulletPoint(AppThemeColors t, String text, Color color) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            margin: const EdgeInsets.only(top: 6),
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                fontSize: 14,
-                color: t.textSecondary,
-                height: 1.4,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// A labelled liquid-glass progress bar (label + percent on top, glass fill
-  /// below). Used in the Summary tab to visualise aggregate scores.
-  Widget _buildGlassStatBar(AppThemeColors t, String label, int percent) {
-    final color = _scoreColor(percent);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label, style: TextStyle(fontSize: 13, color: t.textSecondary)),
-            Text(
-              "$percent%",
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: lg.GlassProgressIndicator.linear(
-            value: (percent / 100).clamp(0.0, 1.0),
-            height: 8,
-            minWidth: 0,
-            color: color,
-            backgroundColor: t.metallicBorder.withValues(alpha: 0.18),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// A numbered action item for the "Recommended next steps" list — a small
-  /// glowing badge with the ordinal, then the recommendation text.
-  Widget _buildRecommendationItem(AppThemeColors t, int number, String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 24,
-            height: 24,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: t.primary.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-              border: Border.all(color: t.primary.withValues(alpha: 0.4)),
-            ),
-            child: Text(
-              "$number",
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: t.primary,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                text,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: t.textSecondary,
-                  height: 1.5,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class RadarChartPainter extends CustomPainter {
-  final AppThemeColors t;
-  final List<double> data; // values 0.0 to 1.0
-  final List<String> labels;
-
-  RadarChartPainter({
-    required this.t,
-    required this.data,
-    required this.labels,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    // CLIPPING FIX: reserve room inside the canvas for the vertex labels
-    // instead of drawing them 20px beyond the bounds.
-    final radius = min(size.width, size.height) / 2 - 24;
-    final angleStep = (2 * pi) / data.length;
-
-    // 1. Draw Background Grid (Concentric Pentagons/Polygons)
-    final gridPaint = Paint()
-      ..color = t.border.withValues(alpha: 0.2)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    for (var i = 1; i <= 4; i++) {
-      final r = radius * (i / 4);
-      final path = Path();
-      for (var j = 0; j < data.length; j++) {
-        final angle = j * angleStep - (pi / 2);
-        final point = Offset(
-          center.dx + r * cos(angle),
-          center.dy + r * sin(angle),
-        );
-        if (j == 0) {
-          path.moveTo(point.dx, point.dy);
-        } else {
-          path.lineTo(point.dx, point.dy);
-        }
-      }
-      path.close();
-      canvas.drawPath(path, gridPaint);
-    }
-
-    // 2. Draw Axis Lines
-    for (var i = 0; i < data.length; i++) {
-      final angle = i * angleStep - (pi / 2);
-      canvas.drawLine(
-        center,
-        Offset(
-          center.dx + radius * cos(angle),
-          center.dy + radius * sin(angle),
-        ),
-        gridPaint,
-      );
-
-      // Labels
-      final labelOffset = Offset(
-        center.dx + (radius + 16) * cos(angle),
-        center.dy + (radius + 14) * sin(angle),
-      );
-      _drawText(canvas, labels[i], labelOffset, t);
-    }
-
-    // 3. Draw Data Polygon
-    final dataPath = Path();
-    for (var i = 0; i < data.length; i++) {
-      final r = radius * data[i];
-      final angle = i * angleStep - (pi / 2);
-      final point = Offset(
-        center.dx + r * cos(angle),
-        center.dy + r * sin(angle),
-      );
-      if (i == 0) {
-        dataPath.moveTo(point.dx, point.dy);
-      } else {
-        dataPath.lineTo(point.dx, point.dy);
-      }
-    }
-    dataPath.close();
-
-    // BRIGHT DATA POLYGON: light-green glassy fill with a luminous edge —
-    // the dull dark-green triangle read as 'broken' on the dark card.
-    const Color radarBright = Color(0xFF4ADE80);
-    final fillPaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          radarBright.withValues(alpha: 0.45),
-          radarBright.withValues(alpha: 0.08),
-        ],
-      ).createShader(Rect.fromCircle(center: center, radius: radius))
-      ..style = PaintingStyle.fill;
-
-    final outlinePaint = Paint()
-      ..color = radarBright
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.4
-      ..maskFilter = const MaskFilter.blur(BlurStyle.solid, 3);
-
-    canvas.drawPath(dataPath, fillPaint);
-    canvas.drawPath(dataPath, outlinePaint);
-
-    // Draw dots at vertices
-    final dotPaint = Paint()
-      ..color = radarBright
-      ..style = PaintingStyle.fill;
-    final dotHalo = Paint()
-      ..color = radarBright.withValues(alpha: 0.35)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-    for (var i = 0; i < data.length; i++) {
-      final r = radius * data[i];
-      final angle = i * angleStep - (pi / 2);
-      final v = Offset(center.dx + r * cos(angle), center.dy + r * sin(angle));
-      canvas.drawCircle(v, 6, dotHalo);
-      canvas.drawCircle(v, 3.5, dotPaint);
-    }
-  }
-
-  void _drawText(Canvas canvas, String text, Offset offset, AppThemeColors t) {
-    final span = TextSpan(
-      style: TextStyle(
-        color: t.textSecondary,
-        fontSize: 11,
-        fontWeight: FontWeight.bold,
-      ),
-      text: text,
-    );
-    final tp = TextPainter(
-      text: span,
-      textAlign: TextAlign.center,
-      textDirection: TextDirection.ltr,
-    );
-    tp.layout();
-    tp.paint(canvas, offset - Offset(tp.width / 2, tp.height / 2));
-  }
-
-  @override
-  bool shouldRepaint(covariant RadarChartPainter oldDelegate) =>
-      oldDelegate.data != data ||
-      oldDelegate.labels != labels ||
-      oldDelegate.t != t;
 }

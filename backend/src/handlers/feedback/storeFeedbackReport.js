@@ -5,6 +5,8 @@ exports.handler = async event => {
   const result = await createFeedbackReport(event);
   if (!result.success) throw result.error || new Error('Feedback persistence failed');
   await attempt.promote(event, result.data);
+  if(!result.duplicate)require('../../lib/metrics').recordMetrics('Feedback',{
+    FeedbackStored:1,FeedbackUnavailable:Number(result.data?.analysisStatus==='UNAVAILABLE')});
   // Persist the report and close admission BEFORE deleting files. Purge failures
   // retain a durable cleanup marker; they must not hide a completed report.
   if(process.env.ANSWER_AUDIO_BUCKET) {

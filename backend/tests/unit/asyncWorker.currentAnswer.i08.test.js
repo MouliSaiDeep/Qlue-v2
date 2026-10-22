@@ -62,6 +62,17 @@ describe('generateAtomicTurn threads the accepted answer exactly once (I-08)', (
         ...extra
     });
 
+    it('does not repeat a very uncertain recognized name from either live input or stored context', async()=>{
+        const text='My name is Rashid. I built an API.';
+        const asr={provider:'aws-transcribe',originalTranscript:text,uncertainty:{version:1,spans:[{start:11,end:17}],incomplete:false}};
+        getContextWindow.mockResolvedValue([{speaker:'USER',text,turnIndex:0,asr}]);
+        await runTurn({currentAnswer:text,currentAsr:asr});
+        const history=promptHistory();
+        expect(history.filter(h=>h.speaker==='USER')).toHaveLength(2);
+        expect(history.every(h=>!h.text.includes('Rashid'))).toBe(true);
+        expect(history.filter(h=>h.speaker==='USER').every(h=>h.text.includes('[uncertain audio]'))).toBe(true);
+    });
+
     it('appends the answer when the lagging context window is MISSING it, in chronological position', async () => {
         // GSI lag: only the opener AI@0 is visible; the user's answer@1 is not.
         getContextWindow.mockResolvedValue([

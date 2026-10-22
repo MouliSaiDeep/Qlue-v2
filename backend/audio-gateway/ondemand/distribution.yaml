@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Qlue audio distribution for a host that stops when idle. No load balancer.
+Parameters:
+  OnDemandOriginId: {Type: String}
+  OnDemandOriginHostname: {Type: String}
+Resources:
+  # Existing operational logs expire naturally; retain them during migration.
+  Logs:
+    Type: AWS::Logs::LogGroup
+    Properties: {RetentionInDays: 7}
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: Qlue authenticated audio; private origin with on-demand compute
+        HttpVersion: http2
+        IPV6Enabled: true
+        PriceClass: PriceClass_100
+        ViewerCertificate: {CloudFrontDefaultCertificate: true}
+        Origins:
+          - Id: audio
+            DomainName: !Ref OnDemandOriginHostname
+            ConnectionAttempts: 1
+            ConnectionTimeout: 2
+            VpcOriginConfig: {VpcOriginId: !Ref OnDemandOriginId, OriginReadTimeout: 60, OriginKeepaliveTimeout: 60}
+            OriginCustomHeaders: [{HeaderName: X-Qlue-Viewer-Proto, HeaderValue: https}]
+        CustomErrorResponses:
+          - {ErrorCode: 502, ErrorCachingMinTTL: 0}
+          - {ErrorCode: 503, ErrorCachingMinTTL: 0}
+          - {ErrorCode: 504, ErrorCachingMinTTL: 0}
+        DefaultCacheBehavior:
+          TargetOriginId: audio
+          ViewerProtocolPolicy: https-only
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: false
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+Outputs:
+  ManagedGatewayUrl:
+    Value: !Sub 'wss://${Distribution.DomainName}/audio'

@@ -21,7 +21,8 @@ function getCutoffTimestamp(periodStr) {
     return now.getTime();
 }
 
-function calculateAggregateScore(scoresObj) {
+function calculateAggregateScore(scoresObj, assessmentOverallScore) {
+    if (Number.isFinite(assessmentOverallScore)) return Math.round(assessmentOverallScore);
     if (!scoresObj || Object.keys(scoresObj).length === 0) return 0;
     let total = 0, count = 0;
     for (const v of Object.values(scoresObj)) { total += parseInt(v, 10); count++; }
@@ -73,7 +74,7 @@ exports.handler = async (event) => {
                 // numeric startedAt if an older item lacks it.
                 date: s.startTime || (s.startedAt ? new Date(s.startedAt).toISOString() : null),
                 moduleType: s.moduleType,
-                score: calculateAggregateScore(s.accumulatedScores)
+                score: calculateAggregateScore(s.accumulatedScores, s.assessmentOverallScore)
             }));
 
         return {

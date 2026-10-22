@@ -19,10 +19,13 @@ beforeEach(()=>{
  db.on(GetCommand).callsFake(input=>({Item:input.Key.sessionId?session:undefined}));
  db.on(TransactWriteCommand).resolves({});
 });
-test('two accepted introductions keep stable dimensions/prose and current attempt ownership through persistence',async()=>{
+test('two accepted introductions grade the final revision with one model call and retain attempt ownership',async()=>{
  const transcript='AI: Introduce yourself.\nUSER: I am Rishi, a final year BTech student. I built an API and want a backend role.\nAI: Please revise your introduction.\nUSER: I am Rishi. My tested API project developed my backend skills, and I want to apply them as an engineer.';
- invokeModel.mockResolvedValueOnce({content:[{text:JSON.stringify({Clarity:84,Structure:80,Confidence:76})}]})
-  .mockResolvedValueOnce({content:[{text:JSON.stringify({strengths:['Clear background','Relevant API example','Specific career goal'],improvements:['Quantify project impact','Explain your contribution','Connect the example to the role'],summary:'You connected your background and project to a clear career goal.'})}]});
+ const answerPairs=[{answerId:'first',question:'Introduce yourself.',answer:'I am Rishi, a final year BTech student. I built an API and want a backend role.'},
+ {answerId:'final',question:'Please revise your introduction.',answer:'I am Rishi. My tested API project developed my backend skills, and I want to apply them as an engineer.'}];
+ invokeModel.mockResolvedValueOnce({content:[{text:JSON.stringify({coaching:require('../helpers/coachingFixture')('final'),answers:[
+ {answerId:'first',levels:[2,2,2,2],evidenceIds:Array(4).fill('e1')},
+ {answerId:'final',levels:[3,3,4,3],evidenceIds:Array(4).fill('e1')}]})}]});
  let stored;
  lambda.on(InvokeCommand).callsFake(async input=>{
   const payload=JSON.parse(Buffer.from(input.Payload).toString());
@@ -31,11 +34,13 @@ test('two accepted introductions keep stable dimensions/prose and current attemp
   else {expect(input.FunctionName).toBe('stable-store');stored=payload;await store(payload);}
   return {};
  });
- await analyze({...session,attemptId:'attempt-1',transcript});
- expect(stored.dimensionScores).toEqual({Clarity:84,Structure:80,Confidence:76});
- expect(stored.overallScore).toBe(80);
- expect(stored.strengths).toHaveLength(3);expect(stored.weaknesses).toHaveLength(3);
- expect(stored.executiveSummary).toContain('clear career goal');
+ await analyze({...session,attemptId:'attempt-1',transcript,answerPairs});
+ expect(stored.dimensionScores).toEqual({Relevance:75,'Specific Evidence':75,Structure:100,Clarity:75});
+ expect(stored.overallScore).toBe(81.3);
+ expect(stored.strengths).toHaveLength(3);expect(stored.weaknesses).toHaveLength(0);
+ expect(stored.executiveSummary).toContain('final revised introduction');
+ expect(stored.assessment.practiceProgress).toEqual({baseline:50,final:81.3,change:31.3});
+ expect(invokeModel).toHaveBeenCalledTimes(1);
  expect(stored.status).toBe('COMPLETE');expect(stored.analysisStatus).toBe('OK');
  expect(stored).not.toHaveProperty('coaching');expect(stored).not.toHaveProperty('deliveryMeasurements');
  const writes=db.commandCalls(TransactWriteCommand).map(c=>c.args[0].input.TransactItems);

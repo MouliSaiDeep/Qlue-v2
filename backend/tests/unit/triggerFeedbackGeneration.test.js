@@ -54,9 +54,9 @@ describe('triggerFeedbackGeneration handler', () => {
         
         const payload = JSON.parse(Buffer.from(lambdaCall.Payload).toString());
         expect(payload.sessionId).toBe(sessionId);
-        expect(payload.transcript).toContain('AI: Hello');
-        expect(payload.transcript).toContain('USER: I build Node APIs and test them carefully.');
-        expect(payload.accumulatedScores).toEqual({ score: 100 });
+        expect(payload.answerPairs).toEqual([expect.objectContaining({question:'Hello',answer:'I build Node APIs and test them carefully.'})]);
+        expect(payload).not.toHaveProperty('transcript');
+        expect(payload).not.toHaveProperty('accumulatedScores');
         expect(payload.metadata.turnCount).toBe(2);
     });
 

@@ -21,10 +21,10 @@ describe('resolveVoiceAndEngine', () => {
     expect(resolveVoiceAndEngine('Ruth', 'generative')).toEqual({ voice: 'Ruth', engine: 'neural' });
   });
 
-  it('honours generative when explicitly allowed via env', () => {
+  it('keeps premium locked even if a legacy env permits it', () => {
     process.env.POLLY_ALLOW_GENERATIVE = 'true';
-    expect(resolveVoiceAndEngine('Tiffany', null)).toEqual({ voice: 'Tiffany', engine: 'generative' });
-    expect(resolveVoiceAndEngine('Ruth', 'generative')).toEqual({ voice: 'Ruth', engine: 'generative' });
+    expect(resolveVoiceAndEngine('Tiffany', null)).toEqual({ voice: 'Ruth', engine: 'neural' });
+    expect(resolveVoiceAndEngine('Ruth', 'generative')).toEqual({ voice: 'Ruth', engine: 'neural' });
   });
 
   it('falls back to the cheapest supported engine on mismatch', () => {
@@ -43,10 +43,10 @@ describe('resolveVoiceAndEngine', () => {
     expect(resolveVoiceAndEngine('Amy', null)).toEqual({ voice: 'Amy', engine: 'standard' });
   });
 
-  it('honours generative for a Premium request (allowGenerative) without the env flag', () => {
+  it('keeps premium locked for a per-request opt-in', () => {
     // Premium voice mode: the per-request opt-in unlocks Tiffany/generative.
     expect(resolveVoiceAndEngine('Tiffany', 'generative', { allowGenerative: true }))
-      .toEqual({ voice: 'Tiffany', engine: 'generative' });
+      .toEqual({ voice: 'Ruth', engine: 'neural' });
   });
 
   it('still substitutes for a cost-saver request even if it asks for generative', () => {

@@ -19,6 +19,7 @@ exports.handler = async (event) => {
 
         const body = JSON.parse(event.body || '{}');
         const { displayName, photoUrl, profession, skills, voiceId, voiceMode } = body;
+        if(voiceMode==='premium'||voiceId==='Tiffany')return {statusCode:403,body:JSON.stringify({error:'PREMIUM_VOICE_LOCKED',message:'Premium voices are currently locked. Choose a standard voice.'})};
 
         if (displayName === undefined && photoUrl === undefined && profession === undefined && skills === undefined && voiceId === undefined && voiceMode === undefined) {
             return {

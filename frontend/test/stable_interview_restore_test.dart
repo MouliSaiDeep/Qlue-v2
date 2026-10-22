@@ -66,9 +66,10 @@ void main() {
             ],
             child: MaterialApp(
               builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(
-                  context,
-                ).copyWith(textScaler: TextScaler.linear(layout.$3)),
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(layout.$3),
+                  padding: const EdgeInsets.only(top: 24, bottom: 24),
+                ),
                 child: child!,
               ),
               home: InterviewSessionScreen(
@@ -98,7 +99,10 @@ void main() {
         await tester.pump();
         expect(tester.getRect(sphere), rect);
         final state = tester.state(find.byType(ParticleSphere));
-        if (layout.$1 == 412) expect(rect.height, 320);
+        if (layout.$3 == 1) {
+          expect(rect.height, 320);
+          expect(rect.center.dy, greaterThan(layout.$2 * .3));
+        }
         p.partialTranscript = List.filled(
           100,
           'I built and tested a study planner.',

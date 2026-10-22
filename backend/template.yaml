@@ -3,6 +3,23 @@ Transform: AWS::Serverless-2016-10-31
 Description: Qlue AI-powered voice interview simulation mobile app.
 
 Parameters:
+  AudioHostWakeFunctionArn:
+    Type: String
+    Default: ''
+    Description: Optional private wake function for the audio host that stops when idle.
+  CreateAwsSttResources:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+    Description: Reviewed staging/provisioning only; does not enable audio processing.
+  AwsSttRolloutEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+  AwsSttGatewayUrl:
+    Type: String
+    Default: ''
+    Description: Reviewed WSS gateway endpoint ending in /audio; no credentials.
   EmailOtpDailyLimit:
     Type: Number
     Default: 40
@@ -13,7 +30,12 @@ Parameters:
     Type: Number
     Default: 50
     MinValue: 0
-    Description: Maximum global provider attempts per UTC day; includes failures and retries.
+    Description: Maximum unowned system/test provider attempts per UTC day; separate from users.
+  UserPaidAttemptDailyLimit:
+    Type: Number
+    Default: 500
+    MinValue: 0
+    Description: Per-user provider retry/loop guard; counts calls, not the ten daily interview sessions.
   # Finding 13 (operational readiness): where operational alerts are delivered.
   # Left empty by default so the stack still deploys without it, but with no
   # address NO alarm or budget alert reaches a human — pass a real mailbox at
@@ -29,6 +51,8 @@ Parameters:
     Description: "Monthly cost budget (USD). Alerts at 80% actual and 100% forecast when OperatorEmail is set."
 
 Conditions:
+  HasAudioHostWake: !Not [!Equals [!Ref AudioHostWakeFunctionArn, '']]
+  HasAwsSttResources: !Equals [!Ref CreateAwsSttResources, 'true']
   # Only wire the email subscription / budget when an operator address is given;
   # an empty address would otherwise fail resource creation.
   HasOperatorEmail: !Not [!Equals [!Ref OperatorEmail, ""]]
@@ -61,6 +85,8 @@ Globals:
         ANALYSIS_JOBS_TABLE: !Ref AnalysisJobsTable
         PAID_OPS_SWITCH_PARAMETER: !Ref PaidOpsSwitch
         PAID_ATTEMPT_LIMIT: !Ref PaidAttemptDailyLimit
+        USER_PAID_ATTEMPT_LIMIT: !Ref UserPaidAttemptDailyLimit
+        QUOTA_FREE_INTERVIEWS: '10'
         QLUE_PAID_OPS_DISABLED: ''
         # In-app Help & Support destination. Email delivery is DEPLOY-GATED: it
         # only fires once this address is a verified SES identity (see
@@ -82,6 +108,57 @@ Globals:
         POLLY_ALLOW_GENERATIVE: 'true'  # user preference: natural generative voices (funded by credits)
 
 Resources:
+  SttSessionsTable:
+    Type: AWS::DynamoDB::Table
+    Condition: HasAwsSttResources
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: pk, AttributeType: S}]
+      KeySchema: [{AttributeName: pk, KeyType: HASH}]
+      TimeToLiveSpecification: {AttributeName: ttl, Enabled: true}
+      SSESpecification: {SSEEnabled: true}
+  SttTicketFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers/interview/sttTicket.handler
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          STT_SESSIONS_TABLE: !If [HasAwsSttResources, !Ref SttSessionsTable, '']
+          STT_GATEWAY_URL: !Ref AwsSttGatewayUrl
+          AWS_STT_ENABLED: !Ref AwsSttRolloutEnabled
+          AUDIO_HOST_WAKE_FUNCTION: !Ref AudioHostWakeFunctionArn
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /interview/stt-ticket
+            Method: post
+      Policies:
+        - !If
+          - HasAudioHostWake
+          - Statement: [{Effect: Allow, Action: ['lambda:InvokeFunction'], Resource: !Ref AudioHostWakeFunctionArn}]
+          - !Ref 'AWS::NoValue'
+        - !If
+          - HasAwsSttResources
+          - Statement:
+              - Effect: Allow
+                Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:ConditionCheckItem']
+                Resource: !GetAtt SttSessionsTable.Arn
+          - !Ref 'AWS::NoValue'
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: [!GetAtt DeletionJobsTable.Arn, !GetAtt SessionsTable.Arn]
+        - Statement:
+            - Effect: Allow
+              Action: ['ssm:GetParameter']
+              Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/qlue/firebase-service-account'
   PaidOpsSwitch:
     Type: AWS::SSM::Parameter
     Properties:
@@ -1574,6 +1651,9 @@ Resources:
       # gateway has already returned 504 to the client. Cached path returns in ms.
       MemorySize: 512
       Timeout: 29
+      Environment:
+        Variables:
+          AUDIO_HOST_WAKE_FUNCTION: !Ref AudioHostWakeFunctionArn
       Events:
         Api:
           Type: Api
@@ -1582,6 +1662,10 @@ Resources:
             Method: post
             RestApiId: !Ref RestApi
       Policies:
+        - !If
+          - HasAudioHostWake
+          - Statement: [{Effect: Allow, Action: ['lambda:InvokeFunction'], Resource: !Ref AudioHostWakeFunctionArn}]
+          - !Ref 'AWS::NoValue'
         - Statement:
             - Effect: Allow
               Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
@@ -1985,9 +2069,17 @@ Resources:
       Timeout: 10
       Environment:
         Variables:
+          STT_SESSIONS_TABLE: !If [HasAwsSttResources, !Ref SttSessionsTable, '']
           ASYNC_QUEUE_URL: !Ref AsyncInterviewQueue
           FEEDBACK_TOPIC_ARN: !Ref FeedbackTriggerTopic
       Policies:
+        - !If
+          - HasAwsSttResources
+          - Statement:
+              - Effect: Allow
+                Action: ['dynamodb:GetItem']
+                Resource: !GetAtt SttSessionsTable.Arn
+          - !Ref 'AWS::NoValue'
         - Statement:
             - Effect: Allow
               Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
@@ -2934,6 +3026,7 @@ Resources:
             Destination: !GetAtt DeletionWorkerDLQ.Arn
       Environment:
         Variables:
+          STT_SESSIONS_TABLE: !If [HasAwsSttResources, !Ref SttSessionsTable, '']
           EMAIL_OTP_TABLE: !Ref EmailOtpTable
           EMAIL_OTP_POOL_ID: !Ref EmailOtpPool
           RECOVERY_QUEUE_URL: !Ref RecoveryDelayQueue
@@ -2942,6 +3035,13 @@ Resources:
       MemorySize: 512
       Timeout: 120
       Policies:
+        - !If
+          - HasAwsSttResources
+          - Statement:
+              - Effect: Allow
+                Action: ['dynamodb:Scan', 'dynamodb:BatchWriteItem']
+                Resource: !GetAtt SttSessionsTable.Arn
+          - !Ref 'AWS::NoValue'
         - Statement:
             - Effect: Allow
               Action: ['cognito-idp:AdminDeleteUser']

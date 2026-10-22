@@ -1,101 +1,37 @@
-/**
- * Tests for generateFeedbackReport.
- *
- * Rewritten to match the actual architecture: this handler builds the report
- * and asynchronously invokes the STORE_FEEDBACK_LAMBDA (which owns persistence
- * and notifications). The previous test targeted an obsolete design where this
- * handler wrote to DynamoDB directly, so it could never pass.
- */
-const { invokeModel, buildFeedbackPrompt } = require('../../src/lib/bedrock');
-const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
-const { mockClient } = require('aws-sdk-client-mock');
-const { handler } = require('../../src/handlers/feedback/generateFeedbackReport');
-
-const { DynamoDBDocumentClient, GetCommand } = require('@aws-sdk/lib-dynamodb');
-const dbMock = mockClient(DynamoDBDocumentClient);
-const lambdaMock = mockClient(LambdaClient);
-
+const {LambdaClient,InvokeCommand}=require('@aws-sdk/client-lambda');
+const {DynamoDBDocumentClient,GetCommand}=require('@aws-sdk/lib-dynamodb');
+const {mockClient}=require('aws-sdk-client-mock');
 jest.mock('../../src/lib/bedrock');
-
-describe('generateFeedbackReport handler', () => {
-  beforeEach(() => {
-    lambdaMock.reset();
-    dbMock.reset();
-    dbMock.on(GetCommand).callsFake(input => ({Item: input.Key.sessionId ? {sessionId: input.Key.sessionId, userId: 'user123'} : undefined}));
-    jest.clearAllMocks();
-    process.env.FEEDBACK_MODEL_ID = 'test-feedback-model';
-    buildFeedbackPrompt.mockReturnValue({ messages: [] });
-  });
-
-  const parsePayload = (call) => JSON.parse(Buffer.from(call.args[0].input.Payload).toString());
-
-  it('should generate report and invoke the store lambda with the full payload', async () => {
-    const event = {
-      sessionId: 'session123',
-      userId: 'user123',
-      moduleType: 'RESUME',
-      transcript: 'Interview transcript...',
-      dimensionScores: { technical: 85 }
-    };
-
-    invokeModel.mockResolvedValue({
-      content: [{ text: JSON.stringify({ strengths: ['Skill A'], improvements: ['Skill B'], summary: 'Good job' }) }],
-      usage: { input_tokens: 100, output_tokens: 50 }
-    });
-    lambdaMock.on(InvokeCommand).resolves({});
-
-    const result = await handler(event);
-
-    expect(result.success).toBe(true);
-    expect(result.sessionId).toBe('session123');
-    expect(invokeModel).toHaveBeenCalled();
-    expect(lambdaMock.calls()).toHaveLength(1);
-
-    const payload = parsePayload(lambdaMock.call(0));
-    expect(payload.sessionId).toBe('session123');
-    expect(payload.overallScore).toBe(85);
-    expect(payload.strengths).toEqual(['Skill A']);
-    expect(payload.weaknesses).toEqual(['Skill B']);
-    expect(payload.executiveSummary).toBe('Good job');
-    expect(lambdaMock.call(0).args[0].input.InvocationType).toBe('Event');
-  });
-
-  it('should handle Bedrock parsing failure gracefully (even without dimensionScores)', async () => {
-    const event = {
-      sessionId: 'session123',
-      userId: 'user123',
-      moduleType: 'RESUME',
-      transcript: 'Interview transcript...'
-      // no dimensionScores — previously crashed with TypeError
-    };
-
-    invokeModel.mockResolvedValue({
-      content: [{ text: 'INVALID JSON RESPONSE' }]
-    });
-    lambdaMock.on(InvokeCommand).resolves({});
-
-    const result = await handler(event);
-
-    expect(result.success).toBe(true);
-    const payload = parsePayload(lambdaMock.call(0));
-    expect(payload.strengths).toEqual(
-      expect.arrayContaining(['Unable to extract specific strengths from this session.'])
-    );
-    expect(payload.overallScore).toBe(0);
-    expect(payload.dimensionScores).toEqual({});
-  });
-
-  it('should throw if triggering the store lambda fails', async () => {
-    const event = {
-      sessionId: 'session123',
-      userId: 'user123',
-      moduleType: 'RESUME',
-      dimensionScores: { technical: 50 }
-    };
-
-    invokeModel.mockResolvedValue({ content: [{ text: '{}' }] });
-    lambdaMock.on(InvokeCommand).rejects(new Error('Storage error'));
-
-    await expect(handler(event)).rejects.toThrow('Storage error');
-  });
+const {invokeModel}=require('../../src/lib/bedrock');
+const a=require('../../src/lib/feedbackAssessment');
+const {handler}=require('../../src/handlers/feedback/generateFeedbackReport');
+const db=mockClient(DynamoDBDocumentClient),lambda=mockClient(LambdaClient);
+beforeEach(()=>{
+ db.reset();lambda.reset();jest.clearAllMocks();
+ db.on(GetCommand).callsFake(input=>({Item:input.Key.sessionId?{sessionId:input.Key.sessionId,userId:'owner'}:undefined}));
+ lambda.on(InvokeCommand).resolves({});process.env.STORE_FEEDBACK_LAMBDA='store';
+});
+const payload=()=>JSON.parse(Buffer.from(lambda.commandCalls(InvokeCommand)[0].args[0].input.Payload).toString());
+function result(){
+ const p=a.prepare({moduleType:'INTRO',answerPairs:[{answerId:'a',question:'Introduce yourself.',answer:'I built an API for interview practice.'}]});
+ return a.report(p,a.validate(JSON.stringify({answers:[{answerId:'a',levels:[3,2,4,3],evidenceIds:Array(4).fill('e1')}]}),p));
+}
+test('formats validated results without a second model call and preserves weighted grade',async()=>{
+ await handler({sessionId:'s',userId:'owner',moduleType:'INTRO',assessmentResult:result()});
+ expect(payload().overallScore).toBe(73.8);expect(payload().assessment.version).toBe(a.VERSION);
+ expect(payload().dimensionScores).not.toHaveProperty('Confidence');expect(invokeModel).not.toHaveBeenCalled();
+});
+test('old or missing results are explicitly unavailable, never 0 or 50',async()=>{
+ await handler({sessionId:'s',userId:'owner',moduleType:'INTRO',dimensionScores:{Confidence:50}});
+ expect(payload()).toMatchObject({analysisStatus:'UNAVAILABLE',overallScore:null,status:'FAILED',dimensionScores:{}});
+ expect(invokeModel).not.toHaveBeenCalled();
+});
+test('downstream failure is retried by the existing async delivery boundary',async()=>{
+ lambda.on(InvokeCommand).rejects(new Error('Storage error'));
+ await expect(handler({sessionId:'s',userId:'owner',moduleType:'INTRO',assessmentResult:result()})).rejects.toThrow('Storage error');
+});
+test('invalid result envelope cannot be stored as a completed assessment',async()=>{
+ const value=result();value.dimensionScores.Clarity='100';
+ await expect(handler({sessionId:'s',userId:'owner',moduleType:'INTRO',assessmentResult:value})).rejects.toThrow(a.InvalidAssessment);
+ expect(lambda.calls()).toHaveLength(0);
 });

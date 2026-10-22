@@ -30,9 +30,27 @@ jobs:
       - name: Run Jest
         working-directory: backend
         run: npm test -- --runInBand --coverage --collectCoverageFrom='src/**/*.js'
+      - name: Validate feedback evaluation corpus
+        working-directory: backend
+        run: node evaluation/evaluate.cjs
+      - name: Install isolated audio gateway dependencies
+        working-directory: backend/audio-gateway
+        run: npm ci --ignore-scripts
+      - name: Verify disabled-by-default audio gateway
+        working-directory: backend/audio-gateway
+        run: npm test
+      - name: Exercise concurrent synthetic streams across two replicas
+        working-directory: backend/audio-gateway
+        run: node scripts/load-smoke.mjs --clients=24 --slots=12 --duration-ms=1600
+      - name: Audit audio gateway production dependencies
+        working-directory: backend/audio-gateway
+        run: npm audit --omit=dev --audit-level=high
       - name: Audit production dependencies
         working-directory: backend
         run: npm audit --omit=dev --audit-level=high
+      - name: Audit build and test dependencies for high or critical advisories
+        working-directory: backend
+        run: npm audit --audit-level=high
       - name: Audit shipped Lambda layer
         working-directory: backend/layers/dependencies
         run: npm audit --omit=dev --audit-level=high
@@ -43,9 +61,19 @@ jobs:
       - uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
+      - name: Build and smoke-test disabled audio gateway
+        working-directory: backend/audio-gateway
+        run: |
+          docker build --platform linux/arm64 -t qlue-audio-gateway:ci-review .
+          node scripts/container-smoke.mjs --image qlue-audio-gateway:ci-review
       - name: Validate canonical SAM template
         working-directory: backend
         run: sam validate --lint --template-file template.yaml --region us-east-1
+      - name: Validate optional audio gateway infrastructure
+        working-directory: backend
+        run: |
+          sam validate --lint --template-file audio-gateway/infrastructure.yaml --region us-east-1
+          sam validate --lint --template-file audio-gateway/network.yaml --region us-east-1
       - name: Build actual arm64 deployment artifacts
         working-directory: backend
         run: sam build --use-container --no-cached

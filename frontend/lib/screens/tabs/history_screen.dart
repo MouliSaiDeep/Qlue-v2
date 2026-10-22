@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../context/auth_provider.dart';
+import '../../context/appearance_provider.dart';
 import '../../context/dashboard_provider.dart';
 import '../../core/models/session_model.dart';
 
@@ -181,6 +182,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget build(BuildContext context) {
     final t = AppThemeColors.of(context);
     final dashboard = Provider.of<DashboardProvider>(context);
+    final reduceMotion = MediaQuery.disableAnimationsOf(context) ||
+        (context.watch<AppearanceProvider?>()?.reduceMotion ?? false);
     final sessions = _getFilteredSessions(dashboard.history);
     
     final topPadding = MediaQuery.of(context).padding.top;
@@ -296,14 +299,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
             SliverPadding(
               padding: const EdgeInsets.only(left: 24, right: 24, bottom: 120),
               sliver: SliverList(delegate: SliverChildBuilderDelegate(
-                (context, index) => StaggeredFadeIn(
-                  key: ValueKey("${sessions[index].sessionId}_$_selectedFilter"), // Force rebuild on filter
-                  delay: Duration(milliseconds: index * 100),
-                  child: TimelineSessionCard(
-                    s: sessions[index], 
-                    isLast: index == sessions.length - 1
-                  ),
-                ),
+                (context, index) {
+                  final card = TimelineSessionCard(
+                    s: sessions[index],
+                    isLast: index == sessions.length - 1,
+                  );
+                  if (reduceMotion) return card;
+                  // Later cards must not wait seconds just because of their index.
+                  return StaggeredFadeIn(
+                    key: ValueKey("${sessions[index].sessionId}_$_selectedFilter"),
+                    delay: Duration(milliseconds: index.clamp(0, 4) * 30),
+                    duration: const Duration(milliseconds: 250),
+                    translationY: 12,
+                    child: card,
+                  );
+                },
                 childCount: sessions.length,
               )),
             ),

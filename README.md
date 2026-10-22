@@ -1,521 +1,138 @@
-# Qlue v2 — AI-Powered Voice Interview Simulation Platform
+# Qlue
 
-> **An end-to-end, AI-native mobile platform that simulates real-world technical and behavioural interviews using voice, NLP, and contextual LLM reasoning — helping candidates practice, receive feedback, and improve before their actual interviews.**
+Qlue is an Android voice interview practice app built with Flutter and an AWS
+serverless backend. It supports resume interviews, HR practice, self-introduction
+coaching, website-based learning, and job-description matching/interviews.
 
----
+## Current implementation
 
-## Table of Contents
+- Firebase authentication, email verification, password recovery and account deletion.
+- Versioned resume uploads, bounded PDF parsing and owned resume selection.
+- Adaptive interview questions, speech output, accepted-answer persistence and reconnect recovery.
+- Module-specific, evidence-backed content rubrics; saved feedback, history, dashboard and PDF export.
+- Daily per-user session and provider safeguards, operational stop controls and durable recovery.
 
-1. [Problem Statement](#problem-statement)
-2. [Proposed Solution](#proposed-solution)
-3. [System Architecture](#system-architecture)
-4. [Technologies Used](#technologies-used)
-5. [Interview Modules (In-Scope)](#interview-modules-in-scope)
-6. [Out of Scope](#out-of-scope)
-7. [Getting Started](#getting-started)
-8. [Project Structure](#project-structure)
-9. [AI Integration](#ai-integration)
-10. [Future Enhancements](#future-enhancements)
-11. [Contributing](#contributing)
+Scores are AI practice estimates. The rubrics have **not been human calibrated**;
+recognition confidence is not speaking confidence, and reports do not predict hiring outcomes.
 
----
+## Audio and deployment state
 
-## Problem Statement
+The source defaults to Android system recognition. Amazon Transcribe Streaming
+is selected with `AWS_STT_ENABLED=true` in the app's compile configuration and
+requires the backend and shared rollout controls to be enabled independently.
+An APK's actual configuration is determined at build time, not by later edits to
+`env.json`.
 
-Job seekers — especially students and early-career professionals — consistently struggle with interview preparation. Despite having the technical skills required for a role, candidates often fail interviews due to lack of **structured practice**, inability to receive **real-time objective feedback**, and no access to a realistic, interactive interviewer.
+The latest retained deployment records describe AWS transcription enabled with
+a CloudFront private origin and an ARM host that stops when idle. See
+[the 21 October hosting verification](docs/cost-efficiency-2026-10-21.md).
+Those are historical observations; they do not prove today's live deployment.
 
-Existing solutions (YouTube videos, mock-interview apps, coaching services) are either:
-- **Static and passive** — no interactivity or adaptive follow-up
-- **Expensive** — human mock-interview coaches cost $50–$200/hour
-- **Disconnected from the candidate's actual profile** — generic question banks that don't reflect the individual's resume, skills, or target role
+The public-launch work adds an optional multi-task Fargate configuration,
+configurable per-task connection limits, cross-replica admission tests and
+operational metrics. **It has not migrated the live host or raised live limits.**
+See [public-launch readiness](docs/PUBLIC_LAUNCH.md) before changing infrastructure.
 
-Qlue v2 solves this by providing a **voice-first AI interviewer** that reads the candidate's actual resume, tailors every question to their background, evaluates spoken responses in real time, and generates a rich feedback report — all free and on-demand.
+## Architecture
 
----
+```text
+Flutter Android
+  ├── Firebase authentication
+  ├── REST + authenticated interview WebSocket → API Gateway → Lambda
+  │     ├── DynamoDB: sessions, accepted answers, feedback, quotas and recovery
+  │     ├── S3 + Textract: owned PDF uploads and bounded parsing
+  │     ├── Bedrock: contextual questions and content assessment
+  │     └── Polly: question audio
+  └── Short-lived audio ticket → private-origin WSS gateway → Transcribe
 
-## Proposed Solution
-
-Qlue v2 is a full-stack, serverless, AI-native platform consisting of:
-
-1. **A Flutter app with Android API 24+ interview capture** that acts as the interview client — handling voice input (STT), audio playback (TTS), real-time session state via WebSocket, and visualisation of feedback reports.
-
-2. **A Node.js serverless backend** (AWS SAM / Lambda) that orchestrates the interview lifecycle — session management, LLM query construction, scoring, transcript persistence, and push notifications.
-
-3. **An LLM pipeline** built on **Amazon Bedrock** (primary model: `nvidia/nemotron-super-3-120b`) and **Anthropic Claude 3 Haiku** (feedback model) that generates contextual interview questions, scores candidate responses across defined dimensions, and produces qualitative feedback reports.
-
-The system supports **four distinct AI-driven interview modules**:
-
-| Module | Description |
-|--------|-------------|
-| **RESUME** | Technical interview based on the candidate's uploaded resume |
-| **HR** | Behavioural interview using STAR-framework questions |
-| **INTRO** | Self-introduction coaching for perfecting the "tell me about yourself" pitch |
-| **WEBSITE** | Adaptive tutoring from any web URL — user shares a link and is quizzed on its content |
-| **JOB MATCH (JD)** | Analyze a job posting against a selected resume to produce a profile match score and tailored JD interview |
-
-Android interviews use the stable v1.0.8 release's `speech_to_text` 7.4.0 integration with the phone's system recognizer. A small local plugin extension exposes actual readiness, speech boundaries, native final results and capture ownership so recognition fragments stay in one hands-free answer. Unfinished hypotheses stay drafts and use bounded recovery. The recognizer may use the device's online speech service. English follows the device locale, with Indian English as the fallback. Local Silero/Zipformer files remain experimental and are not used by the default interview capture path. The AI's reply is synthesised by **Amazon Polly** and played via `just_audio`. Other platform interview capture is not currently supported.
-
----
-
-## System Architecture
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                        Flutter Client (Android capture)               │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────────┐  │
-│  │ Auth Screen │  │ Resume Upload│  │  Interview Session UI  │  │
-│  │ (Firebase)  │  │ (S3 presign) │  │  STT → WS → TTS       │  │
-│  └──────┬──────┘  └──────┬───────┘  └───────────┬────────────┘  │
-│         │                │                        │               │
-└─────────┼────────────────┼────────────────────────┼───────────────┘
-          │  REST (Dio)    │  REST (Dio)             │  WebSocket
-          ▼                ▼                         ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                   AWS API Gateway (REST + WebSocket)              │
-│   /auth/*     /resume/*    /interview/*    /dashboard/*           │
-└──────┬────────────┬────────────────┬────────────────┬────────────┘
-       │            │                │                │
-       ▼            ▼                ▼                ▼
-┌────────────┐ ┌──────────┐  ┌──────────────┐ ┌──────────────────┐
-│ Auth       │ │ Resume   │  │  Interview   │ │ Dashboard        │
-│ Lambdas    │ │ Lambdas  │  │  Lambdas     │ │ Lambdas          │
-│ (Firebase  │ │ (S3,     │  │  (Session,   │ │ (Score trends,   │
-│  JWT)      │ │ Textract)│  │   Bedrock,   │ │  history,        │
-└─────┬──────┘ └────┬─────┘  │   Polly,WS)  │ │  transcripts)    │
-      │             │        └──────┬───────┘ └──────────────────┘
-      ▼             ▼               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        AWS Services Layer                        │
-│  DynamoDB (8 tables)   S3 (3 buckets)   Bedrock   Polly         │
-│  Secrets Manager       SNS              Textract  Firebase FCM   │
-└─────────────────────────────────────────────────────────────────┘
+DynamoDB streams + bounded queues → recovery and feedback workers
 ```
 
-### Data Flow — Interview Session
+The gateway persists authoritative recognition evidence. The API does not trust
+client-supplied confidence claims. Interrupted audio requires the existing
+recovery/confirmation rules; unfinished drafts are not silently graded.
+INTRO scores the final introduction, with practice progress shown separately.
 
-```
-1. POST /interview/initialize
-   └── initializeSession.js → createSession() (DynamoDB) → returns { sessionId, wsUrl }
+## Local setup
 
-2. WebSocket connect: connectHandler.js → stores connectionId
+Use Node.js 24 and Flutter 3.41.2 / Dart 3.11.0, matching CI. AWS SAM and Docker
+are needed for infrastructure lint and packaged ARM64 checks. Android capture
+requires Android API 24 or later; other platform folders do not establish voice
+capture support.
 
-3. [User speaks] → Flutter STT → text → WS sendText
-   └── sendTextHandler.js → asyncWorker.js → processUserTurn()
-       ├── saveTranscript() (DynamoDB)
-       ├── invokeModel() → Bedrock (score dimensions)
-       ├── manageContextWindow() (rolling 20-turn window)
-       ├── generateQuestion.js → buildInterviewPrompt() → Bedrock stream
-       ├── synthesizeSpeech.js → Polly → S3 presigned URL
-       └── stateUpdateHandler.js → pushes { audio_url, transcript } via WS
-
-4. POST /interview/terminate
-   └── terminateSession.js → SNS publish → FeedbackTriggerTopic
-       └── analyzeTranscript.js → computeModuleScores.js
-           └── generateFeedbackReport.js → storeFeedbackReport.js
-               └── sendFeedbackNotification.js → FCM push
-```
-
-### DynamoDB Tables
-
-| Table | Purpose |
-|-------|---------|
-| `qlue-users` | User profiles, voice preferences, FCM tokens |
-| `qlue-resumes` | Resume metadata, parsed data (Textract), active flag |
-| `qlue-sessions` | Interview session lifecycle, state machine, accumulated scores |
-| `qlue-transcripts` | Per-turn transcripts (speaker, text, turn index) |
-| `qlue-feedback` | Generated feedback reports with dimension scores |
-| `qlue-concept-states` | WEBSITE module concept mastery tracking |
-| `qlue-ws-connections` | Active WebSocket connection IDs per session |
-| `qlue-notifications` | Push notification records |
-
----
-
-## Technologies Used
-
-### Frontend
-| Technology | Version | Purpose |
-|-----------|---------|---------|
-| **Flutter / Dart** | SDK ^3.11.0 | Cross-platform mobile and web UI |
-| **Provider** | ^6.1.2 | State management (AuthProvider, ResumeProvider, DashboardProvider, InterviewProvider) |
-| **Dio** | ^5.4.0 | HTTP client for REST API calls |
-| **web_socket_channel** | ^3.0.3 | Real-time WebSocket communication with backend |
-| **Android SpeechRecognizer** | System service | Current default interview recognizer, intentionally restored to the stable release approach |
-| **sherpa_onnx** | 1.13.8 | Experimental local Zipformer/Silero path and recorded-model verification |
-| **just_audio** | ^0.9.36 | Audio playback of Polly-synthesised TTS |
-| **Firebase Auth** | ^6.4.0 | Email/password and Google Sign-In |
-| **Firebase Messaging** | ^16.2.0 | Push notifications for feedback completion |
-| **go_router** | ^17.2.1 | Declarative navigation |
-| **google_fonts** | ^8.0.2 | Typography |
-| **Dart environment defines** | Dart 3.11 | Compile-time configuration via env.json |
-
-### Backend
-| Technology | Version | Purpose |
-|-----------|---------|---------|
-| **Node.js** | v24.x (arm64) | Lambda runtime |
-| **AWS SAM** | — | Infrastructure-as-Code, local testing |
-| **Amazon Bedrock** | `@aws-sdk/client-bedrock-runtime` ^3.x | Primary LLM — `nvidia/nemotron-super-3-120b` for interview reasoning; Claude 3 Haiku for feedback |
-| **Amazon Polly** | `@aws-sdk/client-polly` ^3.x | Text-to-speech synthesis (5 voice personas) |
-| **Amazon Textract** | `@aws-sdk/client-textract` ^3.x | Resume PDF parsing |
-| **Amazon DynamoDB** | `@aws-sdk/client-dynamodb` + `lib-dynamodb` | Primary data store (8 tables) |
-| **Amazon S3** | `@aws-sdk/client-s3` ^3.x | Resume storage, audio output, scraped content |
-| **Amazon SNS** | `@aws-sdk/client-sns` ^3.x | Async feedback pipeline trigger |
-| **AWS API Gateway** | — | REST API + WebSocket API |
-| **Firebase Admin SDK** | ^13.8.0 | JWT token validation, FCM push |
-| **Jest** | ^30.4.2 | Unit and integration testing |
-
-### AI / ML Stack
-| Service | Role |
-|---------|------|
-| **Amazon Bedrock — Nemotron-super-3-120b** | Question generation, response scoring, concept extraction |
-| **Anthropic Claude 3 Haiku (via Bedrock)** | Qualitative feedback report generation |
-| **Amazon Polly** | Neural TTS — Tiffany, Ruth, Joanna, Matthew, Stephen |
-| **Amazon Textract** | Resume OCR and structured extraction |
-
----
-
-## Interview Modules (In-Scope)
-
-### 1. RESUME Module
-- User uploads a PDF resume → Textract parses it into structured JSON (name, skills, experience, projects)
-- `initializeSession` creates a session tied to the `resumeId`
-- `generateQuestion.js` → `buildInterviewPrompt()` constructs a per-turn system prompt injecting resume summary, conversation history, and dimension focus
-- Bedrock generates the next question (streamed token by token)
-- Response is scored across: `clarity`, `fluency`, `technicalVocabulary`, `useOfExamples`
-- Running average accumulated every turn via `interviewService.processUserTurn()`
-
-### 2. HR Module
-- Behavioural interview using STAR-framework prompt templates
-- `buildHrPrompt()` in `generateQuestion.js` — adapts dynamically to candidate's prior answers
-- Scored on: `teamwork`, `ethicalThinking`, `problemSolving`, `communicationClarity`, `selfAwareness`
-
-### 3. INTRO (Self-Introduction) Module
-- 3-turn coaching loop: "Tell me about yourself" → specific feedback → refinement
-- `buildIntroPrompt()` switches instruction per turn index
-- Scored on: `clarity`, `structure`, `confidence`, `relevance`
-
-### 4. WEBSITE Module
-- User provides a URL → `fetchAndCleanContent.js` scrapes and cleans it via Scrape.do
-- `buildConceptExtractionPrompt()` extracts 3–5 key concepts via Bedrock
-- `buildWebsiteTeachPrompt()` constructs adaptive tutoring prompts per concept
-- Concept mastery tracked in `qlue-concept-states` table (PENDING → TUTORED → MASTERED)
-- Scored on: `comprehensionAccuracy`, `learningProgression`, `criticalThinking`, `responseClarity`, `conceptRetention`
-
-### 5. JOB MATCH Module
-- Purpose: compare a candidate's selected resume against a job posting and produce a profile `matchScore` (0–100), a condensed `jdSummary`, matched/missing skills, and a short `verdict` to inform a JD-tailored practice interview.
-- Inputs: job posting supplied as a **link**, **pasted text**, or an **uploaded PDF** (Textract-parsed). The frontend offers an upload presign flow for PDFs.
-- Backend handler: `POST /jd/analyze` implemented at [backend/src/handlers/jd/analyzeJobMatch.js](backend/src/handlers/jd/analyzeJobMatch.js#L1).
-- Key behaviour:
-    - Validates resume ownership via `getResumeById` before analysis.
-    - Obtains JD text from (priority): uploaded PDF → pasted text → scraped page (`fetchAndCleanContent`).
-    - Sends a structured system prompt to the LLM which must return a strict JSON object with `isJobPosting`, `matchScore`, `roleTitle`, `matchedSkills`, `missingSkills`, `verdict`, and `jdSummary`.
-    - Persists a compact JD analysis on the user record via `saveJdAnalysis` so that `initializeSession` can seed the JD interview module without re-scraping.
-- Frontend: UI implemented at [frontend/lib/screens/interview/job_match_screen.dart](frontend/lib/screens/interview/job_match_screen.dart#L1). The screen supports switching between Link / PDF / Paste inputs, uploads PDFs via a presigned S3 PUT, and displays results with a semicircle gauge.
-- Threshold & session integration:
-    - Environment variable `JD_MATCH_THRESHOLD` (default `60`) controls eligibility to unlock a JD-tailored practice interview.
-    - `initializeSession` accepts `moduleType=JD` and requires a prior job-match analysis; it injects `jdSummary`, `jdRoleTitle`, and `jdMatchScore` into the session payload ([backend/src/handlers/interview/initializeSession.js](backend/src/handlers/interview/initializeSession.js#L110)).
-- Security & UX notes:
-    - Uploaded PDF S3 keys are namespaced under `jd/<userId>/...`; the handler enforces ownership of the key before running Textract.
-    - Scraping may fail on protected sites (LinkedIn etc.) — the endpoint signals `canPasteText` to prompt the client to accept pasted JD text.
-- Infra & tests:
-    - Lambda: `AnalyzeJobMatchFunction` defined in [backend/template.yaml](backend/template.yaml#L1540) with a longer `Timeout` (90s) to accommodate scraping + LLM latency.
-    - Unit tests covering the JD analysis handler: [backend/tests/unit/analyzeJobMatch.test.js](backend/tests/unit/analyzeJobMatch.test.js#L1).
-
-### Session Lifecycle & State Machine
-
-```
-INITIALIZING → AI_SPEAKING → AWAITING_USER_INPUT → PROCESSING
-     ↑                                                   │
-     └───────────────────────────────────────────────────┘
-                        (each turn)
-                             │
-                        TERMINATED
-                             │
-                      (async feedback pipeline)
-                      analyzeTranscript → computeModuleScores
-                      → generateFeedbackReport → FCM push
-```
-
-- Silence detection: 3 retries before auto-terminate
-- Concurrency lock: one active session per user (409 if violated)
-- Context window management: rolling 20-turn window to stay within Bedrock token limits
-
-### Resume Management
-- `generatePresignedUrl.js` → S3 presigned upload URL
-- `processResumeUpload.js` → Textract job → structured parsed data stored in DynamoDB
-- `validateResumeHash.js` → SHA-256 deduplication to avoid re-processing identical files
-- `setActiveResume.js` → atomic active-flag swap (only one active resume per user)
-- `deleteResume.js` → cascading delete from S3 and DynamoDB
-
-### Dashboard & Analytics
-- `getDashboardSummary.js` — aggregated stats: total sessions, avg score, top module
-- `getScoreTrends.js` — per-dimension score over time for chart rendering
-- `getModuleStats.js` — breakdown by module type
-- `getSessionHistory.js` + `getSessionDetail.js` — full session replay
-- `getTranscript.js` — per-session full transcript retrieval
-
-### Authentication
-- Firebase Auth: email/password (`registerUser`, `loginUser`) and Google OAuth (`loginWithGoogle`)
-- Custom JWT validation via `validateToken.js` (Firebase Admin SDK)
-- Token refresh via `refreshToken.js`
-- FCM token management via `updateFcmToken.js` for push notifications
-
----
-
-## Out of Scope
-
-The following features are **explicitly not included** in v2:
-
-- **Live human interviewer pairing** — no peer-to-peer or recruiter-facing interface
-- **Video recording or analysis** — voice-only; no camera or facial expression scoring
-- **Payment / subscription management** — all features are free-tier in v2; no Stripe or billing integration
-- **Company-specific question banks** — no curated database of company-specific interview questions (e.g., "Google interview questions")
-- **Multi-language support** — English only in v2; no i18n or multilingual STT/TTS
-- **Recruiter/employer portal** — no hiring-side features; candidate-facing only
-- **Offline mode** — requires active internet for Bedrock, Polly, and WebSocket
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- Flutter 3.41.2 / Dart 3.11.0
-- Node.js 24, AWS CLI, AWS SAM CLI; Linux Docker for Lambda arm64 packaging
-- Firebase project (Auth + FCM configured)
-- AWS account with Bedrock model access enabled for `nvidia.nemotron-super-3-120b`
-
-### Backend Setup
-
-```bash
+```powershell
 cd backend
-npm install
-
-# Copy environment template
-cp .env.example .env
-# Fill in: AWS_REGION, BEDROCK_MODEL_ID, FIREBASE credentials
-
-# Build only; production migration requires the owning-stack runbook below
-sam validate --lint
-sam build --use-container --no-cached
+npm ci
+cd audio-gateway
+npm ci --ignore-scripts
+cd ../../frontend
+flutter pub get
 ```
 
-### Frontend Setup
+Copy `frontend/env.example.json` to the ignored `frontend/env.json` and supply
+the intended public API/Firebase client configuration. Keep credentials,
+service-account keys and signing material out of source control. Android
+Firebase configuration and release signing are described in the release guide.
 
-```bash
+```powershell
 cd frontend
-
-# Install dependencies
-flutter pub get
-
-# Copy the compile-time configuration example; set the matching backend/Firebase
-cp env.example.json env.json
-# Keep env.json, google-services.json and signing secrets private
 flutter run --dart-define-from-file=env.json
 ```
 
-### Running Tests
+Local unit/widget tests and the gateway synthetic load test do not require
+AWS credentials or paid provider calls. Real service acceptance requires
+separately configured, owned synthetic resources and bounded usage.
 
-```bash
-# Backend unit + integration tests
-cd backend && npm test
+## Verification
 
-# Frontend widget + provider tests
-cd frontend && flutter test
-```
-
----
-
-## Project Structure
-
-```
-Qlue-v2-main/
-├── backend/
-│   ├── src/
-│   │   ├── handlers/
-│   │   │   ├── auth/          # registerUser, loginUser, loginWithGoogle, refreshToken,
-│   │   │   │                  # validateToken, getUserProfile, updateUserProfile,
-│   │   │   │                  # updateFcmToken, syncUser, deleteAccount, logoutUser
-│   │   │   ├── interview/     # initializeSession, generateQuestion, processUserInput,
-│   │   │   │                  # controlTurnFlow, asyncWorker, manageContextWindow,
-│   │   │   │                  # synthesizeSpeech, terminateSession
-│   │   │   ├── resume/        # generatePresignedUrl, processResumeUpload, getResumeList,
-│   │   │   │                  # getResumeDetail, setActiveResume, deleteResume,
-│   │   │   │                  # validateResumeHash, updateResumeParsedData
-│   │   │   ├── feedback/      # triggerFeedbackGeneration, analyzeTranscript,
-│   │   │   │                  # computeModuleScores, generateFeedbackReport,
-│   │   │   │                  # storeFeedbackReport, sendFeedbackNotification
-│   │   │   ├── dashboard/     # getDashboardSummary, getScoreTrends, getModuleStats,
-│   │   │   │                  # getSessionHistory, getSessionDetail, getTranscript
-│   │   │   ├── websocket/     # connectHandler, disconnectHandler, sendTextHandler,
-│   │   │   │                  # stateUpdateHandler, errorHandler
-│   │   │   ├── scraper/       # fetchAndCleanContent
-│   │   │   └── website/       # validateWebsite
-│   │   ├── lib/
-│   │   │   ├── bedrock.js     # Bedrock client, all prompt builders, invokeModel/Stream
-│   │   │   ├── dynamodb.js    # DynamoDB client wrapper
-│   │   │   ├── polly.js       # TTS synthesis
-│   │   │   ├── textract.js    # Resume PDF extraction
-│   │   │   ├── s3.js          # S3 operations + presigned URLs
-│   │   │   ├── sns.js         # SNS publish (feedback trigger)
-│   │   │   ├── websocket.js   # API Gateway WS management
-│   │   │   ├── firebase.js    # Firebase Admin init
-│   │   │   ├── fcm.js         # FCM push notifications
-│   │   │   ├── scraper.js     # Web scraping client
-│   │   │   ├── secrets.js     # Secrets Manager
-│   │   │   ├── errors.js      # Custom QlueError class + error codes
-│   │   │   ├── logger.js      # Structured logging
-│   │   │   └── response.js    # Lambda response helpers
-│   │   ├── models/
-│   │   │   ├── session.js     # Session CRUD + state machine
-│   │   │   ├── transcript.js  # Transcript CRUD
-│   │   │   ├── user.js        # User CRUD
-│   │   │   ├── resume.js      # Resume CRUD
-│   │   │   ├── feedback.js    # Feedback report CRUD
-│   │   │   ├── conceptState.js# Concept mastery CRUD
-│   │   │   └── wsConnection.js# WebSocket connection CRUD
-│   │   └── services/
-│   │       └── interviewService.js  # Core turn-processing business logic
-│   ├── tests/
-│   │   ├── unit/              # 15+ unit test suites (Jest)
-│   │   └── integration/       # interviewFlow.test.js end-to-end
-│   ├── template.yaml          # AWS SAM IaC definition
-│   ├── package.json
-│   └── server.js              # Local Express dev server
-│
-└── frontend/
-    ├── lib/
-    │   ├── main.dart
-    │   ├── app.dart
-    │   ├── components/        # avatar, glass_card, spider_chart, spectral_background,
-    │   │                      # staggered_fade_in, resume_card, premium_flip_card, etc.
-    │   ├── context/           # auth_provider, resume_provider, dashboard_provider
-    │   ├── features/interview/providers/interview_provider.dart
-    │   ├── core/
-    │   │   ├── constants/     # api_constants, app_constants, model_constants
-    │   │   ├── models/        # dashboard_model, feedback_report_model, resume_model, session_model
-    │   │   ├── network/       # dio_client, websocket_client
-    │   │   └── services/      # dashboard_api_service, resume_api_service
-    │   ├── screens/
-    │   │   ├── auth/          # login_screen, register_screen
-    │   │   ├── interview/     # interview_session_screen, feedback_report_screen, dot_matrix_painter
-    │   │   ├── resume/        # resume_upload_screen, resume_detail_screen
-    │   │   ├── tabs/          # dashboard_screen, history_screen, ai_modules_screen, profile_screen
-    │   │   └── profile/       # help_support_screen
-    │   └── shared/services/   # stt_service, tts_service, notification_service
-    ├── test/                  # 10 test files covering providers, models, flows, widgets
-    └── pubspec.yaml
-```
-
----
-
-## AI Integration
-
-Qlue v2's AI pipeline is deeply integrated across multiple service boundaries:
-
-### 1. LLM Question Generation (Amazon Bedrock — Nemotron)
-- **File:** `backend/src/handlers/interview/generateQuestion.js`
-- Per-module prompt builders: `buildInterviewPrompt()`, `buildHrPrompt()`, `buildWebsiteTeachPrompt()`, `buildIntroPrompt()`
-- Streaming via `ConverseStreamCommand` for low-latency token delivery to the WebSocket
-- Relevance detection (`analyzeResponseRelevance`) redirects off-topic or too-short answers
-
-### 2. Real-Time Response Scoring (Amazon Bedrock)
-- **File:** `backend/src/services/interviewService.js` + `backend/src/lib/bedrock.js`
-- `buildScoringPrompt()` — scores each candidate response across 4–5 dimensions (1–100)
-- Running average calculated each turn: `newAvg = prevAvg + (newVal - prevAvg) / turnNumber`
-- Scores accumulated in session record; final report uses these averages (Bedrock fallback only if no accumulated scores)
-
-### 3. Qualitative Feedback Report (Anthropic Claude 3 Haiku via Bedrock)
-- **File:** `backend/src/handlers/feedback/generateFeedbackReport.js`
-- `buildFeedbackPrompt()` — generates structured JSON: `{ strengths: [], improvements: [] }`
-- Triggered asynchronously via SNS after session termination
-
-### 4. Concept Extraction — WEBSITE Module (Amazon Bedrock)
-- **File:** `backend/src/lib/bedrock.js` → `buildConceptExtractionPrompt()`
-- Extracts 3–5 teachable concepts from scraped web content
-- Each concept cycles through PENDING → TUTORED → MASTERED state machine
-
-### 5. Resume Parsing (Amazon Textract)
-- **File:** `backend/src/lib/textract.js` + `backend/src/handlers/resume/processResumeUpload.js`
-- OCR + structured field extraction from uploaded PDF resumes
-- Parsed output stored in DynamoDB and injected into interview prompts
-
-### Voice Personas (Amazon Polly)
-| Polly Voice ID | In-App Name |
-|---------------|-------------|
-| Tiffany | Emma |
-| Ruth | Rachel |
-| Joanna | Sarah |
-| Matthew | Chris |
-| Stephen | Steve |
-
----
-
-## Future Enhancements
-
-The current codebase is architected to support the following planned features with minimal rework:
-
-### 1. Multi-Round Interview Simulation
-- The `session.js` model's state machine and `interviewService.js`'s modular turn processor already support extended session lengths
-- Planned: configurable round counts (e.g., 3-round interview: INTRO → RESUME → HR) chained in a single session
-
-### 2. Company-Specific Question Packs
-- `generateQuestion.js` prompt builders accept a `context` object — adding a `companyProfile` field requires only a prompt template extension
-- Planned: curated packs for FAANG, startups, by role (SDE, PM, DS) delivered via a new `QuestionPacksTable`
-
-### 3. Peer-to-Peer Mock Interview Mode
-- WebSocket infrastructure (`connectHandler`, `sendTextHandler`, `stateUpdateHandler`) already supports multi-connection sessions
-- Planned: extend `wsConnection.js` model to allow two connectionIds per session for paired practice
-
-### 4. Video Analysis & Non-Verbal Feedback
-- The Flutter architecture's `interview_session_screen.dart` is designed to be extended with camera input
-- Planned: integrate AWS Rekognition for facial expression and eye-contact scoring as an additional dimension
-
-### 5. Adaptive Difficulty Engine
-- `interviewService.js` already tracks per-dimension running averages; these can drive a difficulty controller
-- Planned: if `technicalVocabulary` score > 80, escalate to senior-level questions in the next turn
-
-### 6. LLM Observability & Cost Dashboard
-- `bedrock.js` already logs `inputTokens` / `outputTokens` per call
-- Planned: aggregate token usage to DynamoDB and surface in an admin dashboard for cost attribution per user and module
-
----
-
-## Contributing
-
-1. Fork the repo and create a feature branch: `git checkout -b feature/my-feature`
-2. Backend: add a unit test under `backend/tests/unit/` for any new Lambda handler
-3. Frontend: add widget or provider tests under `frontend/test/`
-4. Run `npm test` (backend) and `flutter test` (frontend) — all tests must pass
-5. Open a pull request against `main`
-
----
-
-## License
-
-MIT © 2024 Qlue Team
-
-### Current interview platform and release gates
-
-Native microphone interview capture supports **Android API 24+**. iOS, web and desktop interview capture is not implemented. The default SttService intentionally uses the Android system recognizer, following the stable published release; the user confirmed retaining this restoration on 4 October. Native readiness and speech-boundary callbacks drive hands-free answer accumulation. The phone service may require network access. Actual pause/endpoint behavior and recognition accuracy need device acceptance. Foreground interview screen-awake, optional Replay, account ownership and bounded recovery have separate regressions. Local AudioRecord/Silero/Zipformer remains experimental: its recorded-model probes do not verify the default microphone path. Its 180-second retained-PCM cap does not apply to the system-recognizer path, which does not retain raw PCM; long transcripts are also subject to the backend text limit.
-
-Release checks verify the production system-recognizer path and the universal APK:
+From the repository root:
 
 ```powershell
-# From repository root:
-node audit/verify-release-reachability.cjs
-python audit/verify-release-apk.py frontend/build/app/outputs/flutter-apk/Qlue.apk
+cd frontend
+flutter analyze --no-pub
+flutter test --no-pub
+cd ../backend
+npm test -- --runInBand --coverage
+node evaluation/evaluate.cjs
+cd audio-gateway
+npm test
+node scripts/load-smoke.mjs --clients=24 --slots=12 --duration-ms=1600
 ```
 
-The APK workflow runs frontend analysis, frontend tests, backend tests, and production dependency audits before building. Packaging checks verify the original font bytes, supported architectures, archive integrity, and exclusion of experimental offline recognition resources. Physical Android microphone and accent/noise acceptance remains a separate device check.
+The load smoke uses two local server instances, real WebSocket transports,
+synthetic silence and an in-memory transactional boundary. It checks shared
+admission and cleanup; it is not an AWS throughput or speech-accuracy benchmark.
 
-Backend main pushes **verify only**. Manual workflow dispatch builds a paused migration review artifact. Version tags build a signed APK and publish it to GitHub Releases after verification passes. The release version and Android build number come from the tag (for example, `v1.0.9` becomes `1.0.9` / `10009`); `frontend/pubspec.yaml` records the matching local version. Follow [the controlled rollout and physical-device checklist](audit/backend-rollout-runbook.md) for future backend migrations. Release signing and environment inputs remain in local ignored files or GitHub Actions secrets.
+Flutter checks run on pull requests and main pushes. Backend CI additionally
+checks dependency audits, SAM templates and packaged Linux ARM64 artifacts.
+Coverage floors prevent large regressions; coverage does not establish that
+every security or recovery behavior has been exercised.
 
-The six background recovery workers use DynamoDB streams and per-job delayed SQS messages in place of recurring schedules. See [event-driven recovery and migration](docs/event-driven-recovery.md) for the actual sources, retry behavior, and the one-time reconciliation of work created before streams were enabled.
+## Project map
 
-Cost controls use one shared recovery delay queue, atomic resume admission/execution claims, and validated version-pinned text-only OCR. See [cost optimization and verification](docs/cost-optimization-2026-10-18.md).
+| Path | Responsibility |
+|---|---|
+| `frontend/lib/features/interview/` | Interview orchestration, response recovery and state models |
+| `frontend/lib/shared/services/` | Speech capture, audio transport and playback |
+| `frontend/lib/screens/` | Authentication, interviews, reports, profile and history |
+| `backend/src/handlers/` | Authenticated API, workers and feedback pipeline |
+| `backend/src/lib/` | Provider boundaries, deadlines, quotas, metrics and security |
+| `backend/audio-gateway/` | Streaming transport, admission, hosting and synthetic load checks |
+| `backend/evaluation/` | Synthetic assessment corpus and human/model comparison tooling |
+| `backend/template.yaml` | Canonical application infrastructure |
+| `audit/` | Verification tools and historical investigations |
+| `docs/` | Current guides and dated release evidence |
 
-Email/password signup uses six-digit verification codes through AWS Cognito's built-in sender, while Firebase remains the session provider. See [email OTP security and rollout](docs/email-otp-verification.md) for limits and deployment requirements.
+## Guides
 
-Password recovery is available from Login and Profile through Firebase's hosted reset flow. See [password-reset behavior and verification](docs/password-reset.md) for account binding, abuse controls, the provider password policy and live test results.
+- [Build and release](docs/RELEASES.md)
+- [Public launch and concurrency](docs/PUBLIC_LAUNCH.md)
+- [Operations, metrics and costs](docs/OPERATIONS.md)
+- [Feedback evaluation](docs/FEEDBACK_EVALUATION.md)
+- [Device acceptance](docs/DEVICE_ACCEPTANCE.md)
+- [Event-driven recovery](docs/event-driven-recovery.md)
+- [Account deletion](docs/account-deletion.md)
 
-Account deletion is available from Profile and the email verification screen. It removes the Firebase Auth identity and queues complete, checkpointed cleanup of owned AWS data. See [account deletion and verification](docs/account-deletion.md) for reauthentication, upload expiry, retries and same-email signup behavior.
+Dated documents preserve what was observed in that investigation. Consult current
+source/configuration and fresh acceptance evidence before treating an older
+deployment, price estimate or test count as current.

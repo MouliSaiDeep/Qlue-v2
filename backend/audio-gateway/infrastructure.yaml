@@ -1,0 +1,297 @@
+AWSTemplateFormatVersion: '2010-09-09'
+# Optional multi-task launch/rollback template. The cost-saving deployment uses
+# ondemand/template.cjs and ondemand/distribution.yaml. Provisioning this
+# template's ALB/Fargate service incurs hourly charges even without interviews.
+Description: Optional Qlue audio gateway. No resources or running tasks by default.
+Parameters:
+  ProvisionGateway: {Type: String, Default: 'false', AllowedValues: ['false', 'true']}
+  RuntimeEnabled: {Type: String, Default: 'false', AllowedValues: ['false', 'true']}
+  DesiredCount: {Type: Number, Default: 0, MinValue: 0, MaxValue: 6}
+  PublicLaunchScaling: {Type: String, Default: 'false', AllowedValues: ['false', 'true'], Description: Opt-in two-to-six-task scale-out; scale-in remains manual to protect long-lived audio streams.}
+  MaxConnectionsPerTask: {Type: Number, Default: 8, MinValue: 1, MaxValue: 64}
+  UseManagedTls: {Type: String, Default: 'false', AllowedValues: ['false', 'true'], Description: CloudFront default HTTPS domain with a private VPC origin; no custom domain required}
+  UsePublicTaskEgress: {Type: String, Default: 'false', AllowedValues: ['false', 'true'], Description: Public-subnet task egress without a NAT gateway; inbound remains restricted to the ALB security group}
+  CloudFrontPrefixListId: {Type: String, Default: '', Description: AWS-managed com.amazonaws.global.cloudfront.origin-facing prefix list in this region}
+  ImageUri: {Type: String, Description: Reviewed image digest in this account's private ECR repository, AllowedPattern: '^[0-9]{12}\.dkr\.ecr\.us-east-1\.amazonaws\.com/[a-z0-9/._-]+@sha256:[a-f0-9]{64}$'}
+  RepositoryArn: {Type: String, AllowedPattern: '^arn:aws:ecr:us-east-1:[0-9]{12}:repository/[a-z0-9/._-]+$'}
+  VpcId: {Type: 'AWS::EC2::VPC::Id'}
+  PublicSubnets: {Type: 'List<AWS::EC2::Subnet::Id>'}
+  PrivateSubnets: {Type: 'List<AWS::EC2::Subnet::Id>'}
+  CertificateArn: {Type: String, Default: '', Description: ACM certificate in us-east-1 matching the gateway hostname}
+  SttTableName: {Type: String, Default: ''}
+  SttTableArn: {Type: String, AllowedPattern: '^arn:aws:dynamodb:us-east-1:[0-9]{12}:table/[A-Za-z0-9_.-]+$'}
+  SessionsTableName: {Type: String, Default: ''}
+  SessionsTableArn: {Type: String, AllowedPattern: '^arn:aws:dynamodb:us-east-1:[0-9]{12}:table/[A-Za-z0-9_.-]+$'}
+  DeletionsTableName: {Type: String, Default: ''}
+  DeletionsTableArn: {Type: String, AllowedPattern: '^arn:aws:dynamodb:us-east-1:[0-9]{12}:table/[A-Za-z0-9_.-]+$'}
+  VocabularyManifest: {Type: String, Default: '{}'}
+  GlobalStreamSlots: {Type: Number, Default: 4, MinValue: 1, MaxValue: 20}
+  DailyStreamLimit: {Type: Number, Default: 160, MinValue: 1, MaxValue: 1000, Description: Per-user daily answer stream starts including retries; ten interview sessions are enforced separately.}
+Conditions:
+  Provision: !Equals [!Ref ProvisionGateway, 'true']
+  ManagedTls: !Equals [!Ref UseManagedTls, 'true']
+  ProvisionManagedTls: !And [!Equals [!Ref ProvisionGateway, 'true'], !Equals [!Ref UseManagedTls, 'true']]
+  PublicTaskEgress: !Equals [!Ref UsePublicTaskEgress, 'true']
+  ScalePublic: !And [!Equals [!Ref ProvisionGateway, 'true'], !Equals [!Ref PublicLaunchScaling, 'true']]
+Rules:
+  PublicLaunchGuard:
+    RuleCondition: !Equals [!Ref PublicLaunchScaling, 'true']
+    Assertions:
+      - Assert: !Equals [!Ref ProvisionGateway, 'true']
+        AssertDescription: Public launch scaling requires gateway provisioning.
+      - Assert: !Not [!Or [!Equals [!Ref DesiredCount, 0], !Equals [!Ref DesiredCount, 1]]]
+        AssertDescription: Start at least two tasks for public launch availability.
+  RegionGuard:
+    RuleCondition: !Equals [!Ref ProvisionGateway, 'true']
+    Assertions:
+      - Assert: !Equals [!Ref 'AWS::Region', us-east-1]
+        AssertDescription: Audio gateway and custom vocabularies must be in us-east-1.
+      - Assert: !Or [!Equals [!Ref UseManagedTls, 'true'], !Not [!Equals [!Ref CertificateArn, '']]]
+        AssertDescription: A reviewed TLS certificate is required before provisioning.
+      - Assert: !Or [!Equals [!Ref UseManagedTls, 'false'], !Not [!Equals [!Ref CloudFrontPrefixListId, '']]]
+        AssertDescription: Managed TLS requires the AWS CloudFront origin-facing prefix list.
+Resources:
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Condition: Provision
+    Properties:
+      ClusterSettings: [{Name: containerInsights, Value: disabled}]
+  Logs:
+    Type: AWS::Logs::LogGroup
+    Condition: Provision
+    Properties: {RetentionInDays: 7}
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: Provision
+    Properties:
+      GroupDescription: WSS ingress or private CloudFront VPC origin
+      VpcId: !Ref VpcId
+      SecurityGroupIngress: !If
+        - ManagedTls
+        - [{IpProtocol: tcp, FromPort: 80, ToPort: 80, SourcePrefixListId: !Ref CloudFrontPrefixListId}]
+        - [{IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0}]
+      SecurityGroupEgress: [{IpProtocol: tcp, FromPort: 8080, ToPort: 8080, DestinationSecurityGroupId: !Ref TaskSecurityGroup}]
+  TaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: Provision
+    Properties:
+      GroupDescription: Audio tasks, ALB-only ingress and TLS egress to AWS
+      VpcId: !Ref VpcId
+      SecurityGroupEgress: [{IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0}]
+  TaskIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: Provision
+    Properties: {GroupId: !Ref TaskSecurityGroup, IpProtocol: tcp, FromPort: 8080, ToPort: 8080, SourceSecurityGroupId: !Ref AlbSecurityGroup}
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Condition: Provision
+    Properties:
+      Scheme: !If [ManagedTls, internal, internet-facing]
+      Subnets: !If [ManagedTls, !Ref PrivateSubnets, !Ref PublicSubnets]
+      SecurityGroups: [!Ref AlbSecurityGroup]
+      LoadBalancerAttributes:
+        - {Key: idle_timeout.timeout_seconds, Value: '240'}
+        - {Key: routing.http.drop_invalid_header_fields.enabled, Value: 'true'}
+        - {Key: deletion_protection.enabled, Value: 'true'}
+  Target:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Condition: Provision
+    Properties:
+      VpcId: !Ref VpcId
+      Protocol: HTTP
+      Port: 8080
+      TargetType: ip
+      HealthCheckPath: /healthz
+      HealthCheckIntervalSeconds: 15
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes: [{Key: deregistration_delay.timeout_seconds, Value: '15'}]
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: Provision
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: !If [ManagedTls, 80, 443]
+      Protocol: !If [ManagedTls, HTTP, HTTPS]
+      SslPolicy: !If [ManagedTls, !Ref 'AWS::NoValue', ELBSecurityPolicy-TLS13-1-2-2021-06]
+      Certificates: !If [ManagedTls, !Ref 'AWS::NoValue', [{CertificateArn: !Ref CertificateArn}]]
+      DefaultActions: [{Type: forward, TargetGroupArn: !Ref Target}]
+  VpcOrigin:
+    Type: AWS::CloudFront::VpcOrigin
+    Condition: ProvisionManagedTls
+    DependsOn: Listener
+    Properties:
+      VpcOriginEndpointConfig:
+        Name: !Sub '${AWS::StackName}-audio'
+        Arn: !Ref LoadBalancer
+        HTTPPort: 80
+        HTTPSPort: 443
+        OriginProtocolPolicy: http-only
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Condition: ProvisionManagedTls
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: Qlue authenticated streaming audio; private VPC origin
+        HttpVersion: http2
+        IPV6Enabled: true
+        PriceClass: PriceClass_100
+        ViewerCertificate: {CloudFrontDefaultCertificate: true}
+        Origins:
+          - Id: audio
+            DomainName: !GetAtt LoadBalancer.DNSName
+            VpcOriginConfig: {VpcOriginId: !GetAtt VpcOrigin.Id, OriginReadTimeout: 60, OriginKeepaliveTimeout: 60}
+            OriginCustomHeaders: [{HeaderName: X-Qlue-Viewer-Proto, HeaderValue: https}]
+        DefaultCacheBehavior:
+          TargetOriginId: audio
+          ViewerProtocolPolicy: https-only
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: false
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+  TaskRole:
+    Type: AWS::IAM::Role
+    Condition: Provision
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement: [{Effect: Allow, Principal: {Service: ecs-tasks.amazonaws.com}, Action: 'sts:AssumeRole'}]
+      Policies:
+        - PolicyName: AudioSessionAndTranscribe
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ['transcribe:StartStreamTranscription']
+                Resource: '*'
+                Condition: {StringEquals: {'aws:RequestedRegion': us-east-1}}
+              - Effect: Allow
+                Action: ['transcribe:GetVocabulary']
+                Resource: !Sub 'arn:${AWS::Partition}:transcribe:us-east-1:${AWS::AccountId}:vocabulary/qlue-public-*'
+              - Effect: Allow
+                Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:ConditionCheckItem']
+                Resource: !Ref SttTableArn
+              - Effect: Allow
+                Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+                Resource: [!Ref SessionsTableArn, !Ref DeletionsTableArn]
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Condition: Provision
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement: [{Effect: Allow, Principal: {Service: ecs-tasks.amazonaws.com}, Action: 'sts:AssumeRole'}]
+      Policies:
+        - PolicyName: PullReviewedImageAndWriteLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - {Effect: Allow, Action: ['ecr:GetAuthorizationToken'], Resource: '*'}
+              - Effect: Allow
+                Action: ['ecr:BatchCheckLayerAvailability', 'ecr:GetDownloadUrlForLayer', 'ecr:BatchGetImage']
+                Resource: !Ref RepositoryArn
+              - Effect: Allow
+                Action: ['logs:CreateLogStream', 'logs:PutLogEvents']
+                Resource: !GetAtt Logs.Arn
+  Task:
+    Type: AWS::ECS::TaskDefinition
+    Condition: Provision
+    Properties:
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      RuntimePlatform: {CpuArchitecture: ARM64, OperatingSystemFamily: LINUX}
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: audio
+          Image: !Ref ImageUri
+          Essential: true
+          ReadonlyRootFilesystem: true
+          StopTimeout: 120
+          PortMappings: [{ContainerPort: 8080}]
+          LinuxParameters: {InitProcessEnabled: true, Capabilities: {Drop: [ALL]}}
+          Environment:
+            - {Name: AWS_REGION, Value: us-east-1}
+            - {Name: AWS_STT_ENABLED, Value: !Ref RuntimeEnabled}
+            - {Name: GATEWAY_INGRESS, Value: !If [ManagedTls, cloudfront-vpc, alb-tls]}
+            - {Name: STT_SESSIONS_TABLE, Value: !Ref SttTableName}
+            - {Name: SESSIONS_TABLE, Value: !Ref SessionsTableName}
+            - {Name: DELETION_JOBS_TABLE, Value: !Ref DeletionsTableName}
+            - {Name: VOCABULARY_MANIFEST, Value: !Ref VocabularyManifest}
+            - {Name: GLOBAL_STREAM_SLOTS, Value: !Ref GlobalStreamSlots}
+            - {Name: DAILY_STREAM_LIMIT, Value: !Ref DailyStreamLimit}
+            - {Name: MAX_CONNECTIONS_PER_TASK, Value: !Ref MaxConnectionsPerTask}
+          LogConfiguration:
+            LogDriver: awslogs
+            Options: {awslogs-group: !Ref Logs, awslogs-region: us-east-1, awslogs-stream-prefix: audio}
+  Service:
+    Type: AWS::ECS::Service
+    Condition: Provision
+    DependsOn: Listener
+    Properties:
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref Task
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      HealthCheckGracePeriodSeconds: 30
+      DeploymentConfiguration:
+        DeploymentCircuitBreaker: {Enable: true, Rollback: true}
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: !If [PublicTaskEgress, ENABLED, DISABLED]
+          SecurityGroups: [!Ref TaskSecurityGroup]
+          Subnets: !If [PublicTaskEgress, !Ref PublicSubnets, !Ref PrivateSubnets]
+      LoadBalancers: [{ContainerName: audio, ContainerPort: 8080, TargetGroupArn: !Ref Target}]
+  PublicScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Condition: ScalePublic
+    Properties:
+      MinCapacity: 2
+      MaxCapacity: 6
+      ResourceId: !Join ['/', [service, !Ref Cluster, !GetAtt Service.Name]]
+      RoleARN: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService'
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+  PublicCpuScaleOut:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Condition: ScalePublic
+    Properties:
+      PolicyName: audio-cpu-scale-out
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref PublicScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 60
+        DisableScaleIn: true
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification: {PredefinedMetricType: ECSServiceAverageCPUUtilization}
+  PublicMemoryScaleOut:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Condition: ScalePublic
+    Properties:
+      PolicyName: audio-memory-scale-out
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref PublicScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        DisableScaleIn: true
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification: {PredefinedMetricType: ECSServiceAverageMemoryUtilization}
+Outputs:
+  ManagedGatewayUrl:
+    Condition: ProvisionManagedTls
+    Value: !Sub 'wss://${Distribution.DomainName}/audio'
+  ClusterName:
+    Condition: Provision
+    Value: !Ref Cluster
+  ServiceName:
+    Condition: Provision
+    Value: !GetAtt Service.Name
+  LoadBalancerDns:
+    Condition: Provision
+    Value: !GetAtt LoadBalancer.DNSName

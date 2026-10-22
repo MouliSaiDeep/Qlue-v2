@@ -43,6 +43,20 @@ test('new untouched session terminates ungraded and releases its lock',async()=>
   expect(await getTranscriptBySession('s')).toEqual([]);
   expect(memory.table('qlue-sessions').has('LOCK#u')).toBe(false);
 });
+
+test('ending immediately after the first question creates no feedback or history entry',async()=> {
+  await require('../../src/models/transcript').saveTranscript('s',0,'AI','Tell me about yourself.',{eventId:'first-question'});
+  await sessionModel.updateSessionState('s','USER_RESPONDING','LOADING_CONTEXT');
+  const result=await terminate('USER_INITIATED');
+  expect(result).toMatchObject({discarded:true,feedbackExpected:false});
+  expect(row().answeredCount).toBe(0);
+  expect(row().feedbackJob).toBeUndefined();
+  expect(publishFeedbackJob).not.toHaveBeenCalled();
+  const history=await require('../../src/handlers/dashboard/getSessionHistory').handler({requestContext:{authorizer:{uid:'u'}}});
+  expect(JSON.parse(history.body).sessions).toEqual([]);
+  expect((await terminate('USER_INITIATED')).feedbackExpected).toBe(false);
+  expect(publishFeedbackJob).not.toHaveBeenCalled();
+});
 test('a stored failure reason survives a later manual End reason',async()=> {
   await sessionModel.updateSessionState('s','ERROR','LOADING_CONTEXT',{terminationReason:'CLARIFICATION_LIMIT'});
   expect(await terminate('USER_INITIATED')).toMatchObject({feedbackExpected:false,reason:'CLARIFICATION_LIMIT'});
@@ -134,11 +148,11 @@ test('legacy control/fragment text is not interpreted as an answer',async()=> {
   for(const [n,text] of ['Hello','Can you say that again?','Please end the interview'].entries()) await require('../../src/models/transcript').saveTranscript('s',n,'USER',text,{eventId:`legacy-${n}`});
   expect((await terminate()).feedbackExpected).toBe(false);expect(publishFeedbackJob).not.toHaveBeenCalled();
 });
-test('retained ungraded failure is readable in History/detail but absent from averages',async()=> {
+test('no-answer failure is hidden from History but its owned detail remains readable',async()=> {
   await submit('Hello','fragment');await terminate();
   const auth={requestContext:{authorizer:{uid:'u'}},pathParameters:{sessionId:'s'}};
   const history=await require('../../src/handlers/dashboard/getSessionHistory').handler(auth);
-  expect(JSON.parse(history.body).sessions).toEqual([expect.objectContaining({feedbackExpected:false,discarded:true})]);
+  expect(JSON.parse(history.body).sessions).toEqual([]);
   const detail=await require('../../src/handlers/dashboard/getSessionDetail').handler(auth);
   expect(JSON.parse(detail.body)).toMatchObject({feedback:null,transcript:[expect.objectContaining({text:'Hello'})]});
   const forbidden=await require('../../src/handlers/dashboard/getTranscript').handler({...auth,requestContext:{authorizer:{uid:'other'}}});

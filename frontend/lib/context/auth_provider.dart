@@ -5,6 +5,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../core/network/dio_client.dart';
 import 'package:dio/dio.dart';
 import '../core/constants/api_constants.dart';
+import '../core/voice_policy.dart';
 
 class AuthProvider extends ChangeNotifier {
   User? _currentUser;
@@ -22,7 +23,7 @@ class AuthProvider extends ChangeNotifier {
   String _email = "";
   String _profession = "";
   List<String> _skills = [];
-  String _voiceId = "Tiffany"; // generative default — most natural voice
+  String _voiceId = "Ruth";
   // Voice mode: 'cost_saver' (neural, free-tier friendly) or 'premium'
   // (generative — the most natural voices, uses more credits).
   String _voiceMode = "cost_saver";
@@ -486,7 +487,7 @@ class AuthProvider extends ChangeNotifier {
     _skills = [];
     _photoUrl = '';
     _displayName = '';
-    _voiceId = 'Tiffany';
+    _voiceId = 'Ruth';
     _voiceMode = 'cost_saver';
   }
 
@@ -609,8 +610,8 @@ class AuthProvider extends ChangeNotifier {
       _email = data['email'] ?? "";
       _profession = data['profession'] ?? "";
       _skills = List<String>.from(data['skills'] ?? []);
-      _voiceId = data['voiceId'] ?? "Tiffany";
-      _voiceMode = data['voiceMode'] ?? "cost_saver";
+      _voiceId = VoicePolicy.resolve(data['voiceId'] as String?);
+      _voiceMode = 'cost_saver';
       _photoUrl = data['photoUrl'] ?? "";
       _displayName = data['displayName'] ?? "";
       notifyListeners();
@@ -627,6 +628,9 @@ class AuthProvider extends ChangeNotifier {
     String? voiceId,
     String? voiceMode,
   }) async {
+    if (voiceMode == 'premium' || voiceId == 'Tiffany') {
+      throw StateError('Premium voices are currently locked.');
+    }
     final user = _currentUser;
     if (user == null) return;
     final owner = user.uid;

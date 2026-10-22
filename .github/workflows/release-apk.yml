@@ -56,9 +56,24 @@ jobs:
       - name: Backend tests
         working-directory: backend
         run: npm test -- --runInBand
+      - name: Verify release tag matches reviewed source version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: node audit/release-manifest.cjs --require-clean --tag "$TAG"
+      - name: Validate synthetic feedback evaluation corpus
+        working-directory: backend
+        run: node evaluation/evaluate.cjs
+      - name: Install and test audio gateway
+        working-directory: backend/audio-gateway
+        run: |
+          npm ci --ignore-scripts
+          npm test
       - name: Backend prod dependency audit (fail on high/critical)
         working-directory: backend
         run: npm audit --omit=dev --audit-level=high
+      - name: Build and test dependency audit (fail on high/critical)
+        working-directory: backend
+        run: npm audit --audit-level=high
       - name: Shipped Lambda layer audit (fail on high/critical)
         working-directory: backend/layers/dependencies
         run: npm audit --omit=dev --audit-level=high
@@ -164,6 +179,9 @@ jobs:
           VERSION="${TAG#v}"
           IFS='.' read -r MAJ MIN PAT <<< "$VERSION"
           VERSION_CODE=$(( ${MAJ:-0} * 10000 + ${MIN:-0} * 100 + ${PAT:-0} ))
+          # Keep the tested speech path even when the stored config predates STT.
+          # Fingerprint the effective config without printing its private values.
+          node -e "const fs=require('node:fs'); const config=JSON.parse(fs.readFileSync('env.json','utf8')); config.AWS_STT_ENABLED=true; config.AWS_STT_PAUSE_MS=4000; fs.writeFileSync('env.json',JSON.stringify(config,null,2)+'\n');"
           flutter build apk --release \
             --dart-define-from-file=env.json \
             --dart-define=SPEECH_REVIEW=false \
@@ -173,6 +191,15 @@ jobs:
 
       - name: Rename APK to Qlue.apk
         run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Qlue.apk
+
+      - name: Record source, configuration and APK fingerprints
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          node ../audit/release-manifest.cjs --require-clean --tag "$TAG" --speech-review false \
+            --config frontend/env.json \
+            --artifact frontend/build/app/outputs/flutter-apk/Qlue.apk \
+            --output frontend/build/app/outputs/flutter-apk/Qlue-manifest.json
 
       - name: Verify production speech reachability and universal packaging
         run: |
@@ -197,7 +224,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Qlue-${{ github.ref_name }}
-          path: frontend/build/app/outputs/flutter-apk/Qlue.apk
+          path: |
+            frontend/build/app/outputs/flutter-apk/Qlue.apk
+            frontend/build/app/outputs/flutter-apk/Qlue-manifest.json
           if-no-files-found: error
 
       - name: Publish GitHub release
@@ -211,6 +240,6 @@ jobs:
             echo "Release $TAG already exists; retaining its published APK."
             exit 0
           fi
-          gh release create "$TAG" frontend/build/app/outputs/flutter-apk/Qlue.apk \
+          gh release create "$TAG" frontend/build/app/outputs/flutter-apk/Qlue.apk frontend/build/app/outputs/flutter-apk/Qlue-manifest.json \
             --repo "$REPOSITORY" --verify-tag --title "Qlue ${TAG#v}" \
             --notes-file "releases/${TAG#v}.md" --latest

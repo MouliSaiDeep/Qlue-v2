@@ -35,8 +35,8 @@ exports.handler = async (event) => {
                 photoUrl: user.photoUrl || '',
                 profession: user.profession || '',
                 skills: user.skills || [],
-                voiceId: user.voiceId || 'Tiffany',
-                voiceMode: user.voiceMode || 'cost_saver',
+                voiceId: require('../../lib/voicePolicy').preference(user.voiceId).voiceId,
+                voiceMode: 'cost_saver',
                 activeResumeId: user.activeResumeId || null,
                 createdAt: user.createdAt
             })
