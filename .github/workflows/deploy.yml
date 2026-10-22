@@ -82,7 +82,18 @@ jobs:
       - name: Verify packaged dependencies
         run: node audit/verify-packaged.cjs
       - name: Test with packaged production dependencies in Linux arm64
-        run: docker run --rm --platform linux/arm64 --entrypoint node -v "$PWD:/workspace" -w /workspace/backend public.ecr.aws/lambda/nodejs:24 node_modules/jest/bin/jest.js --runInBand --no-cache --resolver=/workspace/backend/tests/helpers/layerResolver.cjs
+        # The minimal Lambda image has no Git. Release-manifest tests create
+        # real fixture repositories, so supply Git only in this disposable test
+        # container; deployment images and packaged dependencies stay unchanged.
+        run: |
+          docker run --rm --platform linux/arm64 --entrypoint /bin/sh \
+            -v "$PWD:/workspace" -w /workspace/backend \
+            public.ecr.aws/lambda/nodejs:24 -c '
+              set -eu
+              dnf install -y --setopt=install_weak_deps=False git
+              git --version
+              exec node node_modules/jest/bin/jest.js --runInBand --no-cache --resolver=/workspace/backend/tests/helpers/layerResolver.cjs
+            '
       - name: Run Linux arm64 native parser
         run: docker run --rm --platform linux/arm64 --entrypoint node -v "$PWD:/workspace:ro" -w /workspace public.ecr.aws/lambda/nodejs:24 audit/layer-smoke.cjs
       - name: Verify packaged Linux arm64 delivery runtime and model
