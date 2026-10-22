@@ -90,7 +90,7 @@ jobs:
             -v "$PWD:/workspace" -w /workspace/backend \
             public.ecr.aws/lambda/nodejs:24 -c '
               set -eu
-              dnf install -y --setopt=install_weak_deps=False git
+              dnf install -y git
               git --version
               exec node node_modules/jest/bin/jest.js --runInBand --no-cache --resolver=/workspace/backend/tests/helpers/layerResolver.cjs
             '
