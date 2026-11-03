@@ -46,6 +46,7 @@ function handler({ worker, onStream, process, maxMs = 55000, direct }) {
           return await direct(event);
         } catch (error) {
           if (error.code === 'ACCOUNT_DELETING' || error.name === 'ConditionalCheckFailedException') return;
+          require('./metrics').recordMetrics('Recovery', { RecoveryFailed: 1 });
           throw error;
         }
       }
@@ -72,6 +73,7 @@ function handler({ worker, onStream, process, maxMs = 55000, direct }) {
         }
       } catch (error) {
         if (error.code === 'ACCOUNT_DELETING' || error.name === 'ConditionalCheckFailedException') continue;
+        require('./metrics').recordMetrics('Recovery', { RecoveryFailed: 1 });
         require('./logger').safeConsole.warn('Recovery record failed', { name: error.name });
         if (!identifier) throw error;
         batchItemFailures.push({ itemIdentifier: identifier });

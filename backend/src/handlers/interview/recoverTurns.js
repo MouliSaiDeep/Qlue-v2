@@ -14,6 +14,7 @@ async function processJob(task) {
   if((session.jobAttemptCount||0)>=3||age>12*60000||(task.checks||0)>=10) {
     await require('../../models/session').updateSessionState(session.sessionId,'ERROR',session.currentState,{
       expectedVersion:session.version,guardUserId:session.userId,terminationReason:'TURN_RECOVERY_EXHAUSTED'});
+    require('../../lib/metrics').recordMetrics('Recovery', { TurnRecoveryExhausted: 1, TurnAgeMs: Math.max(0, age) });
     return;
   }
   const job=session.pendingJob||(session.currentState==='INITIALIZING'?{
@@ -23,6 +24,7 @@ async function processJob(task) {
   if(!job) {
     await require('../../models/session').updateSessionState(session.sessionId,'ERROR',session.currentState,{
       expectedVersion:session.version,guardUserId:session.userId,terminationReason:'TURN_RECOVERY_PAYLOAD_MISSING'});
+    require('../../lib/metrics').recordMetrics('Recovery', { TurnRecoveryExhausted: 1, TurnAgeMs: Math.max(0, age) });
     return;
   }
   await sendBounded(sqs,new SendMessageCommand({QueueUrl:process.env.ASYNC_QUEUE_URL,MessageBody:JSON.stringify(job)}));

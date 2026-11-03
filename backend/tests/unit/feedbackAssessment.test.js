@@ -3,6 +3,33 @@ const answer='I built an API for our interview practice project and tested its a
 const pair=(answerId='a',text=answer)=>({answerId,question:'Describe your contribution to a project.',answer:text});
 const prepare=(extra={})=>a.prepare({moduleType:'INTRO',answerPairs:[pair()],...extra});
 const output=(prepared,levels=[3,2,4,3])=>({answers:prepared.answers.map(x=>({answerId:x.answerId,levels,evidenceIds:Array(4).fill('e1')}))});
+const slotted=(p)=>({assessments:Object.fromEntries(p.answers.map((_,i)=>[`answer_${i+1}`,{criteria:Object.fromEntries(p.rubric.map((c,index)=>[
+ c.id,{level:[3,2,4,3][index],evidenceId:'e1',reason:'The answer supplies relevant content for this criterion.',
+ ...(p.module==='INTRO'&&c.id==='evidence'?{actionDetailId:'',outcomeId:''}:{})}
+]))}]))});
+
+test('fixed provider slots preserve canonical scores and bind identity on the server',()=>{
+ const p=prepare(),result=a.report(p,a.validate(JSON.stringify(slotted(p)),p));
+ expect(result.overallScore).toBe(73.8);
+ expect(result.assessment.answers.map(x=>x.answerId)).toEqual(['a']);
+ expect(result).not.toHaveProperty('assessments');
+ expect(a.report(p,a.validate(JSON.stringify(output(p)),p)).overallScore).toBe(result.overallScore);
+});
+
+test('multi-answer provider slots are bound by position regardless of JSON property order',()=>{
+ const p=prepare({moduleType:'HR',answerPairs:[pair('one'),pair('two')]}),raw=slotted(p);
+ raw.assessments=Object.fromEntries(Object.entries(raw.assessments).reverse());
+ expect(a.validate(JSON.stringify(raw),p).map(x=>x.answerId)).toEqual(['one','two']);
+});
+
+test.each(['missing','extra','foreign-identity','mixed-format'])('invalid provider slots fail closed: %s',kind=>{
+ const p=prepare(),raw=slotted(p);
+ if(kind==='missing')delete raw.assessments.answer_1;
+ if(kind==='extra')raw.assessments.answer_2=raw.assessments.answer_1;
+ if(kind==='foreign-identity')raw.assessments.answer_1.answerId='foreign';
+ if(kind==='mixed-format')raw.answers=output(p).answers;
+ expect(()=>a.validate(JSON.stringify(raw),p)).toThrow('INVALID_ANSWER_SHAPE');
+});
 test('weighted score uses fixed server weights, final INTRO only and separate practice progress',()=>{
  const p=prepare({answerPairs:[pair('baseline'),pair('final')]});
  const raw=output(p);raw.answers[0].levels=[1,1,1,1];
@@ -92,7 +119,7 @@ test('output schema is fixed across answer IDs and bounded levels stay server va
  const config=a.prompt(prepare()).outputConfig;
  expect(config).toEqual(a.prompt(prepare({answerPairs:[pair('another')]})).outputConfig);
  const schema=JSON.parse(config.textFormat.structure.jsonSchema.schema).anyOf[0];
- expect(schema.properties.answers.items.properties.criteria.properties.relevance.properties.level.enum).toEqual([0,1,2,3,4]);
+ expect(schema.properties.assessments.properties.answer_1.properties.criteria.properties.relevance.properties.level.enum).toEqual([0,1,2,3,4]);
  expect(a.prompt(prepare()).system).toContain('Judge each criterion independently');
 });
 test('context-dependent modules require owned context and legacy arbitrary role strings are never parsed',()=>{

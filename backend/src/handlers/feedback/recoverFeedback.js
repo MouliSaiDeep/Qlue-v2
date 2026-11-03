@@ -23,8 +23,10 @@ async function deliver(report) {
   try {
     const result=await require('./sendFeedbackNotification').handler(report);
     await updateDelivery(report,result.success?'DELIVERED':'FAILED',attempts,owner);
+    if (!result.success) require('../../lib/metrics').recordMetrics('Recovery', { NotificationFailed: 1 });
   } catch(error) {
     await updateDelivery(report,attempts>=5?'FAILED':'PENDING',attempts,owner);
+    if (attempts >= 5) require('../../lib/metrics').recordMetrics('Recovery', { NotificationFailed: 1 });
   }
 }
 async function processJob(task) {
@@ -40,6 +42,7 @@ async function processJob(task) {
         UpdateExpression:'SET notificationStatus = :failed REMOVE notificationOwner, notificationExpiresAt',
         ConditionExpression:'notificationAttempts >= :max AND (notificationStatus = :pending OR (notificationStatus = :sending AND notificationExpiresAt < :now))',
         ExpressionAttributeValues:{':failed':'FAILED',':pending':'PENDING',':sending':'SENDING',':now':Date.now(),':max':5}}),report.userId);
+      require('../../lib/metrics').recordMetrics('Recovery', { NotificationFailed: 1 });
       return;
     }
     return deliver(report);
@@ -57,6 +60,8 @@ async function processJob(task) {
       UpdateExpression:'SET feedbackStatus = :failed REMOVE feedbackDispatchPending',
       ConditionExpression:`feedbackStatus = :pending AND ${attemptCondition}`,
       ExpressionAttributeValues:{':failed':'FAILED',':pending':'PENDING',...(row.feedbackAttemptId?{':attempt':row.feedbackAttemptId}:{})}}),row.userId);
+    require('../../lib/metrics').recordMetrics('Recovery', { FeedbackTimedOut: 1,
+      FeedbackAgeMs: Math.max(0, Date.now() - work.timestamp(row.feedbackAttemptStartedAt)) });
   } else if(task.kind==='audioCleanup') {
     if(!process.env.ANSWER_AUDIO_BUCKET||!row.answerAudio)return;
     const dueAt=row.answerAudioCleanupPending?(row.answerAudioLastExpiry||0)+90001:work.timestamp(row.startedAt)+6*60*60000+1;

@@ -1,11 +1,12 @@
 const { randomUUID } = require('node:crypto');
 const { UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const ddb = require('./dynamodb');
+const eligibility = require('./feedbackEligibility');
 const table = () => process.env.SESSIONS_TABLE || 'qlue-sessions';
 async function currentAttempt(event) {
   await require('./deletionJob').assertNotDeleting(event.userId);
   const session = await require('../models/session').getSession(event.sessionId);
-  if (!session || session.userId !== event.userId) return null;
+  if (!eligibility.eligible(session) || session.userId !== event.userId) return null;
   if (session.feedbackAttemptId && event.attemptId !== session.feedbackAttemptId) return null;
   return session;
 }
@@ -26,10 +27,9 @@ async function claim(session, options={}) {
   } catch(error) { if(error.name==='ConditionalCheckFailedException') return null; throw error; }
 }
 async function promote(event, report) {
-  const values = { ':status':report.analysisStatus==='UNAVAILABLE'?'FAILED':'COMPLETE', ':id':report.feedbackId, ':ended':'TERMINATED' };
-  let condition='attribute_exists(sessionId)';
-  if(event.attemptId) { condition+=' AND feedbackAttemptId = :attempt'; values[':attempt']=event.attemptId; }
-  else condition+=' AND attribute_not_exists(feedbackAttemptId)';
+  const parent = eligibility.parentCheck(event);
+  const values = { ...parent.ExpressionAttributeValues, ':status':report.analysisStatus==='UNAVAILABLE'?'FAILED':'COMPLETE', ':id':report.feedbackId, ':ended':'TERMINATED' };
+  const condition = parent.ConditionExpression;
   let expression='SET feedbackStatus = :status, feedbackId = :id, currentState = :ended';
   if(report.analysisStatus!=='UNAVAILABLE'&&report.dimensionScores) { expression+=', accumulatedScores = :scores';values[':scores']=report.dimensionScores; }
   if(report.analysisStatus==='OK'&&report.reportVersion==='content-rubric-v2') {

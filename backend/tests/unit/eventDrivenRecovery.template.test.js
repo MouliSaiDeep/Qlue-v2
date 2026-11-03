@@ -6,6 +6,18 @@ const resources = template.Resources;
 const baseline = require('../fixtures/recovery-template-baseline.json');
 const functions = Object.keys(baseline.functions);
 
+test('durable recovery outcomes alarm through the operator topic even when Lambda succeeds', () => {
+  for (const [id, metric] of Object.entries({ RecoveryFailureAlarm: 'RecoveryFailed',
+    FeedbackTimeoutAlarm: 'FeedbackTimedOut', TurnRecoveryExhaustedAlarm: 'TurnRecoveryExhausted',
+    FeedbackNotificationFailureAlarm: 'NotificationFailed' })) {
+    expect(resources[id]).toMatchObject({ Type: 'AWS::CloudWatch::Alarm', Properties: {
+      Namespace: 'Qlue/Application', MetricName: metric, Statistic: 'Sum',
+      Dimensions: [{ Name: 'Operation', Value: 'Recovery' }],
+      TreatMissingData: 'notBreaching', AlarmActions: [{ Ref: 'OpsAlertTopic' }]
+    } });
+  }
+});
+
 test('all six polling schedules are removed, preserving every existing environment value and policy', () => {
   expect(template.Globals.Function.Environment).toMatchObject(baseline.globals);
   for (const id of functions) {

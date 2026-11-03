@@ -138,6 +138,36 @@ describe('asyncWorker worker lease & crash recovery (I-04)', () => {
     expect(updateSessionState).toHaveBeenCalledTimes(1);
   });
 
+  test('a slow optional WEBSITE guide preserves the parent time for question commit', async () => {
+    const deadline=require('../../src/lib/deadline'),guides=require('../../src/lib/websiteGradingGuide');
+    let guideBudget;
+    const spy=jest.spyOn(guides,'create').mockImplementation(async()=>{
+      guideBudget=deadline.remaining();expect(deadline.current().userId).toBe('u1');
+      throw Object.assign(new Error('provider deadline'),{code:'DeadlineExceeded'});
+    });
+    const session={sessionId:'s1',userId:'u1',moduleType:'WEBSITE',turnCount:0,itemData:{scrapedSummary:'A reliable ordered byte stream.'}};
+    getSessionById.mockResolvedValue({...session,currentState:INTERVIEW_STATES.USER_RESPONDING});
+    try {
+      await deadline.withDeadline(null,()=>generateAtomicTurn({connectionId:'c1',sessionId:'s1',session,moduleType:'WEBSITE',preGeneratedText:'Explain reliable delivery?'}),{maxMs:15000,reserveMs:4000,userId:'u1'});
+      expect(guideBudget).toBeGreaterThan(0);expect(guideBudget).toBeLessThanOrEqual(5000);
+      const commit=updateSessionState.mock.calls.find(([,to])=>to===INTERVIEW_STATES.USER_RESPONDING);
+      expect(commit[3].transactionItems[0].Put.Item.websiteGradingGuide).toBeUndefined();
+      expect(postToConnection).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({type:'turn_complete'}));
+    } finally {spy.mockRestore();}
+  });
+
+  test('a WEBSITE turn with little remaining time skips optional guide work', async () => {
+    const deadline=require('../../src/lib/deadline'),guides=require('../../src/lib/websiteGradingGuide');
+    const spy=jest.spyOn(guides,'create').mockResolvedValue({});
+    const session={sessionId:'s1',userId:'u1',moduleType:'WEBSITE',turnCount:0};
+    getSessionById.mockResolvedValue({...session,currentState:INTERVIEW_STATES.USER_RESPONDING});
+    try {
+      await deadline.withDeadline(null,()=>generateAtomicTurn({connectionId:'c1',sessionId:'s1',session,moduleType:'WEBSITE',preGeneratedText:'Explain reliable delivery?'}),{maxMs:11000,reserveMs:4000,userId:'u1'});
+      expect(spy).not.toHaveBeenCalled();
+      expect(updateSessionState.mock.calls.some(([,to])=>to===INTERVIEW_STATES.USER_RESPONDING)).toBe(true);
+    } finally {spy.mockRestore();}
+  });
+
   test('a stale worker cannot commit over a job already reclaimed by another worker', async () => {
     // Two workers both believe they hold LOADING_CONTEXT. Whoever commits first
     // (LOADING_CONTEXT -> AI_SPEAKING) wins; a second identical commit then fails

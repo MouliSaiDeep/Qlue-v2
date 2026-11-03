@@ -13,3 +13,11 @@ test('logging failure cannot turn a completed paid request into an application f
   try { expect(() => recordMetrics('Feedback', { FeedbackStored: 1 })).not.toThrow(); }
   finally { log.mockRestore(); }
 });
+
+test('recovery telemetry exposes bounded counts and ages without account or message data', () => {
+  const result = metricDocument('Recovery', { FeedbackTimedOut: 1, FeedbackAgeMs: 780000,
+    RecoveryFailed: -1, userId: 'private', error: 'private', transcript: 'private' });
+  expect(result).toMatchObject({ Operation: 'Recovery', FeedbackTimedOut: 1, FeedbackAgeMs: 780000 });
+  expect(JSON.stringify(result)).not.toContain('private');
+  expect(result).not.toHaveProperty('RecoveryFailed');
+});

@@ -1,0 +1,8 @@
+{
+  "version": "initial-quality-gate-v1",
+  "minValidRate": 0.99,
+  "minRunsPerCase": 3,
+  "maxModuleMeanAbsoluteError": 10,
+  "maxRepeatRange": 10,
+  "minRepeatWithinRangeRate": 0.9
+}

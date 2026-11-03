@@ -67,7 +67,7 @@ exports.handler = async (event) => {
 
         // Formatting for UI Trend Line
         const trends = sessions
-            .filter(s => !s.discarded && s.feedbackExpected !== false && s.accumulatedScores && Object.keys(s.accumulatedScores).length > 0)
+            .filter(s => !s.discarded && s.answeredCount !== 0 && s.feedbackExpected !== false && s.accumulatedScores && Object.keys(s.accumulatedScores).length > 0)
             .map(s => ({
                 sessionId: s.sessionId,
                 // `startTime` is the ISO display timestamp; fall back to the

@@ -55,7 +55,7 @@ exports.handler = async (event) => {
             ExpressionAttributeValues: {
                 ':uid': userId
             },
-            ProjectionExpression: 'moduleType, accumulatedScores, assessmentOverallScore, discarded'
+            ProjectionExpression: 'moduleType, accumulatedScores, assessmentOverallScore, discarded, answeredCount'
         };
 
         const userCmd = new GetCommand({
@@ -69,7 +69,7 @@ exports.handler = async (event) => {
             require('../../lib/deadline').sendBounded(docClient,userCmd)
         ]);
 
-        const sessions = allSessions.filter(x => !x.discarded); // discarded sessions never count
+        const sessions = allSessions.filter(x => !x.discarded && x.answeredCount !== 0);
         const userProfile = userData.Item || null;
         const globalInsights = userProfile?.globalInsights || null;
 

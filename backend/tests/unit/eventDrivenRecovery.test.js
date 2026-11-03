@@ -22,6 +22,7 @@ jest.mock('../../src/lib/feedbackDispatch', () => ({
 }));
 jest.mock('../../src/lib/feedbackAttempt', () => ({currentAttempt:jest.fn()}));
 jest.mock('../../src/handlers/feedback/sendFeedbackNotification', () => ({handler:jest.fn()}));
+jest.mock('../../src/lib/metrics', () => ({recordMetrics:jest.fn()}));
 
 const deletion = require('../../src/lib/deletionJob');
 const analysis = require('../../src/lib/analysisJobs');
@@ -158,9 +159,13 @@ test('feedback timeout is attempt-fenced and needs no later stream write',async(
   db.on(GetCommand).resolves({Item:{sessionId:'s',userId:'u',feedbackAttemptId:'new',feedbackStatus:'PENDING',feedbackAttemptStartedAt:Date.now()-13*60000}});
   await invoke(handlers.feedback,message({kind:'feedbackTimeout',sessionId:'s',attemptId:'old'}));
   expect(writes()).toHaveLength(0);
+  expect(require('../../src/lib/metrics').recordMetrics).not.toHaveBeenCalled();
   await invoke(handlers.feedback,message({kind:'feedbackTimeout',sessionId:'s',attemptId:'new'}));
   expect(writes()[0]).toMatchObject({
     ExpressionAttributeValues:{':attempt':'new',':failed':'FAILED'}
+  });
+  expect(require('../../src/lib/metrics').recordMetrics).toHaveBeenCalledWith('Recovery', {
+    FeedbackTimedOut: 1, FeedbackAgeMs: expect.any(Number)
   });
 });
 
@@ -262,6 +267,19 @@ test('turns stop after bounded recovery and missing turn bodies are never replac
   expect(sessions.updateSessionState).toHaveBeenLastCalledWith('s','ERROR','PROCESSING_RESPONSE',
     expect.objectContaining({terminationReason:'TURN_RECOVERY_PAYLOAD_MISSING'}));
   expect(queued()).toHaveLength(0);
+  expect(require('../../src/lib/metrics').recordMetrics).toHaveBeenCalledTimes(2);
+  expect(require('../../src/lib/metrics').recordMetrics).toHaveBeenLastCalledWith('Recovery', {
+    TurnRecoveryExhausted: 1, TurnAgeMs: expect.any(Number)
+  });
+});
+
+test('failed recovery transitions emit no false timeout metric and remain retryable', async () => {
+  db.on(GetCommand).resolves({ Item: { sessionId: 's', userId: 'u', feedbackAttemptId: 'a',
+    feedbackStatus: 'PENDING', feedbackAttemptStartedAt: Date.now() - 13 * 60000 } });
+  db.on(TransactWriteCommand).rejects(Object.assign(Error('storage failed'), { name: 'AccessDeniedException' }));
+  expect(await invoke(handlers.feedback, message({ kind: 'feedbackTimeout', sessionId: 's', attemptId: 'a' })))
+    .toEqual({ batchItemFailures: [{ itemIdentifier: 'message-1' }] });
+  expect(require('../../src/lib/metrics').recordMetrics.mock.calls).toEqual([['Recovery', { RecoveryFailed: 1 }]]);
 });
 
 test('audio cleanup is armed once per meaningful change and retries failures without sweeping history',async()=>{

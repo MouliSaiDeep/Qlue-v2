@@ -2,9 +2,11 @@
 // callers cannot accidentally attach transcripts, tokens, URLs or identities.
 const UNITS = Object.freeze({ ProviderAttempt: 'Count', ProviderSuccess: 'Count', ProviderFailure: 'Count',
   InputTokens: 'Count', OutputTokens: 'Count', ProviderLatencyMs: 'Milliseconds',
-  FeedbackStored: 'Count', FeedbackUnavailable: 'Count' });
+  FeedbackStored: 'Count', FeedbackUnavailable: 'Count', RecoveryFailed: 'Count',
+  FeedbackTimedOut: 'Count', TurnRecoveryExhausted: 'Count', NotificationFailed: 'Count',
+  FeedbackAgeMs: 'Milliseconds', TurnAgeMs: 'Milliseconds' });
 function metricDocument(operation, values, now = Date.now()) {
-  if (!['Model', 'Feedback'].includes(operation)) throw new Error('Unknown metric operation');
+  if (!['Model', 'Feedback', 'Recovery'].includes(operation)) throw new Error('Unknown metric operation');
   const entries = Object.entries(values).filter(([name, value]) => UNITS[name] && Number.isFinite(value) && value >= 0);
   if (!entries.length) return null;
   return { _aws: { Timestamp: now, CloudWatchMetrics: [{ Namespace: 'Qlue/Application',

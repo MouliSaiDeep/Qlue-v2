@@ -17,7 +17,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 export async function runLoadSmoke({ clients = 12, slots = 8, durationMs = 800, interruptReplica } = {}) {
   assert(Number.isSafeInteger(clients) && clients >= 2 && clients <= 80);
   assert(Number.isSafeInteger(slots) && slots >= 1 && slots <= 20 && slots < clients);
-  assert(Number.isSafeInteger(durationMs) && durationMs >= 80 && durationMs <= 10000);
+  assert(Number.isSafeInteger(durationMs) && durationMs >= 80 && durationMs <= 120000);
   assert(interruptReplica === undefined || interruptReplica === 0 || interruptReplica === 1);
   const db = new DB(), apps = [], sockets = [], records = [];
   const latencies = [], measurements = [];

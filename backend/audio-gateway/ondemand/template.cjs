@@ -4,7 +4,8 @@ const ref=x=>({Ref:x}),att=(x,a)=>({'Fn::GetAtt':[x,a]}),sub=x=>({'Fn::Sub':x});
 function build(){
  const parameters={};
  for(const name of ['VpcId','SubnetId','CloudFrontSecurityGroupId','ImageUri','RepositoryArn','SourceUri','SourceArn','SourceSha256','SttTableName','SttTableArn','SessionsTableName','SessionsTableArn','DeletionsTableName','DeletionsTableArn','VocabularyManifest','HealthUrl'])parameters[name]={Type:'String'};
- parameters.ImageId={Type:'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>',Default:'/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64'};
+ parameters.ImageId={Type:'String',AllowedPattern:'^ami-(?:[a-f0-9]{8}|[a-f0-9]{17})$',Description:'Explicit reviewed ARM64 AL2023 AMI; capacity updates must not resolve a newer image.'};
+ parameters.GlobalStreamSlots={Type:'Number',Default:8,MinValue:1,MaxValue:20};
  parameters.VpcId.Type='AWS::EC2::VPC::Id';parameters.SubnetId.Type='AWS::EC2::Subnet::Id';parameters.CloudFrontSecurityGroupId.Type='AWS::EC2::SecurityGroup::Id';
  parameters.ImageUri.AllowedPattern='^[0-9]{12}\\.dkr\\.ecr\\.us-east-1\\.amazonaws\\.com/qlue-audio-gateway@sha256:[a-f0-9]{64}$';
  parameters.SourceSha256.AllowedPattern='^[a-f0-9]{64}$';
@@ -27,7 +28,7 @@ function build(){
   statement(['ec2:StopInstances'],sub('arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*'),{Condition:{StringEquals:{'ec2:ResourceTag/QlueAudioHost':sub('${AWS::StackName}')}}})
  ];
  let script=fs.readFileSync(__dirname+'/install.sh','utf8').replace('{{IDLE_CODE}}',fs.readFileSync(__dirname+'/idle-stop.py','utf8'));
- const values={SOURCE_URI:ref('SourceUri'),SOURCE_SHA:ref('SourceSha256'),STT_TABLE:ref('SttTableName'),SESSIONS_TABLE:ref('SessionsTableName'),DELETIONS_TABLE:ref('DeletionsTableName'),VOCABULARY:ref('VocabularyManifest'),IMAGE:ref('ImageUri'),REGISTRY:sub('${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com'),LOGS:ref('Logs')};
+ const values={GLOBAL_STREAM_SLOTS:ref('GlobalStreamSlots'),SOURCE_URI:ref('SourceUri'),SOURCE_SHA:ref('SourceSha256'),STT_TABLE:ref('SttTableName'),SESSIONS_TABLE:ref('SessionsTableName'),DELETIONS_TABLE:ref('DeletionsTableName'),VOCABULARY:ref('VocabularyManifest'),IMAGE:ref('ImageUri'),REGISTRY:sub('${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com'),LOGS:ref('Logs')};
  const segments=script.split(/(\{\{[A-Z_]+\}\})/g).map(v=>v.startsWith('{{')?values[v.slice(2,-2)]:v);if(segments.includes(undefined))throw Error('Unresolved user data');
  return {AWSTemplateFormatVersion:'2010-09-09',Description:'Qlue audio: wake on owned interview demand; stop after five idle minutes; no load balancer or idle compute.',Parameters:parameters,Rules:{RegionGuard:{Assertions:[{Assert:{'Fn::Equals':[ref('AWS::Region'),'us-east-1']},AssertDescription:'Audio sessions and technical vocabularies must remain in us-east-1.'}]}},Resources:{
   Logs:{Type:'AWS::Logs::LogGroup',Properties:{RetentionInDays:7}},

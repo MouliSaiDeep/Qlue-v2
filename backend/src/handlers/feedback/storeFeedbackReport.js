@@ -1,10 +1,25 @@
 const { createFeedbackReport } = require('../../models/feedback');
 const attempt = require('../../lib/feedbackAttempt');
 exports.handler = async event => {
-  if (!await attempt.currentAttempt(event)) return {success:true,stale:true};
-  const result = await createFeedbackReport(event);
-  if (!result.success) throw result.error || new Error('Feedback persistence failed');
-  await attempt.promote(event, result.data);
+  let result;
+  try {
+    if (!await attempt.currentAttempt(event)) return {success:true,stale:true};
+    result = await createFeedbackReport(event);
+    if (!result.success) throw result.error || new Error('Feedback persistence failed');
+    await attempt.promote(event, result.data);
+  } catch (error) {
+    // A termination, account fence or replacement attempt may win after the
+    // initial read. Acknowledge obsolete work; retry genuine storage failures.
+    if (error.code === 'ACCOUNT_DELETING') return {success:true,stale:true};
+    if (error.name === 'ConditionalCheckFailedException') {
+      const current = await attempt.currentAttempt(event).catch(readError => {
+        if (readError.code === 'ACCOUNT_DELETING') return null;
+        throw readError;
+      });
+      if (!current) return {success:true,stale:true};
+    }
+    throw error;
+  }
   if(!result.duplicate)require('../../lib/metrics').recordMetrics('Feedback',{
     FeedbackStored:1,FeedbackUnavailable:Number(result.data?.analysisStatus==='UNAVAILABLE')});
   // Persist the report and close admission BEFORE deleting files. Purge failures

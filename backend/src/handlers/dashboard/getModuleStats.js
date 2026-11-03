@@ -63,7 +63,7 @@ exports.handler = async (event) => {
         const counts = { OVERALL: {}, RESUME: {}, WEBSITE: {}, HR: {}, INTRO: {}, JD: {} };
 
         for (const session of sessions) {
-            if (session.discarded || session.feedbackExpected === false) continue;
+            if (session.discarded || session.answeredCount === 0 || session.feedbackExpected === false) continue;
             const mod = session.moduleType;
             if (!mod || !dimensionsBreakdown[mod] || !session.accumulatedScores) continue;
 

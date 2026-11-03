@@ -12,7 +12,7 @@ const FEEDBACK_TABLE = process.env.FEEDBACK_TABLE || 'qlue-feedback';
 async function getCurrentFeedback(session) {
     // The session owns the current attempt. Retained historical reports must
     // not turn a pending retry back into a failure or replace its final result.
-    if (session.feedbackExpected === false || session.feedbackStatus === 'PENDING') return null;
+    if (!require('../../lib/feedbackEligibility').eligible(session) || session.feedbackStatus === 'PENDING') return null;
     const belongs = report => report && report.sessionId === session.sessionId
         && (report.userId === undefined || report.userId === session.userId)
         && (!session.feedbackAttemptId || report.attemptId === session.feedbackAttemptId);

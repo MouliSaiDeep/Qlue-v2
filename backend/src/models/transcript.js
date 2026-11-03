@@ -88,6 +88,7 @@ function buildTranscript(sessionId, turnIndex, speaker, text, options = {}) {
         speaker,
         text,
         ...(speaker === 'USER' && options.asr ? {asr:options.asr} : {}),
+        ...(speaker === 'AI' && options.websiteGradingGuide ? {websiteGradingGuide:options.websiteGradingGuide} : {}),
         createdAt: Date.now(),
         timestamp: new Date().toISOString()
     };

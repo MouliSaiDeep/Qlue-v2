@@ -30,9 +30,7 @@ async function createFeedbackReport(data) {
   };
 
   const parent = { TableName:process.env.SESSIONS_TABLE||'qlue-sessions',Key:{sessionId:data.sessionId},
-    ConditionExpression:'attribute_exists(sessionId)', ...(data.attemptId ? {
-      ConditionExpression:'attribute_exists(sessionId) AND feedbackAttemptId = :attempt',ExpressionAttributeValues:{':attempt':data.attemptId}
-    } : {ConditionExpression:'attribute_exists(sessionId) AND attribute_not_exists(feedbackAttemptId)'}) };
+    ...require('../lib/feedbackEligibility').parentCheck(data) };
   const result = await ddb.put(TABLE_NAME, item, { condition: 'attribute_not_exists(feedbackId)', parentChecks:[{ConditionCheck:parent}] });
   if (result.success) {
     return { success: true, feedbackId, data: item };

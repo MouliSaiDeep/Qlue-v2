@@ -2487,6 +2487,9 @@ Resources:
             - Effect: Allow
               Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
               Resource: !GetAtt DeletionJobsTable.Arn
+            - Effect: Allow
+              Action: ['dynamodb:Query']
+              Resource: !Sub '${SessionsTable.Arn}/index/GSI_UserIdStartedAt'
         - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
         - SSMParameterReadPolicy: { ParameterName: qlue/* }
 
@@ -2979,6 +2982,80 @@ Resources:
       EvaluationPeriods: 1
       Threshold: 120
       ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OpsAlertTopic
+
+  # Successful Lambda invocations can still exhaust durable recovery. These
+  # aggregate signals complement invocation errors and queue backlog alarms.
+  RecoveryFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Recovery records repeatedly failed; inspect recovery queues and DLQs"
+      Namespace: Qlue/Application
+      MetricName: RecoveryFailed
+      Dimensions:
+        - Name: Operation
+          Value: Recovery
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OpsAlertTopic
+
+  FeedbackTimeoutAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Feedback exceeded its recovery deadline; a user has no completed report"
+      Namespace: Qlue/Application
+      MetricName: FeedbackTimedOut
+      Dimensions:
+        - Name: Operation
+          Value: Recovery
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OpsAlertTopic
+
+  TurnRecoveryExhaustedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "An interview turn exhausted recovery or lost its pending work payload"
+      Namespace: Qlue/Application
+      MetricName: TurnRecoveryExhausted
+      Dimensions:
+        - Name: Operation
+          Value: Recovery
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OpsAlertTopic
+
+  FeedbackNotificationFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Feedback notification delivery failed after bounded retries or a terminal rejection"
+      Namespace: Qlue/Application
+      MetricName: NotificationFailed
+      Dimensions:
+        - Name: Operation
+          Value: Recovery
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
       AlarmActions:
         - !Ref OpsAlertTopic

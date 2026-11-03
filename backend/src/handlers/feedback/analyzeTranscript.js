@@ -10,11 +10,19 @@ async function analyze(event) {
   try {
     if(event.assessmentInputLimitExceeded)throw new assessment.InvalidAssessment('INPUT_LIMIT');
     let answerPairs=event.answerPairs;
-    if(!answerPairs) {
+    if(!answerPairs||live.moduleType==='WEBSITE') {
       // Old queued jobs are rebuilt from accepted records, never parsed from
       // role-like strings that may occur inside a candidate's answer.
       const rows=await require('../../models/transcript').getTranscriptBySession(event.sessionId);
-      answerPairs=assessment.pairs(require('../../lib/feedbackTranscript').select(live,rows));
+      const selected=require('../../lib/feedbackTranscript').select(live,rows);
+      if(live.moduleType==='WEBSITE') {
+        const source=require('../../lib/feedbackTranscript').assessmentContext(live)?.text;
+        const questions=new Set(selected.answers.map(a=>a.questionId));
+        for(const row of selected.rows.filter(r=>r.speaker==='AI'&&questions.has(r.eventId))) {
+          row.websiteGradingGuide=await require('../../lib/websiteGradingGuide').ensureForTranscript(row,source,event.userId,invokeModel);
+        }
+      }
+      answerPairs=assessment.pairs(selected);
     }
     if(live.answerIdentityVersion===1) {
       const ids=new Set(live.acceptedAnswerIds||[]);
@@ -23,7 +31,7 @@ async function analyze(event) {
     prepared=assessment.prepare({...event,moduleType:live.moduleType||event.moduleType,answerPairs,
       assessmentContext:require('../../lib/feedbackTranscript').assessmentContext(live)});
   } catch(error) {
-    if(!(error instanceof assessment.InvalidAssessment))throw error;
+    if(!(error instanceof assessment.InvalidAssessment)&&error.code!=='WEBSITE_GUIDE_UNAVAILABLE')throw error;
     result=assessment.unavailable(error.code);
   }
   if(prepared) {

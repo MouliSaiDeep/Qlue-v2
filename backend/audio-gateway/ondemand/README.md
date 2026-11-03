@@ -28,6 +28,12 @@ template; `../infrastructure.yaml` is the legacy Fargate rollback option.
   deletion state and rollout control before starting compute. Interviews
   older than two hours cannot keep restarting the host.
 - The ticket endpoint checks host readiness before minting a 30-second ticket.
+  With `CONTROL.hostInstanceId` bound to the active instance, it extends demand
+  under the owned-session/deletion/shutdown fences and checks the trusted
+  gateway health URL directly. Warm tickets need no nested Lambda invocation.
+  Cold hosts queue an asynchronous wake, allowing callers to release their
+  Lambda concurrency while startup proceeds. Missing bindings preserve the
+  legacy synchronous path; update the binding when replacing a host.
   A stopped or booting host produces `503 STT_GATEWAY_WARMING`. The APK retries
   only that response, for a bounded time, before opening the microphone. It
   cancels retries on question changes or disposal. Other errors remain errors.
@@ -43,8 +49,11 @@ template; `../infrastructure.yaml` is the legacy Fargate rollback option.
   starts made by CloudFormation or an operator instead of the wake Lambda.
 - Wake requests racing shutdown wait until it stops, then restart it. They do
   not override a committed shutdown or return an unusable ticket.
-- Standard EC2 CPU credits avoid unlimited-credit surcharges. Capacity remains
-  four simultaneous answer streams, with 160 starts/day per user. The separate
+- Standard EC2 CPU credits avoid unlimited-credit surcharges. `GlobalStreamSlots`
+  configures the host ceiling (default eight, template maximum twenty); the
+  effective ceiling also depends on shared `CONTROL.globalStreamSlots`.
+  Capacity beyond the tested ceiling needs separate qualification. There are
+  still 160 starts/day per user. The separate
   interview limit remains ten/day per user. This is a small-app host, not a
   highly available multi-host deployment.
 
@@ -55,6 +64,13 @@ the AMI, host security updates and immutable dependency image maintained;
 moving from Fargate adds host maintenance responsibility.
 
 ## Deployment and recovery
+
+Pass an explicit reviewed `ImageId`; deployment no longer resolves a mutable
+latest-AMI alias. Preserve the current image when changing source or capacity.
+Apply `stack-policy.json` to prevent accidental replacement/deletion of `Host`.
+An intentional image replacement needs a separately reviewed migration and an
+updated `CONTROL.hostInstanceId` binding. Preserve the previous source bundle,
+guest source directory, environment, template and image for recovery.
 
 Create and verify the host separately. Set its health URL to the existing
 CloudFront `/healthz`. Switch the distribution to the new `OriginId` and

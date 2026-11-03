@@ -449,7 +449,17 @@ async function generateOwnedAtomicTurn({
       responsePayload.payload.audioFallback = 'TEXT_ONLY';
     }
     if (Buffer.byteLength(JSON.stringify(responsePayload), 'utf8') > MAX_FRAME_BYTES) throw new Error('Turn exceeds WebSocket frame limit');
-    const transcript = require('../../models/transcript').buildTranscript(sessionId, session.turnCount || 0, 'AI', aiText, {eventId:session.jobId});
+    let websiteGradingGuide;
+    if(moduleType==='WEBSITE'&&expectsAnswer&&!isReprompt) {
+      // This optional preparation must leave time to commit and deliver the
+      // question. Feedback can backfill the guide if the provider is slow.
+      const deadlines=require('../../lib/deadline'),available=deadlines.remaining();
+      try {if(available>8000)websiteGradingGuide=await deadlines.withDeadline(null,
+        ()=>require('../../lib/websiteGradingGuide').create(aiText,session.itemData?.scrapedSummary,require('../../lib/bedrock').invokeModel),
+        {maxMs:Math.min(12000,available-6000),reserveMs:1000,userId:session.userId});}
+      catch(error){diagnostics.warn('Website guide deferred',{name:error.name});}
+    }
+    const transcript = require('../../models/transcript').buildTranscript(sessionId, session.turnCount || 0, 'AI', aiText, {eventId:session.jobId,websiteGradingGuide});
     try {
       await updateSessionState(sessionId, INTERVIEW_STATES.USER_RESPONDING, INTERVIEW_STATES.LOADING_CONTEXT, {
         ...leaseFence(session), guardUserId:session.userId,
