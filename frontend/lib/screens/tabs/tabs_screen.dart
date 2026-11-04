@@ -28,6 +28,7 @@ class TabsScreen extends StatefulWidget {
 }
 
 class _TabsScreenState extends State<TabsScreen> with WidgetsBindingObserver {
+  late final DashboardProvider _dashboard;
   // REALTIME REFRESH: which tab currently drives the auto-refresh loop.
   // Tabs 0 (Performance) and 2 (Previous) display dashboard data.
   int? _lastManagedIndex;
@@ -37,6 +38,7 @@ class _TabsScreenState extends State<TabsScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _dashboard = context.read<DashboardProvider>();
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -44,7 +46,7 @@ class _TabsScreenState extends State<TabsScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     // Stop polling when the tab shell leaves the tree (e.g. logout).
-    context.read<DashboardProvider>().stopAutoRefresh();
+    _dashboard.stopAutoRefresh();
     super.dispose();
   }
 

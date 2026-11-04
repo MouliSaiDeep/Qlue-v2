@@ -41,7 +41,10 @@ exports.handler = async (event) => {
             TableName: SESSIONS_TABLE,
             IndexName: 'GSI_UserIdStartedAt',
             KeyConditionExpression: keyCond,
-            ExpressionAttributeValues: expVals
+            ExpressionAttributeValues: expVals,
+            // Session context and saved audio are not used by this aggregate.
+            // Keep the same query/pages; projection reduces transfer, not RCUs.
+            ProjectionExpression: 'moduleType, accumulatedScores, discarded, answeredCount, feedbackExpected'
         };
 
         // BE-BUG #18 FIX: drain every page so the radar reflects all sessions

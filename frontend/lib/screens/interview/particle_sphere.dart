@@ -40,39 +40,46 @@ class RotatedParticle {
   });
 }
 
-class ParticleSpherePainter extends CustomPainter {
+class _SphereMotion extends ChangeNotifier {
+  Offset rotation = Offset.zero;
+  double time = 0;
+
+  void repaint() => notifyListeners();
+}
+
+class _ParticleSpherePainter extends CustomPainter {
   final List<Particle> particles;
-  final Offset rotation;
+  final _SphereMotion motion;
   final bool isSpeaking;
-  final double time;
   final Color color;
 
-  ParticleSpherePainter({
+  _ParticleSpherePainter({
     required this.particles,
-    required this.rotation,
+    required this.motion,
     required this.isSpeaking,
-    required this.time,
     required this.color,
-  });
+  }) : super(repaint: motion);
 
   @override
   void paint(Canvas canvas, Size size) {
     final centerX = size.width / 2;
     final centerY = size.height / 2;
     const radius = 120.0;
+    final rotation = motion.rotation;
+    final time = motion.time;
+    final cosX = cos(rotation.dx);
+    final sinX = sin(rotation.dx);
+    final cosY = cos(rotation.dy);
+    final sinY = sin(rotation.dy);
+    final paint = Paint();
 
     final rotatedParticles = particles.map((p) {
-      final cosX = cos(rotation.dx);
-      final sinX = sin(rotation.dx);
-      final cosY = cos(rotation.dy);
-      final sinY = sin(rotation.dy);
       final y1 = p.y * cosX - p.z * sinX;
       final z1 = p.y * sinX + p.z * cosX;
       final x1 = p.x * cosY + z1 * sinY;
       final z2 = -p.x * sinY + z1 * cosY;
       return RotatedParticle(rx: x1, ry: y1, rz: z2, particle: p);
-    }).toList()
-      ..sort((a, b) => a.rz.compareTo(b.rz));
+    }).toList()..sort((a, b) => a.rz.compareTo(b.rz));
 
     for (var rp in rotatedParticles) {
       final p = rp.particle;
@@ -93,16 +100,22 @@ class ParticleSpherePainter extends CustomPainter {
       final particleSize = p.baseSize * scale * speakingPulse;
       final brightness = (rp.rz + radius) / (radius * 2);
       final baseAlpha = 0.4 + brightness * 0.6;
-      final alpha = (isSpeaking ? min(1.0, baseAlpha * 1.3) : baseAlpha)
-          .clamp(0.0, 1.0);
+      final alpha = (isSpeaking ? min(1.0, baseAlpha * 1.3) : baseAlpha).clamp(
+        0.0,
+        1.0,
+      );
 
-      final paint = Paint()..color = color.withValues(alpha: alpha);
+      paint.color = color.withValues(alpha: alpha);
       canvas.drawCircle(Offset(finalX, finalY), particleSize, paint);
     }
   }
 
   @override
-  bool shouldRepaint(ParticleSpherePainter oldDelegate) => true;
+  bool shouldRepaint(_ParticleSpherePainter oldDelegate) =>
+      particles != oldDelegate.particles ||
+      motion != oldDelegate.motion ||
+      isSpeaking != oldDelegate.isSpeaking ||
+      color != oldDelegate.color;
 }
 
 class ParticleSphere extends StatefulWidget {
@@ -133,9 +146,8 @@ class _ParticleSphereState extends State<ParticleSphere>
 
   late AnimationController _animationController;
   final List<Particle> _particles = [];
-  Offset _rotation = const Offset(0, 0);
+  final _motion = _SphereMotion();
   Offset? _lastDragPosition;
-  double _time = 0;
 
   @override
   void initState() {
@@ -144,18 +156,32 @@ class _ParticleSphereState extends State<ParticleSphere>
     _animationController =
         AnimationController(vsync: this, duration: const Duration(days: 1))
           ..addListener(() {
-            if (!mounted) return;
-            setState(() {
-              _time += 0.016;
-              _updateParticles();
-              if (_lastDragPosition == null) {
-                _rotation = Offset(_rotation.dx, _rotation.dy + 0.002);
-              }
-            });
+            _motion.time += 0.016;
+            _updateParticles();
+            if (_lastDragPosition == null) {
+              _motion.rotation = Offset(
+                _motion.rotation.dx,
+                _motion.rotation.dy + 0.002,
+              );
+            }
+            // Animation updates paint only; the aura, gestures and layout do
+            // not need to rebuild at the display's refresh rate.
+            _motion.repaint();
           });
     // Freeze the loop when reduce-motion is on; the sphere still paints once.
     if (widget.animate) {
       _animationController.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(ParticleSphere oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.animate == oldWidget.animate) return;
+    if (widget.animate) {
+      _animationController.repeat();
+    } else {
+      _animationController.stop();
     }
   }
 
@@ -205,10 +231,10 @@ class _ParticleSphereState extends State<ParticleSphere>
   }
 
   RotatedParticle _rotateParticle(Particle p) {
-    final cosX = cos(_rotation.dx);
-    final sinX = sin(_rotation.dx);
-    final cosY = cos(_rotation.dy);
-    final sinY = sin(_rotation.dy);
+    final cosX = cos(_motion.rotation.dx);
+    final sinX = sin(_motion.rotation.dx);
+    final cosY = cos(_motion.rotation.dy);
+    final sinY = sin(_motion.rotation.dy);
     final y1 = p.y * cosX - p.z * sinX;
     final z1 = p.y * sinX + p.z * cosX;
     final x1 = p.x * cosY + z1 * sinY;
@@ -242,6 +268,7 @@ class _ParticleSphereState extends State<ParticleSphere>
   @override
   void dispose() {
     _animationController.dispose();
+    _motion.dispose();
     super.dispose();
   }
 
@@ -273,11 +300,7 @@ class _ParticleSphereState extends State<ParticleSphere>
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             boxShadow: [
-              BoxShadow(
-                color: auraColor,
-                blurRadius: 120,
-                spreadRadius: 30,
-              ),
+              BoxShadow(color: auraColor, blurRadius: 120, spreadRadius: 30),
             ],
           ),
         ),
@@ -285,29 +308,28 @@ class _ParticleSphereState extends State<ParticleSphere>
           onPanStart: (details) {
             _lastDragPosition = details.localPosition;
             _scatterParticles(details.localPosition, size);
+            _motion.repaint();
           },
           onPanUpdate: (details) {
             _scatterParticles(details.localPosition, size);
             if (_lastDragPosition != null) {
               final delta = details.localPosition - _lastDragPosition!;
-              setState(() {
-                _rotation = Offset(
-                  _rotation.dx + delta.dy * 0.005,
-                  _rotation.dy + delta.dx * 0.005,
-                );
-              });
+              _motion.rotation = Offset(
+                _motion.rotation.dx + delta.dy * 0.005,
+                _motion.rotation.dy + delta.dx * 0.005,
+              );
             }
             _lastDragPosition = details.localPosition;
+            _motion.repaint();
           },
           onPanEnd: (_) => _lastDragPosition = null,
           behavior: HitTestBehavior.translucent,
           child: CustomPaint(
             size: Size.infinite,
-            painter: ParticleSpherePainter(
+            painter: _ParticleSpherePainter(
               particles: _particles,
-              rotation: _rotation,
+              motion: _motion,
               isSpeaking: widget.isSpeaking || widget.isListening,
-              time: _time,
               color: _activeColor,
             ),
           ),

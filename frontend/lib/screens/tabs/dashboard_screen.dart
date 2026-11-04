@@ -13,6 +13,7 @@ import '../../core/theme.dart';
 import '../../components/avatar.dart';
 import '../../context/auth_provider.dart';
 import '../../context/dashboard_provider.dart';
+import '../../components/data_loading.dart';
 import '../../features/interview/providers/interview_provider.dart';
 import '../../core/models/session_model.dart';
 
@@ -36,6 +37,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       context.read<DashboardProvider>().fetchDashboardData();
 
       // Fix #28: Ensure any hanging interview sessions are terminated on dashboard entry
@@ -69,16 +71,22 @@ class _DashboardScreenState extends State<DashboardScreen>
     final topPadding = MediaQuery.of(context).padding.top;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
-    final dashboard = Provider.of<DashboardProvider>(context);
+    context.select<DashboardProvider, Object>(
+      (p) =>
+          (p.summary, p.radarData, p.recentHistory, p.hasLoadedOnce, p.error),
+    );
+    final dashboard = context.read<DashboardProvider>();
     final summary = dashboard.summary;
-    final sessions = dashboard.history;
-    debugPrint('Dashboard recent-activity sessions: ${sessions.length}');
+    final sessions = dashboard.recentHistory;
 
     final avgScore = summary.averageScore;
     final total = summary.totalSessions;
     final byModule = summary.moduleBreakdown;
 
-    final auth = Provider.of<AuthProvider>(context);
+    context.select<AuthProvider, Object>(
+      (p) => (p.displayName, p.profileImageUrl),
+    );
+    final auth = context.read<AuthProvider>();
 
     return SpectralBackground(
       child: Scaffold(
@@ -89,28 +97,19 @@ class _DashboardScreenState extends State<DashboardScreen>
 
             // EMPTY STATE: new users see a prompt instead of blank stats.
             // Once at least one interview exists, the original design renders.
-            if (!dashboard.hasLoadedOnce)
-              // First load: spinner only, so default-value cards never flash.
+            if (!dashboard.hasLoadedOnce && dashboard.error != null)
               SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    color: t.primary,
-                  ),
+                child: DataLoadError(
+                  message: dashboard.error!,
+                  onRetry: () => dashboard.fetchDashboardData(),
                 ),
               )
-            else if (dashboard.isLoading)
-              // A refresh is still in flight (e.g. cached zero-summary while
-              // the real data loads) — keep the spinner rather than flashing
-              // the empty state for returning users.
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    color: t.primary,
-                  ),
+            else if (!dashboard.hasLoadedOnce)
+              const SliverToBoxAdapter(
+                child: DataLoadingSkeleton(
+                  label: 'Loading dashboard',
+                  dashboard: true,
                 ),
               )
             else if (total == 0)

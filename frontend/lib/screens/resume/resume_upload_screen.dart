@@ -12,6 +12,7 @@ import '../../components/glass_card.dart';
 import '../../components/glass_controls.dart';
 import '../../components/spectral_background.dart';
 import '../../components/confirmation_dialog.dart';
+import '../../components/data_loading.dart';
 
 class ResumeUploadScreen extends StatefulWidget {
   const ResumeUploadScreen({super.key});
@@ -318,7 +319,11 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
             // LIST CONTENT
             Expanded(
               child: provider.isLoading && resumes.isEmpty
-                ? const Center(child: CircularProgressIndicator())
+                ? const SingleChildScrollView(
+                    child: DataLoadingSkeleton(label: 'Loading resumes', rowHeight: 90),
+                  )
+                : provider.error != null && resumes.isEmpty
+                ? DataLoadError(message: provider.error!, onRetry: () => provider.fetchResumes())
                 : ListView.builder(
                     padding: const EdgeInsets.only(top: 0, bottom: 100, left: 24, right: 24),
                     itemCount: (resumes.isEmpty && !_isUploading) ? 1 : resumes.length + (_isUploading ? 1 : 0),
@@ -363,6 +368,7 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
 
                       final resume = resumes[_isUploading ? index - 1 : index];
                       return GestureDetector(
+                        key: ValueKey(resume.resumeId),
                         onTap: () => _showParsedPreview(resume),
                         child: GlassCard(
                           margin: const EdgeInsets.only(bottom: 16),

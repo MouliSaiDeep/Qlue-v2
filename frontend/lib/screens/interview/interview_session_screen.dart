@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:frontend/context/auth_provider.dart';
 import 'package:frontend/context/appearance_provider.dart';
@@ -56,41 +55,12 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> {
   bool _hasNavigated = false;
 
   late InterviewProvider _provider;
-  late VoidCallback _providerListener;
-
-  Timer? _statusTimer;
-  int _messageIndex = 0;
-
-  List<String> get _loadingMessages => const ['Preparing your interview…'];
-
-  void _startStatusTimer() {
-    _statusTimer?.cancel();
-    _statusTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (mounted) {
-        setState(() {
-          _messageIndex = (_messageIndex + 1) % _loadingMessages.length;
-        });
-      }
-    });
-  }
 
   @override
   void initState() {
     super.initState();
 
     _provider = context.read<InterviewProvider>();
-
-    _providerListener = () {
-      if (mounted) {
-        if (_provider.isConnecting && _statusTimer == null) {
-          _startStatusTimer();
-        } else if (!_provider.isConnecting && _statusTimer != null) {
-          _statusTimer?.cancel();
-          _statusTimer = null;
-        }
-      }
-    };
-    _provider.addListener(_providerListener);
 
     // Reset provider immediately to prevent redirect from old session state in the first build
     _provider.resetForNewSession();
@@ -173,13 +143,6 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> {
   }
 
   @override
-  void dispose() {
-    _statusTimer?.cancel();
-    _provider.removeListener(_providerListener);
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final t = AppThemeColors.dark;
     // Recognition hypotheses update only the transcript viewport. Keeping them
@@ -196,6 +159,7 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> {
         p.finalQuestionText,
         p.questionText,
         p.isListening,
+        p.isPreparingVoice,
         p.silenceStrikes,
         p.replayQuestionAvailable,
         p.canReplayQuestion,
@@ -209,6 +173,9 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> {
     final isConnecting = provider.isConnecting;
     final isAiSpeaking = provider.currentPhase == InterviewPhase.speaking;
     final isListening = provider.currentPhase == InterviewPhase.listening;
+    final reduceMotion =
+        MediaQuery.disableAnimationsOf(context) ||
+        context.select<AppearanceProvider, bool>((p) => p.reduceMotion);
 
     // AUTO-END INTERVIEW
     if (provider.isSessionEnded && !_hasNavigated) {
@@ -236,21 +203,14 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> {
     // Determine status text for bottom
     Widget statusWidget = const SizedBox.shrink();
     if (isConnecting) {
-      statusWidget = AnimatedSwitcher(
-        duration: const Duration(milliseconds: 500),
-        transitionBuilder: (Widget child, Animation<double> animation) {
-          return FadeTransition(opacity: animation, child: child);
-        },
-        child: Text(
-          _loadingMessages[_messageIndex],
-          key: ValueKey<int>(_messageIndex),
-          style: TextStyle(
-            fontSize: 12,
-            fontFamily: 'monospace',
-            fontWeight: FontWeight.w700,
-            color: Colors.white.withValues(alpha: 0.4),
-            letterSpacing: 2,
-          ),
+      statusWidget = Text(
+        'Preparing your interview…',
+        style: TextStyle(
+          fontSize: 12,
+          fontFamily: 'monospace',
+          fontWeight: FontWeight.w700,
+          color: Colors.white.withValues(alpha: 0.4),
+          letterSpacing: 2,
         ),
       );
     } else {
@@ -338,9 +298,7 @@ class _InterviewSessionScreenState extends State<InterviewSessionScreen> {
                           moduleColor: moduleAccent,
                           isSpeaking: isAiSpeaking,
                           isListening: isListening,
-                          animate: !context
-                              .read<AppearanceProvider>()
-                              .reduceMotion,
+                          animate: !reduceMotion,
                         ),
                       ),
                     );

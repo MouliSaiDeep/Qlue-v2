@@ -11,6 +11,7 @@ import '../../core/theme.dart';
 import '../../context/auth_provider.dart';
 import '../../context/appearance_provider.dart';
 import '../../context/dashboard_provider.dart';
+import '../../components/data_loading.dart';
 import '../../core/models/session_model.dart';
 
 class TimelineSessionCard extends StatelessWidget {
@@ -156,16 +157,25 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   String _selectedFilter = 'Date'; // 'Date', 'Module', 'Score'
+  List<SessionModel>? _sessionsSource;
+  String? _sessionsFilter;
+  List<SessionModel> _sortedSessions = [];
   
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       context.read<DashboardProvider>().fetchHistory();
     });
   }
 
   List<SessionModel> _getFilteredSessions(List<SessionModel> allSessions) {
+    if (identical(_sessionsSource, allSessions) && _sessionsFilter == _selectedFilter) {
+      return _sortedSessions;
+    }
+    _sessionsSource = allSessions;
+    _sessionsFilter = _selectedFilter;
     List<SessionModel> sessions = List.from(allSessions);
     
     if (_selectedFilter == 'Score') {
@@ -175,13 +185,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
     } else {
       // Date based (chrono) - already sorted by backend
     }
-    return sessions;
+    return _sortedSessions = sessions;
   }
 
   @override
   Widget build(BuildContext context) {
     final t = AppThemeColors.of(context);
-    final dashboard = Provider.of<DashboardProvider>(context);
+    context.select<DashboardProvider, Object>((p) => (
+      p.history, p.hasLoadedHistory, p.historyError,
+    ));
+    final dashboard = context.read<DashboardProvider>();
     final reduceMotion = MediaQuery.disableAnimationsOf(context) ||
         (context.watch<AppearanceProvider?>()?.reduceMotion ?? false);
     final sessions = _getFilteredSessions(dashboard.history);
@@ -190,7 +203,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final total = sessions.length;
     final avgScore = total > 0 ? (sessions.fold(0, (sum, s) => sum + s.score).toDouble() / total).round() : 0;
 
-    final auth = Provider.of<AuthProvider>(context);
+    final profileImageUrl = context.select<AuthProvider, String>((p) => p.profileImageUrl);
 
     return SpectralBackground(
       child: Scaffold(
@@ -206,7 +219,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                      GestureDetector(
                       onTap: () => context.push('/profile'),
                       child: Avatar(
-                        imageUrl: auth.profileImageUrl,
+                        imageUrl: profileImageUrl,
                         size: 44,
                         isCircle: true,
                         border: Border.all(color: t.metallicBorder.withValues(alpha: 0.5), width: 1),
@@ -250,21 +263,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
             // EMPTY STATE: new users see a prompt instead of a blank
             // timeline. With interview data, the original design renders.
-            if (!dashboard.hasLoadedOnce)
+            if (!dashboard.hasLoadedHistory && dashboard.historyError != null)
               SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(
-                  child: CircularProgressIndicator(strokeWidth: 2.5, color: t.primary),
+                child: DataLoadError(
+                  message: dashboard.historyError!,
+                  onRetry: () => dashboard.fetchHistory(),
                 ),
               )
-            else if (dashboard.isLoading && dashboard.history.isEmpty)
-              // A fetch is in flight — never flash the empty state while the
-              // full history is loading.
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: CircularProgressIndicator(strokeWidth: 2.5, color: t.primary),
-                ),
+            else if (!dashboard.hasLoadedHistory)
+              const SliverToBoxAdapter(
+                child: DataLoadingSkeleton(label: 'Loading interview history'),
               )
             else if (dashboard.history.isEmpty)
               SliverFillRemaining(
@@ -301,6 +310,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               sliver: SliverList(delegate: SliverChildBuilderDelegate(
                 (context, index) {
                   final card = TimelineSessionCard(
+                    key: ValueKey(sessions[index].sessionId),
                     s: sessions[index],
                     isLast: index == sessions.length - 1,
                   );

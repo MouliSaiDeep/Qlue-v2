@@ -55,6 +55,7 @@ void main() {
     ).thenReturn(InterviewPhase.ready);
     when(() => mockInterviewProvider.isConnecting).thenReturn(false);
     when(() => mockInterviewProvider.isListening).thenReturn(false);
+    when(() => mockInterviewProvider.isPreparingVoice).thenReturn(false);
     when(() => mockInterviewProvider.isSessionEnded).thenReturn(false);
     when(() => mockInterviewProvider.microphoneAvailable).thenReturn(true);
     when(() => mockInterviewProvider.hasPendingAnswer).thenReturn(false);

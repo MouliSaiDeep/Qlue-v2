@@ -23,6 +23,7 @@ class QlueLogo extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Image.asset(
         'assets/images/qlue_logo.png',
+        cacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).ceil(),
         fit: BoxFit.cover,
       ),
     );

@@ -59,7 +59,9 @@ exports.handler = async (event) => {
             TableName: SESSIONS_TABLE,
             IndexName: 'GSI_UserIdStartedAt',
             KeyConditionExpression: keyCond,
-            ExpressionAttributeValues: expVals
+            ExpressionAttributeValues: expVals,
+            // Preserve every field used for filtering, score selection and dates.
+            ProjectionExpression: 'sessionId, startTime, startedAt, moduleType, accumulatedScores, assessmentOverallScore, discarded, answeredCount, feedbackExpected'
         };
 
         // Drain all pages so long-range trends aren't truncated at 1MB.

@@ -617,6 +617,7 @@ class _AIModulesScreenState extends State<AIModulesScreen>
                   imagePath,
                   height: 250,
                   width: 140,
+                  cacheWidth: (140 * MediaQuery.devicePixelRatioOf(context)).ceil(),
                   fit: BoxFit.contain,
                   alignment: Alignment.centerRight,
                   errorBuilder: (context, error, stackTrace) => Icon(
