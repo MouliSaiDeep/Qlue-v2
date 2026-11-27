@@ -11,6 +11,7 @@ import 'screens/tabs/dashboard_screen.dart';
 import 'screens/tabs/ai_modules_screen.dart';
 import 'screens/tabs/history_screen.dart';
 import 'screens/tabs/profile_screen.dart';
+import 'screens/notifications_screen.dart';
 import 'screens/interview/interview_session_screen.dart';
 import 'screens/resume/resume_upload_screen.dart';
 import 'screens/resume/resume_detail_screen.dart';
@@ -213,6 +214,10 @@ GoRouter buildAppRouter(AuthProvider authProvider) {
       GoRoute(
         path: '/profile',
         builder: (context, state) => const ProfileScreen(),
+      ),
+      GoRoute(
+        path: '/notifications',
+        builder: (context, state) => const NotificationsScreen(),
       ),
       GoRoute(
         path: '/job-match',

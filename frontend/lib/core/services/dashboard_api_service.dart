@@ -4,6 +4,18 @@ import '../network/dio_client.dart';
 import '../models/session_model.dart';
 import '../models/dashboard_model.dart';
 
+class SessionHistoryPage {
+  SessionHistoryPage({
+    required this.sessions,
+    this.nextCursor,
+    Map<String, dynamic>? requestOwner,
+  }) : _requestOwner = requestOwner;
+
+  final List<SessionModel> sessions;
+  final String? nextCursor;
+  final Map<String, dynamic>? _requestOwner;
+}
+
 class DashboardApiService {
   final _dio = DioClient().dio;
 
@@ -27,40 +39,51 @@ class DashboardApiService {
     final wanted = limit.clamp(1, 100);
     final history = <SessionModel>[];
     final seenCursors = <String>{};
-    String? cursor;
-    Map<String, dynamic>? owner;
+    SessionHistoryPage? page;
     do {
-      final response = await _dio.get(
-        ApiConstants.sessionHistory,
-        queryParameters: {
-          'limit': (wanted - history.length).clamp(1, 50),
-          'moduleType': ?moduleType,
-          'cursor': ?cursor,
-        },
-        // Continuation requests keep the first request's login ownership.
-        // A sign-out/account switch cancels paging instead of mixing accounts.
-        options: owner == null ? null : Options(extra: Map.of(owner)),
+      page = await getHistoryPage(
+        moduleType: moduleType,
+        limit: wanted - history.length,
+        after: page,
       );
-      owner ??= Map<String, dynamic>.from(response.requestOptions.extra);
-      final List sessions = response.data['sessions'] ?? [];
-      for (final session in sessions) {
-        // Also protects clients talking to an older backend that returns these
-        // rows. Do not hide legitimate answers merely because their score is 0.
-        if (session['discarded'] == true || session['answeredCount'] == 0) {
-          continue;
-        }
-        history.add(SessionModel.fromJson(session));
-        if (history.length >= wanted) break;
-      }
-      final next = response.data['nextCursor'];
-      cursor = next is String && next.isNotEmpty ? next : null;
+      history.addAll(page.sessions.take(wanted - history.length));
+      final cursor = page.nextCursor;
       if (history.length < wanted &&
           cursor != null &&
           !seenCursors.add(cursor)) {
         throw StateError('History pagination did not advance. Please retry.');
       }
       // Filtering can leave an empty page while older answered sessions remain.
-    } while (cursor != null && history.length < wanted);
+    } while (page.nextCursor != null && history.length < wanted);
     return history;
+  }
+
+  Future<SessionHistoryPage> getHistoryPage({
+    String? moduleType,
+    int limit = 50,
+    SessionHistoryPage? after,
+  }) async {
+    final owner = after?._requestOwner;
+    final response = await _dio.get(
+      ApiConstants.sessionHistory,
+      queryParameters: {
+        'limit': limit.clamp(1, 50),
+        'moduleType': ?moduleType,
+        'cursor': ?after?.nextCursor,
+      },
+      // Keep the first request's login ownership on every continuation.
+      options: owner == null ? null : Options(extra: Map.of(owner)),
+    );
+    final List<dynamic> sessions = response.data['sessions'] ?? [];
+    final cursor = response.data['nextCursor'];
+    return SessionHistoryPage(
+      sessions: [
+        for (final session in sessions)
+          if (session['discarded'] != true && session['answeredCount'] != 0)
+            SessionModel.fromJson(session),
+      ],
+      nextCursor: cursor is String && cursor.isNotEmpty ? cursor : null,
+      requestOwner: owner ?? Map.of(response.requestOptions.extra),
+    );
   }
 }

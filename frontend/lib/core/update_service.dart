@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -11,13 +12,19 @@ class UpdateInfo {
   final String downloadUrl; // browser_download_url of Qlue.apk
   final String releaseNotes; // release body (may be empty)
   final int sizeBytes; // apk asset size, 0 if unknown
+  final DateTime? publishedAt;
 
   const UpdateInfo({
     required this.version,
     required this.downloadUrl,
     required this.releaseNotes,
     required this.sizeBytes,
+    this.publishedAt,
   });
+
+  String get versionLabel => sizeBytes > 0
+      ? 'Version $version (${(sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB)'
+      : 'Version $version';
 }
 
 /// Outcome of handing the downloaded APK to the OS installer.
@@ -26,7 +33,7 @@ enum InstallOutcome { launched, permissionDenied, failed }
 /// Self-update against the app's own public GitHub Releases.
 ///
 /// The app is distributed as an APK outside the Play Store, so updates are
-/// checked and installed manually: read the latest release, compare its tag to
+/// installed through Android: read the latest release, compare its tag to
 /// the running [PackageInfo.version], download the `Qlue.apk` asset, and hand
 /// it to the Android package installer. Android still shows the system install
 /// prompt — a normal (non-system) app cannot install silently.
@@ -36,20 +43,52 @@ class UpdateService {
   static const String _owner = 'MouliSaiDeep';
   static const String _repo = 'Qlue-v2';
   static const String _apkAssetName = 'qlue.apk'; // compared case-insensitively
+  static const _checkInterval = Duration(minutes: 5);
+  static const _checkTimeout = Duration(seconds: 15);
+
+  static final shared = UpdateService();
+  static bool get isSupported =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   final Dio _dio;
+  Future<UpdateInfo?>? _pendingCheck;
+  DateTime? _lastCheckedAt;
+  final _availableUpdate = ValueNotifier<UpdateInfo?>(null);
+  ValueListenable<UpdateInfo?> get availableUpdate => _availableUpdate;
 
-  UpdateService([Dio? dio]) : _dio = dio ?? Dio();
+  UpdateService([Dio? dio])
+    : _dio = dio ?? Dio(BaseOptions(connectTimeout: _checkTimeout));
 
   /// Returns [UpdateInfo] when the latest release is newer than the running
-  /// build, otherwise null. Throws on network/parse failure so the caller can
-  /// surface a "couldn't check" message.
-  Future<UpdateInfo?> checkForUpdate() async {
+  /// build, otherwise null. Manual checks can bypass the automatic cache.
+  Future<UpdateInfo?> checkForUpdate({bool force = false}) {
+    final pendingCheck = _pendingCheck;
+    if (pendingCheck != null) return pendingCheck;
+    final lastCheckedAt = _lastCheckedAt;
+    if (!force &&
+        lastCheckedAt != null &&
+        DateTime.now().difference(lastCheckedAt) < _checkInterval) {
+      return Future.value(_availableUpdate.value);
+    }
+
+    return _pendingCheck = _fetchUpdate()
+        .then((update) {
+          _lastCheckedAt = DateTime.now();
+          _availableUpdate.value = update;
+          return update;
+        })
+        .whenComplete(() {
+          _pendingCheck = null;
+        });
+  }
+
+  Future<UpdateInfo?> _fetchUpdate() async {
     final info = await PackageInfo.fromPlatform();
 
     final res = await _dio.get(
       'https://api.github.com/repos/$_owner/$_repo/releases/latest',
       options: Options(
+        receiveTimeout: _checkTimeout,
         headers: {
           'Accept': 'application/vnd.github+json',
           // GitHub's API rejects requests without a User-Agent.
@@ -76,11 +115,15 @@ class UpdateService {
     final url = apk?['browser_download_url'] as String?;
     if (url == null) return null; // release exists but has no installable APK
 
+    final publishedAt = data['published_at'];
     return UpdateInfo(
       version: latest,
       downloadUrl: url,
       releaseNotes: ((data['body'] as String?) ?? '').trim(),
       sizeBytes: (apk?['size'] as int?) ?? 0,
+      publishedAt: publishedAt is String
+          ? DateTime.tryParse(publishedAt)
+          : null,
     );
   }
 

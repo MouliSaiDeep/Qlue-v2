@@ -12,6 +12,7 @@ import 'context/auth_provider.dart';
 import 'features/interview/providers/interview_provider.dart';
 import 'context/resume_provider.dart';
 import 'context/dashboard_provider.dart';
+import 'context/notification_inbox_provider.dart';
 import 'context/appearance_provider.dart';
 import 'core/theme.dart';
 
@@ -147,6 +148,12 @@ class QlueApp extends StatelessWidget {
             ),
             ChangeNotifierProvider(create: (_) => ResumeProvider()),
             ChangeNotifierProvider(create: (_) => DashboardProvider()),
+            ChangeNotifierProvider(
+              create: (context) => NotificationInboxProvider(
+                userId: auth.currentUser?.uid ?? '',
+                dashboard: context.read<DashboardProvider>(),
+              ),
+            ),
           ],
           child: const RouterWrapper(),
         ),

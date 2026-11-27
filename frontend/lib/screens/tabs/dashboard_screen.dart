@@ -13,9 +13,11 @@ import '../../core/theme.dart';
 import '../../components/avatar.dart';
 import '../../context/auth_provider.dart';
 import '../../context/dashboard_provider.dart';
+import '../../context/notification_inbox_provider.dart';
 import '../../components/data_loading.dart';
 import '../../features/interview/providers/interview_provider.dart';
 import '../../core/models/session_model.dart';
+import 'dashboard_update_notice.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -94,6 +96,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         body: CustomScrollView(
           slivers: [
             _buildHeader(t, topPadding, auth),
+            const SliverToBoxAdapter(child: DashboardUpdateNotice()),
 
             // EMPTY STATE: new users see a prompt instead of blank stats.
             // Once at least one interview exists, the original design renders.
@@ -427,6 +430,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Widget _buildHeader(AppThemeColors t, double topPadding, AuthProvider auth) {
+    final hasUnread = context.select<NotificationInboxProvider?, bool>(
+      (inbox) => inbox?.hasUnread ?? false,
+    );
     return SliverToBoxAdapter(
       child: Padding(
         padding: EdgeInsets.only(
@@ -465,6 +471,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                   Text(
                     auth.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 20,
                       color: t.text,
@@ -473,6 +481,18 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: hasUnread
+                  ? 'Notifications, unread activity'
+                  : 'Notifications',
+              onPressed: () => context.push('/notifications'),
+              icon: Badge(
+                isLabelVisible: hasUnread,
+                backgroundColor: AppColors.moduleResume,
+                child: Icon(FeatherIcons.bell, color: t.text, size: 21),
               ),
             ),
           ],

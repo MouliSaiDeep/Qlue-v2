@@ -1,5 +1,7 @@
 import 'package:intl/intl.dart';
 
+enum SessionFeedbackStatus { generating, ready, unavailable }
+
 class SessionModel {
   final String sessionId;
   final String userId;
@@ -7,6 +9,9 @@ class SessionModel {
   final DateTime startedAt;
   final Map<String, dynamic>? accumulatedScores;
   final String? status;
+  final SessionFeedbackStatus? feedbackStatus;
+  final String? feedbackAttempt;
+  final DateTime? feedbackActivityAt;
 
   SessionModel({
     required this.sessionId,
@@ -15,6 +20,9 @@ class SessionModel {
     required this.startedAt,
     this.accumulatedScores,
     this.status,
+    this.feedbackStatus,
+    this.feedbackAttempt,
+    this.feedbackActivityAt,
   });
 
   factory SessionModel.fromJson(Map<String, dynamic> json) {
@@ -29,6 +37,25 @@ class SessionModel {
       return DateTime.fromMillisecondsSinceEpoch(0);
     }
 
+    final eligible =
+        json['feedbackExpected'] != false &&
+        json['discarded'] != true &&
+        json['answeredCount'] != 0;
+    final feedbackId = json['feedbackId'];
+    final feedbackStatus = eligible
+        ? switch (json['feedbackStatus']) {
+            'PENDING' => SessionFeedbackStatus.generating,
+            'COMPLETE' => SessionFeedbackStatus.ready,
+            'FAILED' => SessionFeedbackStatus.unavailable,
+            _ when json['currentState'] == 'GENERATING_FEEDBACK' =>
+              SessionFeedbackStatus.generating,
+            _ when feedbackId is String && feedbackId.isNotEmpty =>
+              SessionFeedbackStatus.ready,
+            _ => null,
+          }
+        : null;
+    final attempt = json['feedbackAttemptId'] ?? feedbackId;
+    final activityTime = json['feedbackAttemptStartedAt'] ?? json['updatedAt'];
     return SessionModel(
       sessionId: json['sessionId'] ?? '',
       userId: json['userId'] ?? '',
@@ -38,6 +65,13 @@ class SessionModel {
           ? Map<String, dynamic>.from(json['accumulatedScores']) 
           : null,
       status: json['status'] ?? json['currentState'],
+      feedbackStatus: feedbackStatus,
+      feedbackAttempt: attempt is String ? attempt : null,
+      feedbackActivityAt: switch (activityTime) {
+        final int millis => DateTime.fromMillisecondsSinceEpoch(millis),
+        final String iso => DateTime.tryParse(iso),
+        _ => null,
+      },
     );
   }
 

@@ -10,6 +10,7 @@ import '../../core/theme.dart';
 import '../../context/auth_provider.dart';
 import '../../context/dashboard_provider.dart';
 import '../../context/resume_provider.dart';
+import '../../components/app_update_dialogs.dart';
 import '../../components/input_field.dart';
 import '../../core/notifications.dart';
 import '../../core/update_service.dart';
@@ -43,13 +44,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // release instead of a hard-coded string.
   String _appVersion = '';
 
-  // In-app updater (Android sideload builds only — the Play Store handles
-  // updates elsewhere, and web has no APK to install).
-  final UpdateService _updateService = UpdateService();
   bool _checkingUpdate = false;
-
-  bool get _updatesSupported =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   @override
   void initState() {
@@ -977,218 +972,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (_checkingUpdate) return;
     setState(() => _checkingUpdate = true);
     Notify.info(context, 'Checking for updates…');
+    final service = UpdateService.shared;
     try {
-      final update = await _updateService.checkForUpdate();
+      final update = await service.checkForUpdate(force: true);
       if (!mounted) return;
       if (update == null) {
         Notify.success(context, "You're on the latest version");
       } else {
-        _showUpdateAvailableDialog(update);
+        final confirmed = await showUpdateDetails(context, update);
+        if (confirmed && mounted) {
+          await downloadAndInstallUpdate(context, service, update);
+        }
       }
     } catch (_) {
       if (!mounted) return;
       Notify.error(context, "Couldn't check for updates. Try again later.");
     } finally {
       if (mounted) setState(() => _checkingUpdate = false);
-    }
-  }
-
-  void _showUpdateAvailableDialog(UpdateInfo update) {
-    final t = AppThemeColors.of(context);
-    final sizeMb = update.sizeBytes > 0
-        ? (update.sizeBytes / (1024 * 1024)).toStringAsFixed(1)
-        : null;
-    showDialog(
-      context: context,
-      useRootNavigator: true,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        child: GlassCard(
-          borderRadius: 24,
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 64,
-                height: 64,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2563EB).withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Center(
-                  child: Icon(
-                    FeatherIcons.download,
-                    size: 30,
-                    color: Color(0xFF2563EB),
-                  ),
-                ),
-              ),
-              Text(
-                "Update available",
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: t.text,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                sizeMb == null
-                    ? "Version ${update.version} is ready to install."
-                    : "Version ${update.version} ($sizeMb MB) is ready to install.",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: t.textSecondary,
-                  height: 1.5,
-                ),
-              ),
-              if (update.releaseNotes.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Container(
-                  width: double.infinity,
-                  constraints: const BoxConstraints(maxHeight: 160),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: t.bgSecondary,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: SingleChildScrollView(
-                    child: Text(
-                      update.releaseNotes,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: t.textSecondary,
-                        height: 1.5,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 24),
-              AppButton(
-                label: 'Update now',
-                color: const Color(0xFF2563EB),
-                borderRadius: 14,
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _downloadAndInstall(update);
-                },
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  style: TextButton.styleFrom(foregroundColor: t.textSecondary),
-                  child: const Text('Later'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _downloadAndInstall(UpdateInfo update) async {
-    final progress = ValueNotifier<double>(0);
-    showDialog(
-      context: context,
-      useRootNavigator: true,
-      barrierDismissible: false,
-      builder: (ctx) {
-        final t = AppThemeColors.of(ctx);
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 24,
-          ),
-          child: GlassCard(
-            borderRadius: 24,
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  "Downloading update",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: t.text,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                ValueListenableBuilder<double>(
-                  valueListenable: progress,
-                  builder: (_, value, _) => Column(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: LinearProgressIndicator(
-                          value: value > 0 ? value : null,
-                          minHeight: 8,
-                          backgroundColor: t.bgSecondary,
-                          valueColor: const AlwaysStoppedAnimation(
-                            Color(0xFF2563EB),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        value > 0 ? "${(value * 100).round()}%" : "Starting…",
-                        style: TextStyle(fontSize: 13, color: t.textSecondary),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-    try {
-      final path = await _updateService.downloadApk(
-        update.downloadUrl,
-        onProgress: (received, total) {
-          if (total > 0) progress.value = received / total;
-        },
-      );
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop(); // close progress
-      final outcome = await _updateService.installApk(path);
-      if (!mounted) return;
-      switch (outcome) {
-        case InstallOutcome.launched:
-          Notify.info(context, 'Opening installer…');
-          break;
-        case InstallOutcome.permissionDenied:
-          Notify.error(
-            context,
-            'Allow "Install unknown apps" for Qlue, then tap the update again.',
-          );
-          break;
-        case InstallOutcome.failed:
-          Notify.error(context, "Couldn't open the installer.");
-          break;
-      }
-    } catch (_) {
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop(); // close progress
-      Notify.error(
-        context,
-        'Download failed. Check your connection and try again.',
-      );
-    } finally {
-      progress.dispose();
     }
   }
 
@@ -1544,7 +1344,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         onPress: _showRatingDialog,
                       ),
                       const ProfileDiv(),
-                      if (_updatesSupported) ...[
+                      if (UpdateService.isSupported) ...[
                         SettingRow(
                           icon: FeatherIcons.download,
                           label: "Check for updates",
